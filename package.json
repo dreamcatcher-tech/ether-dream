@@ -1,6 +1,14 @@
 {
+  "scripts": {
+    "watch": "nodemon --exec \"hardhat test --grep DreamEther\""
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
-    "hardhat": "^2.16.1"
+    "hardhat": "^2.16.1",
+    "nodemon": "^2.0.22"
+  },
+  "nodemonConfig": {
+    "ignore": ["artifacts/**", "cache/**"],
+    "ext":"js,mjs,json,sol"
   }
 }
