@@ -20,9 +20,13 @@ describe("DreamEther", function () {
   }
 
   describe("Deployment", function () {
-    it("Deploys", async function () {
+    it("Deploys", async () =>{
       const { dreamEther } = await loadFixture(deploy);
     });
+    it('proposes a packet', async () => {
+      const { dreamEther } = await loadFixture(deploy);
+      const tx = await dreamEther.defund(5)
+    })
 
     // it("Should set the right owner", async function () {
     //   const { lock, owner } = await loadFixture(deploy);
@@ -115,4 +119,19 @@ describe("DreamEther", function () {
   //     });
   //   });
   // });
+  describe('funding', ()=>{
+    test.todo('funding during withdraw lock resets the lock')
+    test.todo('funding using locked funds on the same packet undoes the lock')
+    test.todo('funders can use multiple tokens including ETH')
+    test.todo('funders can use multiple tokens from the same contract')
+  })
+  describe('e2e', () => {
+    test.todo('solving an already solved packet with something better')
+    test.todo('modifying the packet header')
+    test.todo('packet solving another packet')
+    test.todo('check balances of all token types')
+  })
+  describe('packet closing', ()=>{
+    test.todo('multiple solutions funded within appealWindow')
+  })
 });
