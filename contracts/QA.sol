@@ -17,6 +17,10 @@ interface IQA {
     function defunded(uint id) external returns (bool);
 }
 
+interface IDreamcatcher {
+    function qaResolve(uint id, Shares[] calldata shares) external;
+}
+
 contract QA is IQA {
     function appealFundThreshold()
         external
@@ -36,5 +40,12 @@ contract QA is IQA {
     function defunded(uint id) external override returns (bool) {
         // TODO
         return true;
+    }
+
+    function passQA(uint id, address dreamcatcher) external {
+        IDreamcatcher dc = IDreamcatcher(dreamcatcher);
+        Shares[] memory shares = new Shares[](1);
+        shares[0] = Shares(msg.sender, 1);
+        dc.qaResolve(id, shares);
     }
 }

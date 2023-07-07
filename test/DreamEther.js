@@ -1,122 +1,102 @@
 const {
   time,
   loadFixture,
-} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
-const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
-const { expect } = require("chai");
+} = require('@nomicfoundation/hardhat-toolbox/network-helpers')
+const { anyValue } = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
+const { expect } = require('chai')
 
-describe("DreamEther", function () {
+describe('DreamEther', function () {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
   async function deploy() {
     // Contracts are deployed using the first signer/account by default
-    const [owner, qaAddress] = await ethers.getSigners();
+    const [owner, qaAddress] = await ethers.getSigners()
 
-    const DreamEther = await ethers.getContractFactory("DreamEther");
-    const dreamEther = await DreamEther.deploy();
+    const DreamEther = await ethers.getContractFactory('DreamEther')
+    const dreamEther = await DreamEther.deploy()
 
-    const QA = await ethers.getContractFactory("QA");
-    const qa = await QA.deploy();
+    const QA = await ethers.getContractFactory('QA')
+    const qa = await QA.deploy()
 
-    return { dreamEther, qa, owner, qaAddress };
+    return { dreamEther, qa, owner, qaAddress, ethers }
   }
 
-  describe("Deployment", function () {
-    it("Deploys", async () => {
-      const { dreamEther, qa } = await loadFixture(deploy);
-    });
-    it('proposes a packet', async () => {
-      const { dreamEther, qa } = await loadFixture(deploy);
+  describe('Walkthru Happy Path', () => {
+    let fixture
+    this.beforeAll(async () => {
+      fixture = await loadFixture(deploy)
+    })
+
+    it('Deploys', async () => {
+      const { dreamEther } = fixture
+      expect(dreamEther.target).to.not.equal(0)
+    })
+    it('Proposes a packet', async () => {
+      const { dreamEther, qa } = fixture
       const tx = dreamEther.proposePacket(5, qa.target)
-      await expect(tx).to.emit(dreamEther, 'ProposedPacket')
+      await expect(tx)
+        .to.emit(dreamEther, 'ProposedPacket')
         .withArgs(5, qa.target)
     })
-    it('funds a packet', async () => {
-      const { dreamEther, qa, owner } = await loadFixture(deploy);
-      await dreamEther.proposePacket(5, qa.target)
+    it('Funds a proposed packet', async () => {
+      const { dreamEther, qa, owner, ethers } = fixture
       const fund = dreamEther.fund(5, [], { value: 5 })
-      await expect(fund).to.emit(dreamEther, 'FundedTransition')
+      await expect(fund)
+        .to.emit(dreamEther, 'FundedTransition')
         .changeEtherBalance(dreamEther, 5)
     })
-
-    // it("Should receive and store the funds to lock", async function () {
-    //   const { lock, lockedAmount } = await loadFixture(
-    //     deploy
-    //   );
-
-    //   expect(await ethers.provider.getBalance(lock.target)).to.equal(
-    //     lockedAmount
-    //   );
-    // });
-
-    // it("Should fail if the unlockTime is not in the future", async function () {
-    //   // We don't use the fixture here because we want a different deployment
-    //   const latestTime = await time.latest();
-    //   const Lock = await ethers.getContractFactory("Lock");
-    //   await expect(Lock.deploy(latestTime, { value: 1 })).to.be.revertedWith(
-    //     "Unlock time should be in the future"
-    //   );
-    // });
-  });
-
-  // describe("Withdrawals", function () {
-  //   describe("Validations", function () {
-  //     it("Should revert with the right error if called too soon", async function () {
-  //       const { lock } = await loadFixture(deploy);
-
-  //       await expect(lock.withdraw()).to.be.revertedWith(
-  //         "You can't withdraw yet"
-  //       );
-  //     });
-
-  //     it("Should revert with the right error if called from another account", async function () {
-  //       const { lock, unlockTime, otherAccount } = await loadFixture(
-  //         deploy
-  //       );
-
-  //       // We can increase the time in Hardhat Network
-  //       await time.increaseTo(unlockTime);
-
-  //       // We use lock.connect() to send a transaction from another account
-  //       await expect(lock.connect(otherAccount).withdraw()).to.be.revertedWith(
-  //         "You aren't the owner"
-  //       );
-  //     });
-
-  //     it("Shouldn't fail if the unlockTime has arrived and the owner calls it", async function () {
-  //       const { lock, unlockTime } = await loadFixture(
-  //         deploy
-  //       );
-
-  //       // Transactions are sent using the first signer by default
-  //       await time.increaseTo(unlockTime);
-
-  //       await expect(lock.withdraw()).not.to.be.reverted;
-  //     });
-  //   });
-
-  //   describe("Events", function () {
-  //     it("Should emit an event on withdrawals", async function () {
-  //       const { lock, unlockTime, lockedAmount } = await loadFixture(
-  //         deploy
-  //       );
-
-  //       await time.increaseTo(unlockTime);
-
-  //       await expect(lock.withdraw())
-  //         .to.emit(lock, "Withdrawal")
-  //         .withArgs(lockedAmount, anyValue); // We accept any value as `when` arg
-  //     });
-  //   });
-
-  //   describe("Transfers", function () {
-  //     it("Should transfer the funds to the owner", async function () {
-  //       const { lock, unlockTime, lockedAmount, owner } = await loadFixture(
-  //         deploy
-  //       );
-
-  //       await time.increaseTo(unlockTime);
+    it('Passes QA for the header', async () => {
+      const { dreamEther, qa, owner, ethers } = fixture
+      const pass = qa.passQA(5, dreamEther.target)
+      await expect(pass).to.emit(dreamEther, 'QAResolved').withArgs(5)
+    })
+    it('Finalizes a header after appeal timeout', async () => {
+      const { dreamEther, qa, owner, ethers } = fixture
+      await time.increase(3600 * 24 * 3)
+      const packet = dreamEther.finalizeTransition(5)
+      await expect(packet).to.emit(dreamEther, 'PacketCreated').withArgs(1)
+      fixture.packetId = 1
+    })
+    it('Funds a packet with ETH', async () => {
+      const { dreamEther, qa, owner, ethers, packetId } = fixture
+      const payments = []
+      const fund = dreamEther.fund(packetId, payments, { value: 5 })
+      await expect(fund)
+        .to.emit(dreamEther, 'FundedTransition')
+        .changeEtherBalance(dreamEther, 5)
+    })
+    it('Proposes a solution', async () => {
+      fixture.solutionId = 13
+      const { dreamEther, qa, owner, packetId, solutionId } = fixture
+      const solution = dreamEther.proposeSolution(packetId, solutionId)
+      await expect(solution).to.emit(dreamEther, 'SolutionProposed')
+    })
+    it('Funds a solution', async () => {
+      const { dreamEther, qa, owner, ethers, packetId, solutionId } = fixture
+      const payments = []
+      const fund = dreamEther.fund(solutionId, payments, { value: 500 })
+      await expect(fund)
+        .to.emit(dreamEther, 'FundedTransition')
+        .changeEtherBalance(dreamEther, 500)
+    })
+    it('Passes QA for the solution', async () => {
+      const { dreamEther, qa, owner, ethers, packetId, solutionId } = fixture
+      const pass = qa.passQA(solutionId, dreamEther.target)
+      await expect(pass).to.emit(dreamEther, 'QAResolved').withArgs(solutionId)
+    })
+    it('Finalizes a solution after appeal timeout', async () => {
+      const { dreamEther, qa, owner, ethers, packetId, solutionId } = fixture
+      await time.increase(3600 * 24 * 3)
+      const packet = dreamEther.finalizeTransition(solutionId)
+      await expect(packet)
+        .to.emit(dreamEther, 'SolutionAccepted')
+        .withArgs(solutionId)
+      await expect(packet)
+        .to.emit(dreamEther, 'PacketResolved')
+        .withArgs(packetId)
+    })
+  })
 
   //       await expect(lock.withdraw()).to.changeEtherBalances(
   //         [owner, lock],
@@ -140,4 +120,4 @@ describe("DreamEther", function () {
   describe('packet closing', () => {
     it.skip('multiple solutions funded within appealWindow')
   })
-});
+})
