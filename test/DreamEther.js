@@ -11,28 +11,34 @@ describe("DreamEther", function () {
   // and reset Hardhat Network to that snapshot in every test.
   async function deploy() {
     // Contracts are deployed using the first signer/account by default
-    const [owner, otherAccount] = await ethers.getSigners();
+    const [owner, qaAddress] = await ethers.getSigners();
 
     const DreamEther = await ethers.getContractFactory("DreamEther");
     const dreamEther = await DreamEther.deploy();
 
-    return { dreamEther, owner, otherAccount };
+    const QA = await ethers.getContractFactory("QA");
+    const qa = await QA.deploy();
+
+    return { dreamEther, qa, owner, qaAddress };
   }
 
   describe("Deployment", function () {
-    it("Deploys", async () =>{
-      const { dreamEther } = await loadFixture(deploy);
+    it("Deploys", async () => {
+      const { dreamEther, qa } = await loadFixture(deploy);
     });
     it('proposes a packet', async () => {
-      const { dreamEther } = await loadFixture(deploy);
-      const tx = await dreamEther.defund(5)
+      const { dreamEther, qa } = await loadFixture(deploy);
+      const tx = dreamEther.proposePacket(5, qa.target)
+      await expect(tx).to.emit(dreamEther, 'ProposedPacket')
+        .withArgs(5, qa.target)
     })
-
-    // it("Should set the right owner", async function () {
-    //   const { lock, owner } = await loadFixture(deploy);
-
-    //   expect(await lock.owner()).to.equal(owner.address);
-    // });
+    it('funds a packet', async () => {
+      const { dreamEther, qa, owner } = await loadFixture(deploy);
+      await dreamEther.proposePacket(5, qa.target)
+      const fund = dreamEther.fund(5, [], { value: 5 })
+      await expect(fund).to.emit(dreamEther, 'FundedTransition')
+        .changeEtherBalance(dreamEther, 5)
+    })
 
     // it("Should receive and store the funds to lock", async function () {
     //   const { lock, lockedAmount } = await loadFixture(
@@ -119,19 +125,19 @@ describe("DreamEther", function () {
   //     });
   //   });
   // });
-  describe('funding', ()=>{
-    test.todo('funding during withdraw lock resets the lock')
-    test.todo('funding using locked funds on the same packet undoes the lock')
-    test.todo('funders can use multiple tokens including ETH')
-    test.todo('funders can use multiple tokens from the same contract')
+  describe('funding', () => {
+    it.skip('funding during withdraw lock resets the lock')
+    it.skip('funding using locked funds on the same packet undoes the lock')
+    it.skip('funders can use multiple tokens including ETH')
+    it.skip('funders can use multiple tokens from the same contract')
   })
   describe('e2e', () => {
-    test.todo('solving an already solved packet with something better')
-    test.todo('modifying the packet header')
-    test.todo('packet solving another packet')
-    test.todo('check balances of all token types')
+    it.skip('solving an already solved packet with something better')
+    it.skip('modifying the packet header')
+    it.skip('packet solving another packet')
+    it.skip('check balances of all token types')
   })
-  describe('packet closing', ()=>{
-    test.todo('multiple solutions funded within appealWindow')
+  describe('packet closing', () => {
+    it.skip('multiple solutions funded within appealWindow')
   })
 });
