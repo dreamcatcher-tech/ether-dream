@@ -1,9 +1,10 @@
-const {
+import {
   time,
   loadFixture,
-} = require('@nomicfoundation/hardhat-toolbox/network-helpers')
-const { anyValue } = require('@nomicfoundation/hardhat-chai-matchers/withArgs')
-const { expect } = require('chai')
+} from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
+import { anyValue } from '@nomicfoundation/hardhat-chai-matchers/withArgs.js'
+import { expect } from 'chai'
+import { createTestMachine, createTestModel } from '@xstate/test'
 
 describe('DreamEther', function () {
   // We define a fixture to reuse the same setup in every test.
@@ -25,89 +26,177 @@ describe('DreamEther', function () {
     return { dreamEther, qa, owner, qaAddress, ethers }
   }
 
-  describe('Walkthru Happy Path', () => {
-    let fixture
-    this.beforeAll(async () => {
-      fixture = await loadFixture(deploy)
+  // test arrays for actions ?
+  describe('model based testing', () => {
+    const machine = createTestMachine({
+      id: 'Dreamcatcher Ethereum',
+      initial: 'Contract Deployed',
+      states: {
+        'Contract Deployed': {
+          on: {
+            PROPOSE_HEADER: 'Header Proposed',
+          },
+        },
+        'Header Proposed': {
+          on: {
+            FUND_HEADER: 'Header Funded',
+            HEADER_PASS_QA: 'Header Passed QA',
+          },
+        },
+        'Header Funded': {
+          on: {
+            HEADER_PASS_QA: 'Header Passed QA',
+          },
+        },
+        'Header Passed QA': {
+          on: {
+            HEADER_FINALIZE: 'Header Finalized',
+          },
+        },
+        'Header Finalized': {
+          on: {
+            FUND_PACKET: 'Packet Funded',
+          },
+        },
+        'Packet Funded': {
+          on: {
+            PROPOSE_SOLUTION: 'Solution Proposed',
+          },
+        },
+        'Solution Proposed': {
+          on: {
+            FUND_SOLUTION: 'Solution Funded',
+          },
+        },
+        'Solution Funded': {
+          on: {
+            SOLUTION_PASS_QA: 'Solution Passed QA',
+          },
+        },
+        'Solution Passed QA': {
+          on: {
+            SOLUTION_FINALIZE: 'Packet Resolved',
+          },
+        },
+        'Packet Resolved': {},
+      },
+      predictableActionArguments: true,
+      preserveActionOrder: true,
     })
+    const model = createTestModel(machine)
 
-    it('Deploys', async () => {
-      const { dreamEther } = fixture
-      expect(dreamEther.target).to.not.equal(0)
-    })
-    it('Proposes a packet', async () => {
-      const { dreamEther, qa } = fixture
-      const tx = dreamEther.proposePacket(5, qa.target)
-      await expect(tx)
-        .to.emit(dreamEther, 'ProposedPacket')
-        .withArgs(5, qa.target)
-    })
-    it('Funds a proposed packet', async () => {
-      const { dreamEther, qa, owner, ethers } = fixture
-      const fund = dreamEther.fund(5, [], { value: 5 })
-      await expect(fund)
-        .to.emit(dreamEther, 'FundedTransition')
-        .changeEtherBalance(dreamEther, 5)
-    })
-    it('Passes QA for the header', async () => {
-      const { dreamEther, qa, owner, ethers } = fixture
-      const pass = qa.passQA(5, dreamEther.target)
-      await expect(pass).to.emit(dreamEther, 'QAResolved').withArgs(5)
-    })
-    it('Finalizes a header after appeal timeout', async () => {
-      const { dreamEther, qa, owner, ethers } = fixture
-      await time.increase(3600 * 24 * 3)
-      const packet = dreamEther.finalizeTransition(5)
-      await expect(packet).to.emit(dreamEther, 'PacketCreated').withArgs(1)
-      fixture.packetId = 1
-    })
-    it('Funds a packet with ETH', async () => {
-      const { dreamEther, qa, owner, ethers, packetId } = fixture
-      const payments = []
-      const fund = dreamEther.fund(packetId, payments, { value: 5 })
-      await expect(fund)
-        .to.emit(dreamEther, 'FundedTransition')
-        .changeEtherBalance(dreamEther, 5)
-    })
-    it('Proposes a solution', async () => {
-      fixture.solutionId = 13
-      const { dreamEther, qa, owner, packetId, solutionId } = fixture
-      const solution = dreamEther.proposeSolution(packetId, solutionId)
-      await expect(solution).to.emit(dreamEther, 'SolutionProposed')
-    })
-    it('Funds a solution', async () => {
-      const { dreamEther, qa, owner, ethers, packetId, solutionId } = fixture
-      const payments = []
-      const fund = dreamEther.fund(solutionId, payments, { value: 500 })
-      await expect(fund)
-        .to.emit(dreamEther, 'FundedTransition')
-        .changeEtherBalance(dreamEther, 500)
-    })
-    it('Passes QA for the solution', async () => {
-      const { dreamEther, qa, owner, ethers, packetId, solutionId } = fixture
-      const pass = qa.passQA(solutionId, dreamEther.target)
-      await expect(pass).to.emit(dreamEther, 'QAResolved').withArgs(solutionId)
-    })
-    it('Finalizes a solution after appeal timeout', async () => {
-      const { dreamEther, qa, owner, ethers, packetId, solutionId } = fixture
-      await time.increase(3600 * 24 * 3)
-      const packet = dreamEther.finalizeTransition(solutionId)
-      await expect(packet)
-        .to.emit(dreamEther, 'SolutionAccepted')
-        .withArgs(solutionId)
-      await expect(packet)
-        .to.emit(dreamEther, 'PacketResolved')
-        .withArgs(packetId)
+    model.getShortestPaths().forEach((path) => {
+      it(path.description, async () => {
+        const fixture = await loadFixture(deploy)
+        let tx
+        await path.test({
+          states: {
+            'Contract Deployed': () => {
+              const { dreamEther } = fixture
+              expect(dreamEther.target).to.not.equal(0)
+            },
+            'Header Proposed': async () => {
+              const { dreamEther, qa } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'ProposedPacket')
+                .withArgs(6, qa.target)
+            },
+            'Header Funded': async () => {
+              const { dreamEther } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'FundedTransition')
+                .changeEtherBalance(dreamEther, 5)
+            },
+            'Header Passed QA': async () => {
+              const { dreamEther } = fixture
+              await expect(tx).to.emit(dreamEther, 'QAResolved').withArgs(6)
+            },
+            'Header Finalized': async () => {
+              const { dreamEther } = fixture
+              await expect(tx).to.emit(dreamEther, 'PacketCreated').withArgs(1)
+            },
+            'Packet Funded': async () => {
+              const { dreamEther } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'FundedTransition')
+                .changeEtherBalance(dreamEther, 5)
+            },
+            'Solution Proposed': async () => {
+              const { dreamEther } = fixture
+              await expect(tx).to.emit(dreamEther, 'SolutionProposed')
+            },
+            'Solution Funded': async () => {
+              const { dreamEther } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'FundedTransition')
+                .changeEtherBalance(dreamEther, 500)
+            },
+            'Solution Passed QA': async () => {
+              const { dreamEther, solutionId } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'QAResolved')
+                .withArgs(solutionId)
+            },
+            'Packet Resolved': async () => {
+              const { dreamEther, packetId, solutionId } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'SolutionAccepted')
+                .withArgs(solutionId)
+              await expect(tx)
+                .to.emit(dreamEther, 'PacketResolved')
+                .withArgs(packetId)
+            },
+          },
+          events: {
+            PROPOSE_HEADER: async () => {
+              const { dreamEther, qa } = fixture
+              const data =
+                'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi'
+              tx = dreamEther.proposePacket(6, qa.target)
+            },
+            FUND_HEADER: async () => {
+              const { dreamEther } = fixture
+              tx = dreamEther.fund(6, [], { value: 5 })
+            },
+            HEADER_PASS_QA: async () => {
+              const { dreamEther, qa } = fixture
+              tx = qa.passQA(6, dreamEther.target)
+            },
+            HEADER_FINALIZE: async () => {
+              const { dreamEther } = fixture
+              await time.increase(3600 * 24 * 3)
+              tx = dreamEther.finalizeTransition(6)
+              fixture.packetId = 1
+            },
+            FUND_PACKET: async () => {
+              const { dreamEther, packetId } = fixture
+              const payments = []
+              tx = dreamEther.fund(packetId, payments, { value: 5 })
+            },
+            PROPOSE_SOLUTION: async () => {
+              fixture.solutionId = 13
+              const { dreamEther, qa, owner, packetId, solutionId } = fixture
+              tx = dreamEther.proposeSolution(packetId, solutionId)
+            },
+            FUND_SOLUTION: async () => {
+              const { dreamEther, solutionId } = fixture
+              const payments = []
+              tx = dreamEther.fund(solutionId, payments, { value: 500 })
+            },
+            SOLUTION_PASS_QA: async () => {
+              const { dreamEther, solutionId, qa } = fixture
+              tx = qa.passQA(solutionId, dreamEther.target)
+            },
+            SOLUTION_FINALIZE: async () => {
+              const { dreamEther, packetId, solutionId } = fixture
+              await time.increase(3600 * 24 * 3)
+              tx = dreamEther.finalizeTransition(solutionId)
+            },
+          },
+        })
+      })
     })
   })
-
-  //       await expect(lock.withdraw()).to.changeEtherBalances(
-  //         [owner, lock],
-  //         [lockedAmount, -lockedAmount]
-  //       );
-  //     });
-  //   });
-  // });
   describe('funding', () => {
     it.skip('funding during withdraw lock resets the lock')
     it.skip('funding using locked funds on the same packet undoes the lock')

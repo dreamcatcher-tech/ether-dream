@@ -7,10 +7,12 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
     "@openzeppelin/contracts": "^4.9.2",
+    "@xstate/test": "^1.0.0-alpha.1",
     "dotenv": "^16.3.1",
     "hardhat": "^2.16.1",
     "hardhat-gas-reporter": "^1.0.9",
-    "nodemon": "^2.0.22"
+    "nodemon": "^2.0.22",
+    "xstate": "^4.38.0"
   },
   "nodemonConfig": {
     "ignore": [
@@ -24,5 +26,6 @@
     "tabWidth": 2,
     "semi": false,
     "singleQuote": true
-  }
+  },
+  "type": "module"
 }
