@@ -14,8 +14,13 @@ interface IERC20 {
   ) external returns (bool);
 }
 
+/**
+ * Convert assets into task completion, with quality oversight
+ */
 contract DreamEther {
-  uint public packetIdCounter = 0;
+  uint public headerCounter = 0;
+  uint public packetCounter = 0;
+  uint public solutionCounter = 0;
 
   // what amounts of all the tokens in this contract does each address hodl
   mapping(address => TokenWallet) private balances;
@@ -148,7 +153,7 @@ contract DreamEther {
     TransitionType transitionType = _getTransitionType(id);
 
     if (transitionType == TransitionType.Header) {
-      uint packetId = ++packetIdCounter;
+      uint packetId = ++packetCounter;
       Transition storage packet = packets[packetId];
       require(packet.timestamp == 0, 'Packet exists');
       packet.timestamp = block.timestamp;
@@ -286,12 +291,8 @@ contract DreamEther {
     // ???? how to mark the packet as resolved tho ?
   }
 
-  function _isContract(address addr) internal view returns (bool) {
-    uint size;
-    assembly {
-      size := extcodesize(addr)
-    }
-    return size > 0;
+  function _isContract(address account) internal view returns (bool) {
+    return account.code.length > 0;
   }
 
   function _findHeaderHash(uint transitionHash) internal returns (uint) {
@@ -320,3 +321,6 @@ contract DreamEther {
 
 // packet solving another packet must be in the solved state
 // we need to ensure that no loops can occur - that problem solution tree is DAG
+
+// block datahashes from being reused
+// switch to indices for all transitions

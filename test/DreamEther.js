@@ -19,6 +19,9 @@ describe('DreamEther', function () {
     const QA = await ethers.getContractFactory('QA')
     const qa = await QA.deploy()
 
+    const Dai = await ethers.getContractFactory('MockDai')
+    const dai = await Dai.deploy()
+
     return { dreamEther, qa, owner, qaAddress, ethers }
   }
 
