@@ -119,8 +119,8 @@ contract DreamEther {
     emit QAResolved(id);
   }
 
-  function qaReject(uint id, string calldata reason) public {
-    require(isIpfsish(reason), 'Invalid rejection hash');
+  function qaReject(uint id, bytes32 reason) public {
+    require(_isIpfsish(reason), 'Invalid rejection hash');
     Transition storage t = _loadMeta(id);
     require(t.appealWindowStart == 0, 'Appeal period started');
     uint headerHash = _findHeaderHash(id);
@@ -145,8 +145,8 @@ contract DreamEther {
     // will halt the transition, return the qa funds, and await
   }
 
-  function appealRejection(uint transitionId, string calldata reason) public {
-    require(isIpfsish(reason), 'Invalid reason hash');
+  function appealRejection(uint transitionId, bytes32 reason) public {
+    require(_isIpfsish(reason), 'Invalid reason hash');
     Transition storage t = _loadRejection(transitionId);
     uint elapsedTime = block.timestamp - t.appealWindowStart;
     require(elapsedTime <= APPEAL_WINDOW, 'Appeal window closed');
@@ -155,7 +155,7 @@ contract DreamEther {
     uint appealId = ++appealCounter;
     Transition storage appeal = appeals[appealId];
     appeal.timestamp = block.timestamp;
-    appeal.ipfsCid = reason;
+    appeal.ipfsHash = reason;
     metasToAppeals[transitionId].push(appealId);
 
     TransitionType transitionType = _getTransitionType(transitionId);
@@ -340,12 +340,14 @@ contract DreamEther {
     revert('Invalid transition type');
   }
 
-  function isIpfsish(string memory cidString) public pure returns (bool) {
-    // TODO store only the hash in a 32byte slot and provide a view
-    // https://github.com/storyicon/base58-solidity
-    bytes memory cid = bytes(cidString);
-    bool isV1CID = (cid.length == 61) && (cid[0] == 0x62) && (cid[1] == 0x61);
-    return isV1CID;
+  function _isIpfsish(bytes32 ipfsHash) public pure returns (bool) {
+    return true;
+  }
+
+  function ipfsCid(uint transitionId) public view returns (string memory) {
+    // TODO https://github.com/storyicon/base58-solidity
+    Transition storage t = _loadAny(transitionId);
+    return string(abi.encodePacked('todo', t.ipfsHash));
   }
 
   event ProposedPacket(uint headerHash, address QA);

@@ -10,6 +10,6 @@ export const fakeIpfsGenerator = () => {
     const bytes = json.encode(value)
     const hash = sha256.digest(bytes)
     const cid = CID.createV1(json.code, hash)
-    return cid.toString()
+    return ethers.hexlify(hash.digest)
   }
 }
