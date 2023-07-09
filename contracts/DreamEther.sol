@@ -122,6 +122,7 @@ contract DreamEther {
 
     t.appealWindowStart = block.timestamp;
     t.rejectionHash = rejectionHash;
+    emit QARejected(id);
   }
 
   function appealShares(
@@ -313,10 +314,13 @@ contract DreamEther {
   event ProposedPacket(uint headerHash, address QA);
   event FundedTransition(uint transitionHash, address owner);
   event QAResolved(uint transitionHash);
+  event QARejected(uint transitionHash);
   event SolutionAccepted(uint transitionHash);
   event PacketCreated(uint packetId);
   event SolutionProposed(uint packetId, uint solutionHash);
   event PacketResolved(uint packetId);
+  event SolutionAppealed(uint solutionHash);
+  event HeaderAppealed(uint headerHash);
 }
 
 // packet solving another packet must be in the solved state

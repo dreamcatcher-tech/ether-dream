@@ -71,12 +71,27 @@ describe('DreamEther', function () {
         'Solution Funded': {
           on: {
             SOLUTION_PASS_QA: 'Solution Passed QA',
+            SOLUTION_FAIL_QA: 'Solution Failed QA',
           },
         },
         'Solution Passed QA': {
           on: {
             SOLUTION_FINALIZE: 'Packet Resolved',
           },
+        },
+        'Solution Failed QA': {
+          on: {
+            SOLUTION_APPEAL_REJECTION: 'Solution Appealing Rejection',
+          },
+        },
+        'Solution Appealing Rejection': {
+          on: {
+            SOLUTION_APPEAL_REJECTION_WIN: 'Solution Funded',
+            SOLUTION_APPEAL_REJECTION_LOSE: 'Dead',
+          },
+        },
+        Dead: {
+          type: 'final',
         },
         'Packet Resolved': {},
       },
@@ -146,6 +161,26 @@ describe('DreamEther', function () {
                 .to.emit(dreamEther, 'PacketResolved')
                 .withArgs(packetId)
             },
+            'Solution Failed QA': async () => {
+              const { dreamEther, solutionId } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'QARejected')
+                .withArgs(solutionId)
+            },
+            'Solution Appealing Rejection': async () => {
+              const { dreamEther, solutionId } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'HeaderAppealed')
+                .withArgs(solutionId)
+            },
+            Dead: () => {},
+            '*': async (state, ...rest) => {
+              console.log(state, rest)
+              if (state.meta?.test) {
+                return state.meta.test()
+              }
+              expect.fail(`Untested state: ${state.value}`)
+            },
           },
           events: {
             PROPOSE_HEADER: async () => {
@@ -175,7 +210,7 @@ describe('DreamEther', function () {
             },
             PROPOSE_SOLUTION: async () => {
               fixture.solutionId = 13
-              const { dreamEther, qa, owner, packetId, solutionId } = fixture
+              const { dreamEther, packetId, solutionId } = fixture
               tx = dreamEther.proposeSolution(packetId, solutionId)
             },
             FUND_SOLUTION: async () => {
@@ -187,10 +222,19 @@ describe('DreamEther', function () {
               const { dreamEther, solutionId, qa } = fixture
               tx = qa.passQA(solutionId, dreamEther.target)
             },
+            SOLUTION_FAIL_QA: async () => {
+              const { dreamEther, solutionId, qa } = fixture
+              const failHash = 9
+              tx = qa.failQA(solutionId, failHash, dreamEther.target)
+            },
             SOLUTION_FINALIZE: async () => {
-              const { dreamEther, packetId, solutionId } = fixture
+              const { dreamEther, solutionId } = fixture
               await time.increase(3600 * 24 * 3)
               tx = dreamEther.finalizeTransition(solutionId)
+            },
+            SOLUTION_APPEAL_REJECTION: async () => {
+              const { dreamEther, solutionId } = fixture
+              tx = dreamEther.appealReject(solutionId)
             },
           },
         })
