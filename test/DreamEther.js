@@ -5,6 +5,7 @@ import {
 import { anyValue } from '@nomicfoundation/hardhat-chai-matchers/withArgs.js'
 import { expect } from 'chai'
 import { createTestMachine, createTestModel } from '@xstate/test'
+import { fakeIpfsGenerator } from '../utils.js'
 
 describe('DreamEther', function () {
   // We define a fixture to reuse the same setup in every test.
@@ -103,6 +104,7 @@ describe('DreamEther', function () {
     model.getShortestPaths().forEach((path) => {
       it(path.description, async () => {
         const fixture = await loadFixture(deploy)
+        const ipfs = fakeIpfsGenerator()
         let tx
         await path.test({
           states: {
@@ -141,10 +143,7 @@ describe('DreamEther', function () {
               await expect(tx).to.emit(dreamEther, 'SolutionProposed')
             },
             'Solution Funded': async () => {
-              const { dreamEther } = fixture
-              await expect(tx)
-                .to.emit(dreamEther, 'FundedTransition')
-                .changeEtherBalance(dreamEther, 500)
+              // solution is awaiting QA to process it
             },
             'Solution Passed QA': async () => {
               const { dreamEther, solutionId } = fixture
@@ -170,7 +169,7 @@ describe('DreamEther', function () {
             'Solution Appealing Rejection': async () => {
               const { dreamEther, solutionId } = fixture
               await expect(tx)
-                .to.emit(dreamEther, 'HeaderAppealed')
+                .to.emit(dreamEther, 'SolutionAppealed')
                 .withArgs(solutionId)
             },
             Dead: () => {},
@@ -185,8 +184,6 @@ describe('DreamEther', function () {
           events: {
             PROPOSE_HEADER: async () => {
               const { dreamEther, qa } = fixture
-              const data =
-                'bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi'
               tx = dreamEther.proposePacket(6, qa.target)
             },
             FUND_HEADER: async () => {
@@ -217,6 +214,9 @@ describe('DreamEther', function () {
               const { dreamEther, solutionId } = fixture
               const payments = []
               tx = dreamEther.fund(solutionId, payments, { value: 500 })
+              await expect(tx)
+                .to.emit(dreamEther, 'FundedTransition')
+                .changeEtherBalance(dreamEther, 500)
             },
             SOLUTION_PASS_QA: async () => {
               const { dreamEther, solutionId, qa } = fixture
@@ -224,7 +224,7 @@ describe('DreamEther', function () {
             },
             SOLUTION_FAIL_QA: async () => {
               const { dreamEther, solutionId, qa } = fixture
-              const failHash = 9
+              const failHash = ipfs()
               tx = qa.failQA(solutionId, failHash, dreamEther.target)
             },
             SOLUTION_FINALIZE: async () => {
@@ -234,7 +234,8 @@ describe('DreamEther', function () {
             },
             SOLUTION_APPEAL_REJECTION: async () => {
               const { dreamEther, solutionId } = fixture
-              tx = dreamEther.appealReject(solutionId)
+              const reason = ipfs()
+              tx = dreamEther.appealRejection(solutionId, reason)
             },
           },
         })
@@ -255,5 +256,9 @@ describe('DreamEther', function () {
   })
   describe('packet closing', () => {
     it.skip('multiple solutions funded within appealWindow')
+  })
+  describe('appeals', () => {
+    it.skip('appeals cannot be appealed')
+    it.skip('cannot appeal a packet')
   })
 })

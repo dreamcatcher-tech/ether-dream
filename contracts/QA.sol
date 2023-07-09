@@ -20,7 +20,7 @@ interface IQA {
 interface IDreamcatcher {
   function qaResolve(uint id, Shares[] calldata shares) external;
 
-  function qaReject(uint id, uint rejectionHash) external;
+  function qaReject(uint id, string calldata reason) external;
 }
 
 contract QA is IQA {
@@ -51,8 +51,8 @@ contract QA is IQA {
     dc.qaResolve(id, shares);
   }
 
-  function failQA(uint id, uint rejectionHash, address dreamcatcher) external {
-    IDreamcatcher dc = IDreamcatcher(dreamcatcher);
-    dc.qaReject(id, rejectionHash);
+  function failQA(uint id, string calldata reason, address dc) external {
+    IDreamcatcher dreamcatcher = IDreamcatcher(dc);
+    dreamcatcher.qaReject(id, reason);
   }
 }

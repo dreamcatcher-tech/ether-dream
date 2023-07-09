@@ -21,6 +21,7 @@ contract DreamEther {
   uint public headerCounter = 0;
   uint public packetCounter = 0;
   uint public solutionCounter = 0;
+  uint public appealCounter = 0;
 
   // what amounts of all the tokens in this contract does each address hodl
   mapping(address => TokenWallet) private balances;
@@ -28,12 +29,16 @@ contract DreamEther {
   mapping(uint => Transition) private headers;
   mapping(uint => Transition) private packets;
   mapping(uint => Transition) private solutions;
+  mapping(uint => Transition) private appeals;
+
   mapping(uint => uint) public solutionsToPackets; // solutionHash => packetHash
   mapping(uint => uint[]) public packetsToSolutions; // packetHash => solutionHashes
   mapping(uint => uint) public packetHeaders; // packetHash => headerHash
   mapping(uint => uint[]) public payableSolutions; // packetHash => solutionHashes
   mapping(uint => address) public headerQas; // headerHash => qa
   mapping(uint => uint) public merges; // mergeHash => transitionHash
+
+  mapping(uint => uint[]) metasToAppeals; // transitionId => appealIds[]
 
   function proposePacket(uint headerHash, address qa) public {
     require(_isContract(qa), 'QA must be a contract');
@@ -49,7 +54,7 @@ contract DreamEther {
 
   function fund(uint id, Payment[] calldata payments) public payable {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
-    Transition storage transition = _loadTrans(id);
+    Transition storage transition = _loadAny(id);
     require(transition.appealWindowStart == 0, 'Appeal period started');
     Wallet storage funds = transition.funds;
     Wallet storage shares = transition.fundingShares[msg.sender];
@@ -84,7 +89,7 @@ contract DreamEther {
   }
 
   function defund(uint transitionHash) public {
-    Transition storage transition = _loadTrans(transitionHash);
+    Transition storage transition = _loadAny(transitionHash);
     require(transition.appealWindowStart == 0, 'Appeal period started');
     require(transition.lockedFundingShares[msg.sender] == 0);
     transition.lockedFundingShares[msg.sender] = block.timestamp;
@@ -114,14 +119,15 @@ contract DreamEther {
     emit QAResolved(id);
   }
 
-  function qaReject(uint id, uint rejectionHash) public {
+  function qaReject(uint id, string calldata reason) public {
+    require(isIpfsish(reason), 'Invalid rejection hash');
     Transition storage t = _loadMeta(id);
     require(t.appealWindowStart == 0, 'Appeal period started');
     uint headerHash = _findHeaderHash(id);
     require(headerQas[headerHash] == msg.sender, 'Must be transition QA');
 
     t.appealWindowStart = block.timestamp;
-    t.rejectionHash = rejectionHash;
+    t.rejectionHash = 55;
     emit QARejected(id);
   }
 
@@ -139,9 +145,25 @@ contract DreamEther {
     // will halt the transition, return the qa funds, and await
   }
 
-  function appealReject(uint transitionId, uint appealHash) public {
-    // the resolve should have been a rejection
-    // will halt the transition, return the qa funds, and await
+  function appealRejection(uint transitionId, string calldata reason) public {
+    require(isIpfsish(reason), 'Invalid reason hash');
+    Transition storage t = _loadRejection(transitionId);
+    uint elapsedTime = block.timestamp - t.appealWindowStart;
+    require(elapsedTime <= APPEAL_WINDOW, 'Appeal window closed');
+    require(t.rejectionHash > 0, 'Not a rejection');
+
+    uint appealId = ++appealCounter;
+    Transition storage appeal = appeals[appealId];
+    appeal.timestamp = block.timestamp;
+    appeal.ipfsCid = reason;
+    metasToAppeals[transitionId].push(appealId);
+
+    TransitionType transitionType = _getTransitionType(transitionId);
+    if (transitionType == TransitionType.Header) {
+      emit HeaderAppealed(transitionId);
+    } else if (transitionType == TransitionType.Solution) {
+      emit SolutionAppealed(transitionId);
+    }
   }
 
   function finalizeTransition(uint id) public {
@@ -236,12 +258,20 @@ contract DreamEther {
   }
 
   function _loadMeta(uint id) internal view returns (Transition storage) {
-    Transition storage transition = _loadTrans(id);
+    Transition storage transition = _loadAny(id);
+    require(transition.rejectionHash == 0, 'Transition rejected');
     require(packets[id].timestamp == 0, 'Cannot directly load packet');
     return transition;
   }
 
-  function _loadTrans(uint id) internal view returns (Transition storage) {
+  function _loadRejection(uint id) internal view returns (Transition storage) {
+    Transition storage transition = _loadAny(id);
+    require(transition.rejectionHash != 0, 'Transition not rejected');
+    require(transition.appealWindowStart > 0, 'Not passed by QA');
+    return transition;
+  }
+
+  function _loadAny(uint id) internal view returns (Transition storage) {
     Transition storage transition;
     if (headers[id].timestamp != 0) {
       transition = headers[id];
@@ -252,7 +282,6 @@ contract DreamEther {
     } else {
       revert('Transition does not exist');
     }
-    require(transition.rejectionHash == 0, 'Transition rejected');
     return transition;
   }
 
@@ -309,6 +338,14 @@ contract DreamEther {
       return packetHeaders[packetId];
     }
     revert('Invalid transition type');
+  }
+
+  function isIpfsish(string memory cidString) public pure returns (bool) {
+    // TODO store only the hash in a 32byte slot and provide a view
+    // https://github.com/storyicon/base58-solidity
+    bytes memory cid = bytes(cidString);
+    bool isV1CID = (cid.length == 61) && (cid[0] == 0x62) && (cid[1] == 0x61);
+    return isV1CID;
   }
 
   event ProposedPacket(uint headerHash, address QA);
