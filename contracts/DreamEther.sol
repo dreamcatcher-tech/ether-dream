@@ -18,10 +18,7 @@ interface IERC20 {
  * Convert assets into task completion, with quality oversight
  */
 contract DreamEther {
-  uint public headerCounter = 0;
-  uint public packetCounter = 0;
-  uint public solutionCounter = 0;
-  uint public appealCounter = 0;
+  uint public transitionsCount = 0;
 
   // what amounts of all the tokens in this contract does each address hodl
   mapping(address => TokenWallet) private balances;
@@ -40,16 +37,16 @@ contract DreamEther {
 
   mapping(uint => uint[]) metasToAppeals; // transitionId => appealIds[]
 
-  function proposePacket(uint headerHash, address qa) public {
+  function proposePacket(bytes32 header, address qa) public {
+    require(_isIpfsish(header), 'Invalid header');
     require(_isContract(qa), 'QA must be a contract');
-    require(headerHash != 0, 'Header hash cannot be 0');
-    require(headers[headerHash].timestamp == 0, 'Transition exists');
-    Transition storage header = headers[headerHash];
-    header.timestamp = block.timestamp;
-
-    require(headerQas[headerHash] == address(0), 'QA exists');
-    headerQas[headerHash] = qa;
-    emit ProposedPacket(headerHash, qa);
+    uint headerId = ++transitionsCount;
+    Transition storage headerProposal = headers[headerId];
+    headerProposal.timestamp = block.timestamp;
+    headerProposal.contents = header;
+    require(headerQas[headerId] == address(0), 'QA exists');
+    headerQas[headerId] = qa;
+    emit ProposedPacket(headerId);
   }
 
   function fund(uint id, Payment[] calldata payments) public payable {
@@ -88,14 +85,15 @@ contract DreamEther {
     require(qa.publishTransition(transitionHash));
   }
 
-  function defund(uint transitionHash) public {
-    Transition storage transition = _loadAny(transitionHash);
+  function defund(uint id) public {
+    // TODO defund a specific item, not just all by default ?
+    Transition storage transition = _loadAny(id);
     require(transition.appealWindowStart == 0, 'Appeal period started');
     require(transition.lockedFundingShares[msg.sender] == 0);
     transition.lockedFundingShares[msg.sender] = block.timestamp;
-    uint headerHash = _findHeaderHash(transitionHash);
+    uint headerHash = _findHeaderHash(id);
     IQA qa = IQA(headerQas[headerHash]);
-    qa.defunded(transitionHash); // QA contract may delist from opensea
+    qa.defunded(id); // QA contract may delist from opensea
     // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so
   }
@@ -127,46 +125,42 @@ contract DreamEther {
     require(headerQas[headerHash] == msg.sender, 'Must be transition QA');
 
     t.appealWindowStart = block.timestamp;
-    t.rejectionHash = 55;
+    t.rejectionReason = 55;
     emit QARejected(id);
   }
 
-  function appealShares(
-    uint id,
-    uint appealHash,
-    Shares[] calldata shares
-  ) public {
+  function appealShares(uint id, bytes32 reason, Shares[] calldata s) public {
     // used if the resolve is fine, but the shares are off.
     // passing this transition will modify the shares split.
   }
 
-  function appealResolve(uint transitionId, uint appealHash) public {
+  function appealResolve(uint id, bytes32 reason) public {
     // the resolve should have been a rejection
     // will halt the transition, return the qa funds, and await
   }
 
-  function appealRejection(uint transitionId, bytes32 reason) public {
+  function appealRejection(uint id, bytes32 reason) public {
     require(_isIpfsish(reason), 'Invalid reason hash');
-    Transition storage t = _loadRejection(transitionId);
+    Transition storage t = _loadRejection(id);
     uint elapsedTime = block.timestamp - t.appealWindowStart;
     require(elapsedTime <= APPEAL_WINDOW, 'Appeal window closed');
-    require(t.rejectionHash > 0, 'Not a rejection');
+    require(t.rejectionReason > 0, 'Not a rejection');
 
-    uint appealId = ++appealCounter;
+    uint appealId = ++transitionsCount;
     Transition storage appeal = appeals[appealId];
     appeal.timestamp = block.timestamp;
-    appeal.ipfsHash = reason;
-    metasToAppeals[transitionId].push(appealId);
+    appeal.contents = reason;
+    metasToAppeals[id].push(appealId);
 
-    TransitionType transitionType = _getTransitionType(transitionId);
+    TransitionType transitionType = _getTransitionType(id);
     if (transitionType == TransitionType.Header) {
-      emit HeaderAppealed(transitionId);
+      emit HeaderAppealed(id);
     } else if (transitionType == TransitionType.Solution) {
-      emit SolutionAppealed(transitionId);
+      emit SolutionAppealed(id);
     }
   }
 
-  function finalizeTransition(uint id) public {
+  function finalize(uint id) public {
     Transition storage t = _loadMeta(id);
     require(t.appealWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - t.appealWindowStart;
@@ -176,7 +170,7 @@ contract DreamEther {
     TransitionType transitionType = _getTransitionType(id);
 
     if (transitionType == TransitionType.Header) {
-      uint packetId = ++packetCounter;
+      uint packetId = ++transitionsCount;
       Transition storage packet = packets[packetId];
       require(packet.timestamp == 0, 'Packet exists');
       packet.timestamp = block.timestamp;
@@ -193,15 +187,17 @@ contract DreamEther {
     }
   }
 
-  function proposeSolution(uint packetId, uint solutionHash) public {
+  function proposeSolution(uint packetId, bytes32 contents) public {
     require(packets[packetId].timestamp != 0, 'Packet does not exist');
-    require(solutions[solutionHash].timestamp == 0);
+    uint solutionId = ++transitionsCount;
+    Transition storage solution = solutions[solutionId];
+    require(solution.timestamp == 0, 'Solution exists');
 
-    Transition storage solution = solutions[solutionHash];
     solution.timestamp = block.timestamp;
-    solutionsToPackets[solutionHash] = packetId;
-    packetsToSolutions[packetId].push(solutionHash);
-    emit SolutionProposed(packetId, solutionHash);
+    solution.contents = contents;
+    solutionsToPackets[solutionId] = packetId;
+    packetsToSolutions[packetId].push(solutionId);
+    emit SolutionProposed(solutionId);
   }
 
   function mergePackets(uint fromId, uint toId, uint mergeHash) public {
@@ -259,14 +255,14 @@ contract DreamEther {
 
   function _loadMeta(uint id) internal view returns (Transition storage) {
     Transition storage transition = _loadAny(id);
-    require(transition.rejectionHash == 0, 'Transition rejected');
+    require(transition.rejectionReason == 0, 'Transition rejected');
     require(packets[id].timestamp == 0, 'Cannot directly load packet');
     return transition;
   }
 
   function _loadRejection(uint id) internal view returns (Transition storage) {
     Transition storage transition = _loadAny(id);
-    require(transition.rejectionHash != 0, 'Transition not rejected');
+    require(transition.rejectionReason != 0, 'Transition not rejected');
     require(transition.appealWindowStart > 0, 'Not passed by QA');
     return transition;
   }
@@ -347,19 +343,19 @@ contract DreamEther {
   function ipfsCid(uint transitionId) public view returns (string memory) {
     // TODO https://github.com/storyicon/base58-solidity
     Transition storage t = _loadAny(transitionId);
-    return string(abi.encodePacked('todo', t.ipfsHash));
+    return string(abi.encodePacked('todo', t.contents));
   }
 
-  event ProposedPacket(uint headerHash, address QA);
+  event ProposedPacket(uint headerId);
   event FundedTransition(uint transitionHash, address owner);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
   event SolutionAccepted(uint transitionHash);
   event PacketCreated(uint packetId);
-  event SolutionProposed(uint packetId, uint solutionHash);
+  event SolutionProposed(uint solutionId);
   event PacketResolved(uint packetId);
   event SolutionAppealed(uint solutionHash);
-  event HeaderAppealed(uint headerHash);
+  event HeaderAppealed(uint headerId);
 }
 
 // packet solving another packet must be in the solved state

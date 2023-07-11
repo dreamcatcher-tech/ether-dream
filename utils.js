@@ -13,3 +13,30 @@ export const fakeIpfsGenerator = () => {
     return ethers.hexlify(hash.digest)
   }
 }
+
+export const hash = (value) => {
+  const bytes = json.encode(value)
+  const hash = sha256.digest(bytes)
+  return ethers.hexlify(hash.digest)
+}
+
+export const description = (path) => {
+  const state = path.state.value
+  const allEvents = path.steps.map((step) => step.event.type)
+  const deduped = []
+  const counts = []
+  for (let i = 0; i < allEvents.length; i++) {
+    const event = allEvents[i]
+    if (deduped.length === 0 || deduped[deduped.length - 1] !== event) {
+      deduped.push(event)
+      counts.push(1)
+    } else {
+      counts[counts.length - 1]++
+    }
+  }
+  const condensed = deduped.map((event, i) => {
+    const count = counts[i]
+    return count > 1 ? `${event} (x${count})` : event
+  })
+  return `Reaches: '${state}' via: ${condensed.join(' -> ')}`
+}

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.9;
 
 import './Types.sol';
+import './IDreamcatcher.sol';
 
 interface IQA {
   function appealFundThreshold() external view returns (Payment memory);
@@ -15,12 +16,6 @@ interface IQA {
 
   // if now under threshold, unpublish from opensea
   function defunded(uint id) external returns (bool);
-}
-
-interface IDreamcatcher {
-  function qaResolve(uint id, Shares[] calldata shares) external;
-
-  function qaReject(uint id, bytes32 reason) external;
 }
 
 contract QA is IQA {

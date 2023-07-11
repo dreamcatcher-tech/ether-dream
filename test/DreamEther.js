@@ -4,6 +4,7 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
 import { anyValue } from '@nomicfoundation/hardhat-chai-matchers/withArgs.js'
 import { expect } from 'chai'
+import { assign, createMachine, sendParent, spawn } from 'xstate'
 import { createTestMachine, createTestModel } from '@xstate/test'
 import { fakeIpfsGenerator } from '../utils.js'
 
@@ -27,15 +28,45 @@ describe('DreamEther', function () {
     return { dreamEther, qa, owner, qaAddress, ethers }
   }
 
+  const actor = createTestMachine({
+    id: 'actor',
+    initial: 'idle',
+    states: {
+      idle: {
+        on: {
+          MEOW: 'meowing',
+        },
+      },
+      meowing: {
+        entry: sendParent('MEOW'),
+        type: 'final',
+      },
+    },
+  })
+
   // test arrays for actions ?
   describe('model based testing', () => {
     const machine = createTestMachine({
       id: 'Dreamcatcher Ethereum',
       initial: 'Contract Deployed',
+      context: {
+        headersCount: 0,
+        packetsCount: 0,
+        solutionsCount: 0,
+        appealsCount: 0,
+      },
       states: {
         'Contract Deployed': {
           on: {
-            PROPOSE_HEADER: 'Header Proposed',
+            PROPOSE_HEADER: {
+              target: 'Header Proposed',
+              actions: assign({
+                packet: (context, event) => {
+                  console.log('spawning')
+                  return spawn(actor)
+                },
+              }),
+            },
           },
         },
         'Header Proposed': {
