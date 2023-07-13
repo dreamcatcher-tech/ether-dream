@@ -1,4 +1,10 @@
+import { fakeIpfsGenerator } from '../utils.js'
+import {
+  time,
+  loadFixture,
+} from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
 import equals from 'fast-deep-equal'
+import { expect } from 'chai'
 import Immutable from 'immutable'
 import { description, hash } from '../utils.js'
 import {
@@ -49,10 +55,10 @@ describe('consequences', () => {
         id: 'consequences',
         initial: 'idle',
         context: {
-          transitionsCount: 0,
+          transitionsCount: 1,
           // TODO event this, so we can know when something changed
           transitions: Immutable.Map(),
-          cursorId: 0,
+          cursorId: 1,
         },
         states: {
           idle: {
@@ -92,6 +98,7 @@ describe('consequences', () => {
                 },
               ],
               // APPEAL_RESOLVE: { target: 'appeal', actions: 'appealResolve' },
+              // APPEAL_SHARES
             },
           },
           appeal: {},
@@ -227,40 +234,112 @@ describe('consequences', () => {
     return { dreamEther, qa, owner, qaAddress, ethers }
   }
 
-  const shortestPaths = model.getShortestPaths({
-    // stopCondition: (args) => {
-    //   const { context } = args
-    //   const isStop = context.headers.length === 2
-    //   if (isStop) {
-    //     console.log('isStop', context)
-    //   }
-    //   return context.headers.length === 2
-    // },
-    // traversalLimit: 100000,
-    // toState: (state) => state.matches('done'),
-    // stopCondition: (state) => {
-    //   return state.context.packets.size
-    // },
-  })
+  const shortestPaths = model.getShortestPaths()
   describe(`shortest ${shortestPaths.length} paths`, () => {
+    shortestPaths.length = 1
     shortestPaths.forEach((path) => {
       it(description(path), async () => {
-        // const fixture = await loadFixture(deploy)
-        // const ipfs = fakeIpfsGenerator()
-        // let tx
-        path.test()
-        // then verify the eth state is what we specified in the path plan
+        const fixture = await loadFixture(deploy)
+        const ipfs = fakeIpfsGenerator()
+        await path.test({
+          states: {
+            idle: () => {
+              const { dreamEther } = fixture
+              expect(dreamEther.target).to.not.equal(0)
+            },
+            '*': async (state) => {
+              debug('state:', state.toStrings().join(' -> '))
+            },
+          },
+          events: {
+            HEADER: async ({ state: { context } }) => {
+              const { cursorId } = context
+              const { dreamEther, qa } = fixture
+              const header = ipfs()
+              debug('header', cursorId)
+              await expect(dreamEther.proposePacket(header, qa.target))
+                .to.emit(dreamEther, 'ProposedPacket')
+                .withArgs(cursorId)
+            },
+            FUND: async ({ state: { context } }) => {
+              const { cursorId } = context
+              const { dreamEther } = fixture
+              const payments = []
+              const value = ethers.parseEther('5')
+              const { type } = context.transitions.get(cursorId)
+              debug('funding', type, cursorId)
+              await expect(dreamEther.fund(cursorId, payments, { value }))
+                .to.emit(dreamEther, 'FundedTransition')
+                .changeEtherBalance(dreamEther, value)
+            },
+            QA_RESOLVE: async ({ state: { context } }) => {
+              const { cursorId } = context
+              const { dreamEther, qa } = fixture
+              debug('qa resolving', cursorId)
+              await expect(qa.passQA(cursorId, dreamEther.target))
+                .to.emit(dreamEther, 'QAResolved')
+                .withArgs(cursorId)
+            },
+            FINALIZE: async ({ state: { context } }) => {
+              const { transitionsCount, cursorId } = context
+              const { dreamEther } = fixture
+              const { type, targetId } = context.transitions.get(cursorId)
+              const THREE_DAYS_IN_SECONDS = 3600 * 24 * 3
+              await time.increase(THREE_DAYS_IN_SECONDS)
+              const tx = dreamEther.finalize(cursorId)
+              expect(type).to.not.equal(types.PACKET)
+              debug('finalizing', type, cursorId)
+              if (type === types.PACKET) {
+                await expect(tx)
+                  .to.emit(dreamEther, 'PacketCreated')
+                  .withArgs(transitionsCount)
+              }
+              if (type === types.SOLUTION) {
+                await expect(tx)
+                  .to.emit(dreamEther, 'SolutionAccepted')
+                  .withArgs(cursorId)
+                debug('packet resolved', targetId)
+                await expect(tx)
+                  .to.emit(dreamEther, 'PacketResolved')
+                  .withArgs(targetId)
+              }
+            },
+            SOLVE: async ({ state: { context } }) => {
+              const { dreamEther } = fixture
+              const { cursorId } = context
+              const contents = ipfs()
+              debug('solving', cursorId)
+              await expect(
+                dreamEther.proposeSolution(cursorId, contents)
+              ).to.emit(dreamEther, 'SolutionProposed')
+            },
+
+            // OLD
+            SOLUTION_FAIL_QA: async () => {
+              const { dreamEther, solutionId, qa } = fixture
+              const failHash = ipfs()
+              tx = qa.failQA(solutionId, failHash, dreamEther.target)
+            },
+            SOLUTION_APPEAL_REJECTION: async () => {
+              const { dreamEther, solutionId } = fixture
+              const reason = ipfs()
+              tx = dreamEther.appealRejection(solutionId, reason)
+            },
+            'Solution Failed QA': async () => {
+              const { dreamEther, solutionId } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'QARejected')
+                .withArgs(solutionId)
+            },
+            'Solution Appealing Rejection': async () => {
+              const { dreamEther, solutionId } = fixture
+              await expect(tx)
+                .to.emit(dreamEther, 'SolutionAppealed')
+                .withArgs(solutionId)
+            },
+          },
+        })
       })
     })
   })
-  // const simplePaths = model.getSimplePaths({
-  //   toState: (state) => state.matches('exhausted'),
-  // })
-  // describe(`simple ${simplePaths.length} paths`, () => {
-  //   simplePaths.forEach((path) => {
-  //     it(description(path), () => {
-  //       path.test()
-  //     })
-  //   })
-  // })
 })

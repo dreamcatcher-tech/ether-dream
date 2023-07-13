@@ -20,7 +20,7 @@ export const hash = (value) => {
   return ethers.hexlify(hash.digest)
 }
 
-export const description = (path, { withStates = false } = {}) => {
+export const description = (path) => {
   let state = path.state.value
   if (typeof state !== 'string') {
     state = path.state.toStrings().pop()

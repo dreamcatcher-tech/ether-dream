@@ -286,7 +286,7 @@ contract DreamEther {
     } else if (packets[id].timestamp != 0) {
       transition = packets[id];
     } else {
-      revert('Transition does not exist');
+      revert(string(abi.encodePacked('Transition does not exist ', id)));
     }
     return transition;
   }
