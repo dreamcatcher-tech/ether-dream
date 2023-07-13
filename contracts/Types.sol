@@ -8,7 +8,7 @@ uint constant APPEAL_WINDOW = 3 days;
 struct Transition {
   uint timestamp;
   bytes32 contents; // v1 CID hash component
-  uint rejectionReason;
+  bytes32 rejectionReason;
   Wallet funds;
   mapping(address => Wallet) fundingShares;
   mapping(address => uint) lockedFundingShares;

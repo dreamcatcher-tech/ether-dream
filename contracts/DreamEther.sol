@@ -125,7 +125,7 @@ contract DreamEther {
     require(headerQas[headerHash] == msg.sender, 'Must be transition QA');
 
     t.appealWindowStart = block.timestamp;
-    t.rejectionReason = 55;
+    t.rejectionReason = reason;
     emit QARejected(id);
   }
 
@@ -238,6 +238,16 @@ contract DreamEther {
     // will keep going until the block gas limit is reached
     // must track the withdrawls, in case something indivisible is stuck.
     //
+  }
+
+  function drain(uint[] calldata id) public {
+    // take all the funds available in all the ids provided
+    // and store them in the top level wallet for the
+    // calling address.
+    // Purpose is to allow a bulk withdrawl of all funds with
+    // lowest possible tx costs.
+    // Eg: if you have 1000 solutions all with DAI, you can drain them all
+    // then make a single DAI withdrawl call.
   }
 
   function _updateWallet(

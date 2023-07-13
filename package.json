@@ -3,12 +3,13 @@
     "test": "hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
     "watch": "nodemon --exec \"hardhat test --grep DreamEther\"",
-    "models": "nodemon --exec \"hardhat test --grep loops\""
+    "models": "nodemon --exec \"hardhat test --grep consequences\""
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
     "@openzeppelin/contracts": "^4.9.2",
     "@xstate/test": "^1.0.0-alpha.1",
+    "debug": "^4.3.4",
     "dotenv": "^16.3.1",
     "fast-deep-equal": "^3.1.3",
     "hardhat": "^2.16.1",

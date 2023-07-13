@@ -17,7 +17,7 @@ describe('loops', () => {
   const model = createTestModel(
     createTestMachine({
       id: 'loops',
-      initial: 'initial',
+      initial: 'block',
       context: {
         time: 0,
         transitionsCount: 0,
@@ -29,26 +29,12 @@ describe('loops', () => {
         cyclesLimit: 0,
       },
       states: {
-        initial: {
-          on: {
-            PROPOSE_PACKET: {
-              actions: assign({
-                transitionsCount: (ctx) => ctx.transitionsCount + 1,
-                headers: ({ headers, transitionsCount }) =>
-                  headers.set(transitionsCount, {
-                    contents: hash(transitionsCount),
-                  }),
-              }),
-              target: 'block',
-            },
-          },
-        },
         block: {
           // each iteration causes a complete loop thru all transitions + 1
           // where + 1 is the guaranteed error,
           // and each operation is possibly done
           on: {
-            MINE: {
+            PROPOSE_PACKET: {
               // tick block time forwards 1 day
               actions: assign({
                 time: (ctx) => ctx.time + 1,
@@ -64,7 +50,7 @@ describe('loops', () => {
           },
           always: {
             target: 'exhausted',
-            cond: (ctx) => ctx.transitionsCount >= 4 || ctx.loops >= 10,
+            cond: (ctx) => ctx.transitionsCount >= 10 || ctx.loops >= 5,
           },
           exit: assign({
             cycles: 0,
@@ -75,6 +61,9 @@ describe('loops', () => {
           exit: assign({
             cycles: (ctx) => ctx.cycles + 1,
           }),
+          // for each propose generation batch, do 5 loops
+          // propose in batches of 13, then do 3 loops over each batch
+          // this will cover all the time windows, hopefully
           on: {
             NOOP: 'cycle',
             FUND_ETH: 'cycle',
@@ -119,13 +108,13 @@ describe('loops', () => {
     //   return context.headers.length === 2
     // },
     // toState: (state) => state.matches('exhausted'),
-    toState: (state) =>
-      state.matches('exhausted') && state.context.packets.size === 2,
+    stopCondition: (state) => state.context.packets.size === 2,
   })
   describe(`shortest ${shortestPaths.length} paths`, () => {
     shortestPaths.forEach((path) => {
       it(description(path), () => {
         path.test()
+        // then verify the eth state is what we specified in the path plan
       })
     })
   })

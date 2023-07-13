@@ -20,8 +20,11 @@ export const hash = (value) => {
   return ethers.hexlify(hash.digest)
 }
 
-export const description = (path) => {
-  const state = path.state.value
+export const description = (path, { withStates = false } = {}) => {
+  let state = path.state.value
+  if (typeof state !== 'string') {
+    state = path.state.toStrings().pop()
+  }
   const allEvents = path.steps.map((step) => step.event.type)
   const deduped = []
   const counts = []
