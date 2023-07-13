@@ -16,21 +16,24 @@ Debug.enable('test:consequences')
 const log = (string = 'log') => assign(() => debug(string))
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
-const getTransition = (ctx) => {
-  const { cursorId } = ctx
-  if (ctx.headers.has(cursorId)) {
-    return ctx.headers.get(cursorId)
-  }
-  if (ctx.packets.has(cursorId)) {
-    return ctx.packets.get(cursorId)
-  }
-  if (ctx.solutions.has(cursorId)) {
-    return ctx.solutions.get(cursorId)
-  }
-  if (ctx.appeals.has(cursorId)) {
-    return ctx.appeals.get(cursorId)
-  }
+const types = {
+  HEADER: 'HEADER',
+  PACKET: 'PACKET',
+  SOLUTION: 'SOLUTION',
+  APPEAL: 'APPEAL',
 }
+
+// TODO event this, so we can know when something changed
+const Transition = Immutable.Record({
+  type: types.HEADER,
+  contents: undefined,
+  qaResolved: false,
+  funded: false,
+  finalized: false,
+  traded: false,
+  targetId: undefined,
+})
+
 /**
  * Only transitions that are expected as a consequence of a previous transition
  * are taken, in an effort to reduce the number of paths to explore.
@@ -47,10 +50,8 @@ describe('consequences', () => {
         initial: 'idle',
         context: {
           transitionsCount: 0,
-          headers: Immutable.Map(),
-          packets: Immutable.Map(),
-          solutions: Immutable.Map(),
-          appeals: Immutable.Map(),
+          // TODO event this, so we can know when something changed
+          transitions: Immutable.Map(),
           cursorId: 0,
         },
         states: {
@@ -58,189 +59,145 @@ describe('consequences', () => {
             on: {
               HEADER: {
                 actions: 'proposeHeader',
-                target: 'header',
+                target: 'open',
               },
             },
           },
-          header: {
+          open: {
             on: {
               FUND: { actions: 'fund', cond: 'isUnfunded' },
-              QA_RESOLVE: { target: 'pending', actions: 'qaResolve' },
+              QA_RESOLVE: {
+                target: 'pending',
+                actions: 'qaResolve',
+                cond: 'isNotPacket',
+              },
+              SOLVE: { actions: 'proposeSolution', cond: 'isPacket' },
+              // LIST on opensea
+              // TRADE: { actions: 'trade', cond: 'isTradeable' },
+              // DEFUND
+              // SECOND_SOLVE // handle a competiting solution
+              // ? how to do two solves concurrently ?
             },
-          },
-          open: {
             // transition is open for funding, trading
             // if packet, open for solving
           },
           pending: {
             on: {
-              APPEAL_RESOLVE: { target: 'appeal', actions: 'appealResolve' },
-              FINALIZE: { target: 'packet', actions: 'finalize' },
+              FINALIZE: [
+                { target: 'open', actions: 'finalizeHeader', cond: 'isHeader' },
+                {
+                  target: 'solved',
+                  actions: 'finalizeSolution',
+                  cond: 'isSolution',
+                },
+              ],
+              // APPEAL_RESOLVE: { target: 'appeal', actions: 'appealResolve' },
             },
           },
           appeal: {},
-          packet: {
+          solved: {
             on: {
-              FUND: { actions: 'fund', cond: 'isUnfunded' },
-              TRADE: { actions: 'trade', cond: 'isTradeable' },
-              SOLVE: { target: 'solution', actions: 'proposeSolution' },
+              // TRADE: { actions: 'trade', cond: 'isTradeable' },
+              WITHDRAW: { actions: () => {} },
+              // RE_SOLVE: solve it again
+              // trade the solution and header NFTs
+              // modify the header
+              // REPEAT: make another header and start all over again
+              // MERGE_PACKETS once have two packets, try merge them
             },
           },
-          solution: {
-            on: {
-              FUND: { actions: 'fund', cond: 'isUnfunded' },
-              // QA_RESOLVE: { target: 'pending', actions: 'qaResolve' },
-            },
-          },
-          noop: {
-            always: 'idle',
-            exit: assign({
-              cursorId: (ctx) => ctx.cursorId + 1,
-            }),
-          },
-          op: {
-            exit: assign({
-              cursorId: (ctx) => ctx.cursorId + 1,
-            }),
-            initial: 'initial',
-            states: {
-              initial: {
-                always: [
-                  { target: 'header', cond: 'isHeader' },
-                  { target: 'packet', cond: 'isPacket' },
-                  { target: 'solution', cond: 'isSolution' },
-                  { target: 'appeal', cond: 'isAppeal' },
-                  'done',
-                ],
-              },
-              header: {
-                initial: 'initial',
-                states: {
-                  initial: {
-                    always: [
-                      { target: 'proposed', cond: 'isUnfunded' },
-                      { target: 'funded', cond: 'isFunded' },
-                      { target: 'finalizable', cond: 'isFinalizable' },
-                      { target: 'done' },
-                    ],
-                  },
-                  proposed: {
-                    on: {
-                      FUND: { target: 'done', actions: 'fund' },
-                      QA_RESOLVE: { target: 'done', actions: 'qaResolve' },
-                      QA_REJECT: 'done',
-                    },
-                  },
-                  funded: {
-                    on: {
-                      // TODO limit by having a balance
-                      FUND: { target: 'done', actions: 'fund' },
-                      DEFUND: { target: 'done', actions: 'defund' },
-                      QA_RESOLVE: { target: 'done', actions: 'qaResolve' },
-                      QA_REJECT: 'done',
-                    },
-                  },
-                  finalizable: {
-                    on: {
-                      FINALIZE: { target: 'done', actions: 'finalize' },
-                    },
-                  },
-                  done: { type: 'final' },
-                },
-                onDone: { target: 'done' },
-              },
-              packet: {
-                always: 'done',
-              },
-              solution: {},
-              appeal: {},
-              done: { type: 'final' },
-            },
-            onDone: { target: 'idle' },
-          },
-          done: { type: 'final' },
         },
       },
       {
         actions: {
           proposeHeader: assign({
             transitionsCount: (ctx) => ctx.transitionsCount + 1,
-            headers: ({ headers, transitionsCount }) =>
-              headers.set(transitionsCount, {
-                contents: hash(transitionsCount),
-              }),
+            transitions: ({ transitions, transitionsCount }) =>
+              transitions.set(
+                transitionsCount,
+                Transition({
+                  type: types.HEADER,
+                  contents: hash(transitionsCount),
+                })
+              ),
           }),
           fund: assign((ctx) => {
-            const { cursorId } = ctx
-            const header = ctx.headers.get(cursorId)
-            const next = { ...header, funded: true }
-            return { headers: ctx.headers.set(cursorId, next) }
+            const { cursorId, transitions } = ctx
+            const transition = transitions.get(cursorId)
+            const next = transition.set('funded', true)
+            return { transitions: transitions.set(cursorId, next) }
           }),
           qaResolve: assign((ctx) => {
             const { cursorId } = ctx
-            const header = ctx.headers.get(cursorId)
-            const next = { ...header, qaResolved: true }
-            debug('qaResolve')
-            return { headers: ctx.headers.set(cursorId, next) }
+            const transition = ctx.transitions.get(cursorId)
+            const next = transition.set('qaResolved', true)
+            return { transitions: ctx.transitions.set(cursorId, next) }
           }),
-          finalize: assign((ctx) => {
-            const headerId = ctx.cursorId
-            const header = ctx.headers.get(headerId)
-            const next = { ...header, finalized: true }
+          finalizeHeader: assign((ctx) => {
+            const transition = ctx.transitions.get(ctx.cursorId)
+            const next = transition.set('finalized', true)
             const packetId = ctx.transitionsCount
-            const packets = ctx.packets.set(packetId, { headerId })
             const transitionsCount = ctx.transitionsCount + 1
-            debug('finalize')
+            const packet = Transition({
+              type: types.PACKET,
+              targetId: ctx.cursorId,
+            })
             return {
-              ...ctx,
-              headers: ctx.headers.set(headerId, next),
-              packets,
               transitionsCount,
               cursorId: packetId,
+              transitions: ctx.transitions
+                .set(ctx.cursorId, next)
+                .set(packetId, packet),
             }
           }),
-          trade: assign((ctx) => {
-            const packetId = ctx.cursorId
-            const packet = ctx.packets.get(packetId)
-            const next = { ...packet, traded: true }
-            return { packets: ctx.packets.set(packetId, next) }
+          finalizeSolution: assign((ctx) => {
+            // make the NFTs tradeable
+            // store the shares from the QA
+            // make the packet as finalized as well as the solution
+            //
+            const transition = ctx.transitions.get(ctx.cursorId)
+            const next = transition.set('finalized', true)
+            return { transitions: ctx.transitions.set(ctx.cursorId, next) }
           }),
           proposeSolution: assign((ctx) => {
-            const packetId = ctx.cursorId
-            const packet = ctx.packets.get(packetId)
             const solutionId = ctx.transitionsCount
-            const solutions = ctx.solutions.set(solutionId, { packetId })
+            const packetId = ctx.cursorId
+            const solution = Transition({
+              type: types.SOLUTION,
+              targetId: packetId,
+            })
             const transitionsCount = ctx.transitionsCount + 1
-            debug('proposeSolution')
             return {
-              solutions,
               transitionsCount,
               cursorId: solutionId,
+              transitions: ctx.transitions.set(solutionId, solution),
             }
           }),
         },
         guards: {
-          isHeader: (ctx) => {
-            return ctx.headers.has(ctx.cursorId)
-          },
           isUnfunded: (ctx) => {
-            const transition = getTransition(ctx)
-            return !transition.qaResolved && !transition.funded
+            const t = ctx.transitions.get(ctx.cursorId)
+            return !t.funded
+          },
+          isHeader: (ctx) => {
+            const transition = ctx.transitions.get(ctx.cursorId)
+            return transition.type === types.HEADER
           },
           isFunded: (ctx) => {
             const transition = getTransition(ctx)
             return !transition.qaResolved && transition.funded
           },
-          isFinalizable: (ctx) => {
-            const { cursorId } = ctx
-            const header = ctx.headers.get(cursorId)
-            return header.qaResolved && !header.finalized
+          isNotPacket: (ctx) => {
+            const transition = ctx.transitions.get(ctx.cursorId)
+            return transition.type !== types.PACKET
           },
           isPacket: (ctx) => {
-            return ctx.packets.has(ctx.cursorId)
+            const transition = ctx.transitions.get(ctx.cursorId)
+            return transition.type === types.PACKET
           },
           isSolution: (ctx) => {
-            return ctx.solutions.has(ctx.cursorId)
+            const transition = ctx.transitions.get(ctx.cursorId)
+            return transition.type === types.SOLUTION
           },
           isAppeal: (ctx) => {
             return ctx.appeals.has(ctx.cursorId)
@@ -254,6 +211,22 @@ describe('consequences', () => {
       }
     )
   )
+  async function deploy() {
+    // Contracts are deployed using the first signer/account by default
+    const [owner, qaAddress] = await ethers.getSigners()
+
+    const DreamEther = await ethers.getContractFactory('DreamEther')
+    const dreamEther = await DreamEther.deploy()
+
+    const QA = await ethers.getContractFactory('QA')
+    const qa = await QA.deploy()
+
+    const Dai = await ethers.getContractFactory('MockDai')
+    const dai = await Dai.deploy()
+
+    return { dreamEther, qa, owner, qaAddress, ethers }
+  }
+
   const shortestPaths = model.getShortestPaths({
     // stopCondition: (args) => {
     //   const { context } = args
@@ -271,7 +244,10 @@ describe('consequences', () => {
   })
   describe(`shortest ${shortestPaths.length} paths`, () => {
     shortestPaths.forEach((path) => {
-      it(description(path), () => {
+      it(description(path), async () => {
+        // const fixture = await loadFixture(deploy)
+        // const ipfs = fakeIpfsGenerator()
+        // let tx
         path.test()
         // then verify the eth state is what we specified in the path plan
       })
