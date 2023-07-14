@@ -2,8 +2,7 @@
   "scripts": {
     "test": "hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
-    "watch": "nodemon --exec \"hardhat test --grep consequences\"",
-    "models": "nodemon --exec \"hardhat test --grep consequences\""
+    "watch": "nodemon --exec \"hardhat test --grep model\""
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",

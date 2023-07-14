@@ -5,7 +5,8 @@ address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
 uint constant APPEAL_WINDOW = 3 days;
 
-struct Transition {
+struct Change {
+  ChangeType changeType;
   uint timestamp;
   bytes32 contents; // v1 CID hash component
   bytes32 rejectionReason;
@@ -15,15 +16,8 @@ struct Transition {
   mapping(address => Wallet) withdrawals;
   mapping(address => uint) solutionShares; // assigned by QA
   uint appealWindowStart;
-}
-
-enum PacketState {
-  // TODO remove this and deduce from state
-  Proposing, // initial state
-  Rejected, // if proposal is rejected
-  Open, // if proposal is accepted
-  Solving, // the timeout period for vetoing
-  Solved // once solution proposal is passed
+  uint uplink; //packets to headers, solutions to packets, appeals to metas
+  uint[] downlinks; // packets to solutions, metas to appeals
 }
 
 struct Payment {
@@ -44,10 +38,11 @@ enum NftType {
   Correction
 }
 
-enum TransitionType {
-  Header,
-  Packet,
-  Solution
+enum ChangeType {
+  HEADER,
+  PACKET,
+  SOLUTION,
+  APPEAL
 }
 struct Shares {
   address owner;

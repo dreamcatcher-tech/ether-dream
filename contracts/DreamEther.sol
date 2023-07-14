@@ -18,46 +18,41 @@ interface IERC20 {
  * Convert assets into task completion, with quality oversight
  */
 contract DreamEther {
-  uint public transitionsCount = 0;
-
+  uint public changesCount = 0;
+  mapping(uint => Change) private changes;
   // what amounts of all the tokens in this contract does each address hodl
   mapping(address => TokenWallet) private balances;
 
-  mapping(uint => Transition) private headers;
-  mapping(uint => Transition) private packets;
-  mapping(uint => Transition) private solutions;
-  mapping(uint => Transition) private appeals;
+  mapping(uint => uint[]) public payableSolutions; // packetId => solutionIds
+  mapping(uint => address) public qaMap; // headerHash => qa
 
-  mapping(uint => uint) public solutionsToPackets; // solutionHash => packetHash
-  mapping(uint => uint[]) public packetsToSolutions; // packetHash => solutionHashes
-  mapping(uint => uint) public packetHeaders; // packetHash => headerHash
-  mapping(uint => uint[]) public payableSolutions; // packetHash => solutionHashes
-  mapping(uint => address) public headerQas; // headerHash => qa
-  mapping(uint => uint) public merges; // mergeHash => transitionHash
+  function proposePacket(bytes32 contents, address qa) public {
+    require(isIpfs(contents), 'Invalid header');
+    require(isContract(qa), 'QA must be a contract');
+    uint headerId = ++changesCount;
+    Change storage header = changes[headerId];
+    require(header.timestamp == 0, 'Header already exists');
 
-  mapping(uint => uint[]) metasToAppeals; // transitionId => appealIds[]
+    header.changeType = ChangeType.HEADER;
+    header.timestamp = block.timestamp;
+    header.contents = contents;
 
-  function proposePacket(bytes32 header, address qa) public {
-    require(_isIpfsish(header), 'Invalid header');
-    require(_isContract(qa), 'QA must be a contract');
-    uint headerId = ++transitionsCount;
-    Transition storage headerProposal = headers[headerId];
-    headerProposal.timestamp = block.timestamp;
-    headerProposal.contents = header;
-    require(headerQas[headerId] == address(0), 'QA exists');
-    headerQas[headerId] = qa;
+    require(qaMap[headerId] == address(0), 'QA exists');
+    qaMap[headerId] = qa;
     emit ProposedPacket(headerId);
   }
 
   function fund(uint id, Payment[] calldata payments) public payable {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
-    Transition storage transition = _loadAny(id);
-    require(transition.appealWindowStart == 0, 'Appeal period started');
-    Wallet storage funds = transition.funds;
-    Wallet storage shares = transition.fundingShares[msg.sender];
+    Change storage change = changes[id];
+    require(change.timestamp != 0, 'Transition does not exist');
+    require(change.appealWindowStart == 0, 'Appeal period started');
+
+    Wallet storage funds = change.funds;
+    Wallet storage shares = change.fundingShares[msg.sender];
     if (msg.value > 0) {
-      _updateWallet(funds, ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
-      _updateWallet(shares, ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
+      updateWallet(funds, ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
+      updateWallet(shares, ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
     }
     for (uint i = 0; i < payments.length; i++) {
       Payment memory p = payments[i];
@@ -65,11 +60,11 @@ contract DreamEther {
       require(p.token != address(0), 'Token cannot be 0');
       IERC20 token = IERC20(p.token);
       require(token.transferFrom(msg.sender, address(this), p.amount));
-      _updateWallet(funds, p.token, p.tokenId, p.amount);
-      _updateWallet(shares, p.token, p.tokenId, p.amount);
+      updateWallet(funds, p.token, p.tokenId, p.amount);
+      updateWallet(shares, p.token, p.tokenId, p.amount);
       // TODO handle erc1155 token transfers
     }
-    delete transition.lockedFundingShares[msg.sender];
+    delete change.lockedFundingShares[msg.sender];
     emit FundedTransition(id, msg.sender);
   }
 
@@ -81,57 +76,72 @@ contract DreamEther {
     // they always relate to a packetId
 
     // call the QA contract and get it to list
-    QA qa = QA(headerQas[transitionHash]);
+    QA qa = QA(qaMap[transitionHash]);
     require(qa.publishTransition(transitionHash));
   }
 
   function defund(uint id) public {
     // TODO defund a specific item, not just all by default ?
-    Transition storage transition = _loadAny(id);
-    require(transition.appealWindowStart == 0, 'Appeal period started');
-    require(transition.lockedFundingShares[msg.sender] == 0);
-    transition.lockedFundingShares[msg.sender] = block.timestamp;
-    uint headerHash = _findHeaderHash(id);
-    IQA qa = IQA(headerQas[headerHash]);
-    qa.defunded(id); // QA contract may delist from opensea
+    Change storage change = changes[id];
+    require(change.timestamp != 0, 'Transition does not exist');
+    require(change.lockedFundingShares[msg.sender] == 0);
+
+    change.lockedFundingShares[msg.sender] = block.timestamp;
+  }
+
+  function finalizeDefund(uint id) public {
+    Change storage change = changes[id];
+    require(change.timestamp != 0, 'Transition does not exist');
+    uint lockedTime = change.lockedFundingShares[msg.sender];
+    uint elapsedTime = block.timestamp - lockedTime;
+    require(elapsedTime > APPEAL_WINDOW, 'Defund timeout not reached');
+
+    // process the unfunding
+    // notify the QA
+    // uint headerHash = _findHeaderHash(id);
+    // IQA qa = IQA(qaMap[headerHash]);
+    // qa.defunded(id); // QA contract may delist from opensea
     // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so
   }
 
   function qaResolve(uint id, Shares[] calldata shares) public {
-    Transition storage t = _loadMeta(id);
-    require(t.appealWindowStart == 0, 'Appeal period started');
-    uint headerHash = _findHeaderHash(id);
-    require(headerQas[headerHash] == msg.sender, 'Must be transition QA');
-    require(shares.length > 0, 'Must have shares');
+    require(shares.length > 0, 'Must provide shares');
 
+    Change storage c = qaLoad(id);
     for (uint i = 0; i < shares.length; i++) {
       Shares memory share = shares[i];
-      require(t.solutionShares[share.owner] == 0, 'Duplicate owner');
+      require(c.solutionShares[share.owner] == 0, 'Duplicate owner');
       require(share.owner != address(0), 'Owner cannot be 0');
       require(share.owner != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
-      t.solutionShares[share.owner] = share.amount;
+      c.solutionShares[share.owner] = share.amount;
     }
-    t.appealWindowStart = block.timestamp;
     emit QAResolved(id);
   }
 
   function qaReject(uint id, bytes32 reason) public {
-    require(_isIpfsish(reason), 'Invalid rejection hash');
-    Transition storage t = _loadMeta(id);
-    require(t.appealWindowStart == 0, 'Appeal period started');
-    uint headerHash = _findHeaderHash(id);
-    require(headerQas[headerHash] == msg.sender, 'Must be transition QA');
+    require(isIpfs(reason), 'Invalid rejection hash');
 
-    t.appealWindowStart = block.timestamp;
-    t.rejectionReason = reason;
+    Change storage c = qaLoad(id);
+    c.rejectionReason = reason;
     emit QARejected(id);
+  }
+
+  function qaLoad(uint id) internal returns (Change storage) {
+    Change storage change = changes[id];
+    require(change.timestamp != 0, 'Transition does not exist');
+    require(change.appealWindowStart == 0, 'Appeal period started');
+    require(isQa(id), 'Must be transition QA');
+
+    change.appealWindowStart = block.timestamp;
+    return change;
   }
 
   function appealShares(uint id, bytes32 reason, Shares[] calldata s) public {
     // used if the resolve is fine, but the shares are off.
-    // passing this transition will modify the shares split.
+    // passing this change will modify the shares split
+    // are resolve the appealed change
   }
 
   function appealResolve(uint id, bytes32 reason) public {
@@ -140,63 +150,82 @@ contract DreamEther {
   }
 
   function appealRejection(uint id, bytes32 reason) public {
-    require(_isIpfsish(reason), 'Invalid reason hash');
-    Transition storage t = _loadRejection(id);
-    uint elapsedTime = block.timestamp - t.appealWindowStart;
-    require(elapsedTime <= APPEAL_WINDOW, 'Appeal window closed');
-    require(t.rejectionReason > 0, 'Not a rejection');
+    require(isIpfs(reason), 'Invalid reason hash');
+    Change storage c = changes[id];
+    require(c.timestamp != 0, 'Transition does not exist');
+    require(c.appealWindowStart > 0, 'Appeal window not started');
+    uint elapsedTime = block.timestamp - c.appealWindowStart;
+    require(elapsedTime < APPEAL_WINDOW, 'Appeal window closed');
+    require(c.rejectionReason > 0, 'Not a rejection');
 
-    uint appealId = ++transitionsCount;
-    Transition storage appeal = appeals[appealId];
+    uint appealId = ++changesCount;
+    Change storage appeal = changes[appealId];
+    appeal.changeType = ChangeType.APPEAL;
     appeal.timestamp = block.timestamp;
     appeal.contents = reason;
-    metasToAppeals[id].push(appealId);
+    appeal.uplink = id;
 
-    TransitionType transitionType = _getTransitionType(id);
-    if (transitionType == TransitionType.Header) {
-      emit HeaderAppealed(id);
-    } else if (transitionType == TransitionType.Solution) {
+    if (c.changeType == ChangeType.HEADER) {
+      emit HeaderAppealed(appealId);
+    }
+    if (c.changeType == ChangeType.SOLUTION) {
       emit SolutionAppealed(id);
     }
   }
 
   function finalize(uint id) public {
-    Transition storage t = _loadMeta(id);
-    require(t.appealWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - t.appealWindowStart;
+    Change storage c = changes[id];
+    require(c.appealWindowStart > 0, 'Not passed by QA');
+    uint elapsedTime = block.timestamp - c.appealWindowStart;
     require(elapsedTime > APPEAL_WINDOW, 'Appeal window still open');
-    // TODO check no appeals are open
+    // TODO check no other appeals are open too
 
-    TransitionType transitionType = _getTransitionType(id);
-
-    if (transitionType == TransitionType.Header) {
-      uint packetId = ++transitionsCount;
-      Transition storage packet = packets[packetId];
-      require(packet.timestamp == 0, 'Packet exists');
+    if (c.changeType == ChangeType.HEADER) {
+      require(c.downlinks.length == 0, 'Header already consumed');
+      uint packetId = ++changesCount;
+      Change storage packet = changes[packetId];
+      require(packet.timestamp == 0, 'Packet already exists');
+      packet.changeType = ChangeType.PACKET;
       packet.timestamp = block.timestamp;
-      packetHeaders[packetId] = id;
+      packet.uplink = id;
+      c.downlinks.push(packetId);
+
       emit PacketCreated(packetId);
-    } else if (transitionType == TransitionType.Solution) {
-      emit SolutionAccepted(id);
-      if (_isFinalSolution(id)) {
-        _resolvePacket(id);
-        emit PacketResolved(solutionsToPackets[id]);
-      }
-    } else {
-      revert('Invalid transition type');
+      return;
     }
+    if (c.changeType == ChangeType.SOLUTION) {
+      emit SolutionAccepted(id);
+      if (isFinalSolution(id)) {
+        Change storage packet = changes[c.uplink];
+        require(packet.changeType == ChangeType.PACKET, 'Not a packet');
+        require(packet.timestamp != 0, 'Packet does not exist');
+
+        for (uint i = 0; i < packet.downlinks.length; i++) {
+          uint solutionId = packet.downlinks[i];
+          payableSolutions[c.uplink].push(solutionId);
+        }
+        // ???? how to mark the packet as resolved tho ?
+        emit PacketResolved(c.uplink);
+      }
+      return;
+    }
+    revert('Invalid transition type');
   }
 
   function proposeSolution(uint packetId, bytes32 contents) public {
-    require(packets[packetId].timestamp != 0, 'Packet does not exist');
-    uint solutionId = ++transitionsCount;
-    Transition storage solution = solutions[solutionId];
+    Change storage packet = changes[packetId];
+    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
+    require(packet.timestamp != 0, 'Packet does not exist');
+
+    uint solutionId = ++changesCount;
+    Change storage solution = changes[solutionId];
     require(solution.timestamp == 0, 'Solution exists');
 
+    solution.changeType = ChangeType.SOLUTION;
     solution.timestamp = block.timestamp;
     solution.contents = contents;
-    solutionsToPackets[solutionId] = packetId;
-    packetsToSolutions[packetId].push(solutionId);
+    solution.uplink = packetId;
+    packet.downlinks.push(solutionId);
     emit SolutionProposed(solutionId);
   }
 
@@ -217,14 +246,13 @@ contract DreamEther {
 
   function consume(uint packetId, uint[] calldata ratios) public payable {
     require(ratios.length == 3);
-    (uint solvers, uint funders, uint dependencies) = (
-      ratios[0],
-      ratios[1],
-      ratios[2]
-    );
+    uint solvers = ratios[0];
+    uint funders = ratios[1];
+    uint dependencies = ratios[2];
     require(solvers + funders + dependencies > 0);
-    Transition storage packet = packets[packetId];
+    Change storage packet = changes[packetId];
     require(packet.timestamp != 0, 'Packet does not exist');
+    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
     // TODO buffer the payments so Dreamcatcher can disperse
     // people can send in funds that get dispersed to the contributors
     // can send in any erc20 or erc1155 that can be dispersed
@@ -250,7 +278,7 @@ contract DreamEther {
     // then make a single DAI withdrawl call.
   }
 
-  function _updateWallet(
+  function updateWallet(
     Wallet storage wallet,
     address token,
     uint tokenId,
@@ -263,49 +291,7 @@ contract DreamEther {
     wallet.tokenWallet[token].balances[tokenId] += amount;
   }
 
-  function _loadMeta(uint id) internal view returns (Transition storage) {
-    Transition storage transition = _loadAny(id);
-    require(transition.rejectionReason == 0, 'Transition rejected');
-    require(packets[id].timestamp == 0, 'Cannot directly load packet');
-    return transition;
-  }
-
-  function _loadRejection(uint id) internal view returns (Transition storage) {
-    Transition storage transition = _loadAny(id);
-    require(transition.rejectionReason != 0, 'Transition not rejected');
-    require(transition.appealWindowStart > 0, 'Not passed by QA');
-    return transition;
-  }
-
-  function _loadAny(uint id) internal view returns (Transition storage) {
-    Transition storage transition;
-    if (headers[id].timestamp != 0) {
-      transition = headers[id];
-    } else if (solutions[id].timestamp != 0) {
-      transition = solutions[id];
-    } else if (packets[id].timestamp != 0) {
-      transition = packets[id];
-    } else {
-      revert(string(abi.encodePacked('Transition does not exist ', id)));
-    }
-    return transition;
-  }
-
-  function _getTransitionType(uint id) internal returns (TransitionType) {
-    if (headers[id].timestamp != 0) {
-      return TransitionType.Header;
-    }
-    if (packets[id].timestamp != 0) {
-      return TransitionType.Packet;
-    }
-    if (solutions[id].timestamp != 0) {
-      return TransitionType.Solution;
-    }
-    revert('Invalid transition type');
-  }
-
-  function _isFinalSolution(uint solutionId) internal returns (bool) {
-    uint packetId = solutionsToPackets[solutionId];
+  function isFinalSolution(uint solutionId) internal returns (bool) {
     // TODO make sure no other valid solutions are present
 
     // TODO go thru all solutions targetting this packet
@@ -315,45 +301,35 @@ contract DreamEther {
     return true;
   }
 
-  function _resolvePacket(uint finalSolutionId) internal {
-    uint packetId = solutionsToPackets[finalSolutionId];
-    uint[] memory allSolutions = packetsToSolutions[packetId];
-    for (uint i = 0; i < allSolutions.length; i++) {
-      uint solutionId = allSolutions[i];
-      Transition storage solution = solutions[solutionId];
-      // TODO determine if it is a payable solution
-      payableSolutions[packetId].push(solutionId);
-    }
-    // ???? how to mark the packet as resolved tho ?
-  }
-
-  function _isContract(address account) internal view returns (bool) {
+  function isContract(address account) internal view returns (bool) {
     return account.code.length > 0;
   }
 
-  function _findHeaderHash(uint transitionHash) internal returns (uint) {
-    TransitionType transitionType = _getTransitionType(transitionHash);
-    if (transitionType == TransitionType.Header) {
-      return transitionHash;
-    }
-    if (transitionType == TransitionType.Packet) {
-      return packetHeaders[transitionHash];
-    }
-    if (transitionType == TransitionType.Solution) {
-      uint packetId = solutionsToPackets[transitionHash];
-      return packetHeaders[packetId];
-    }
-    revert('Invalid transition type');
-  }
-
-  function _isIpfsish(bytes32 ipfsHash) public pure returns (bool) {
+  function isIpfs(bytes32 ipfsHash) public pure returns (bool) {
     return true;
   }
 
-  function ipfsCid(uint transitionId) public view returns (string memory) {
+  function isQa(uint id) internal view returns (bool) {
+    Change storage change = changes[id];
+    if (change.changeType == ChangeType.HEADER) {
+      return qaMap[id] == msg.sender;
+    }
+    if (change.changeType == ChangeType.SOLUTION) {
+      return isQa(change.uplink);
+    }
+    if (change.changeType == ChangeType.PACKET) {
+      return isQa(change.uplink);
+    }
+    if (change.changeType == ChangeType.APPEAL) {
+      return isQa(change.uplink);
+    }
+    revert('Invalid change');
+  }
+
+  function ipfsCid(uint id) public view returns (string memory) {
     // TODO https://github.com/storyicon/base58-solidity
-    Transition storage t = _loadAny(transitionId);
-    return string(abi.encodePacked('todo', t.contents));
+    Change storage c = changes[id];
+    return string(abi.encodePacked('todo', c.contents));
   }
 
   event ProposedPacket(uint headerId);

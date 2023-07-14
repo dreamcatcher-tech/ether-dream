@@ -39,19 +39,11 @@ const Transition = Immutable.Record({
   targetId: undefined,
 })
 
-/**
- * Only transitions that are expected as a consequence of a previous transition
- * are taken, in an effort to reduce the number of paths to explore.
- *
- * So given a target transition, this statechart will transition
- * to the state that represents the transition current state,
- * and then allow only valid transitions
- */
-describe('consequences', () => {
+describe('model based tests', () => {
   const model = createTestModel(
     createTestMachine(
       {
-        id: 'consequences',
+        id: 'model based tests',
         initial: 'idle',
         context: {
           transitionsCount: 1,
@@ -113,6 +105,8 @@ describe('consequences', () => {
             },
           },
         },
+        predictableActionArguments: true,
+        preserveActionOrder: true,
       },
       {
         actions: {
@@ -359,5 +353,27 @@ describe('consequences', () => {
         })
       })
     })
+  })
+  describe('funding', () => {
+    it.skip('funding during withdraw lock resets the lock')
+    it.skip('funding using locked funds on the same packet undoes the lock')
+    it.skip('funders can use multiple tokens including ETH')
+    it.skip('funders can use multiple tokens from the same contract')
+  })
+  describe('e2e', () => {
+    it.skip('solving an already solved packet with something better')
+    it.skip('modifying the packet header')
+    it.skip('packet solving another packet')
+    it.skip('check balances of all token types')
+  })
+  describe('packet closing', () => {
+    it.skip('multiple solutions funded within appealWindow')
+    it.skip('defund during appealWindow is honored if solution rejected')
+    it.skip('solve a packet that has already been solved')
+    it.skip('wrap a packet in a solution to solve another packet')
+  })
+  describe('appeals', () => {
+    it.skip('appeals cannot be appealed')
+    it.skip('cannot appeal a packet')
   })
 })
