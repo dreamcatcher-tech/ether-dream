@@ -92,7 +92,7 @@ describe('model based tests', () => {
               // APPEAL_SHARES
             },
           },
-          appeal: {},
+          dispute: {},
           solved: {
             on: {
               // TRADE: { actions: 'trade', cond: 'isTradeable' },
@@ -205,9 +205,7 @@ describe('model based tests', () => {
             const transition = ctx.transitions.get(ctx.cursorId)
             return transition.type === types.SOLUTION
           },
-          isAppeal: (ctx) => {
-            return ctx.appeals.has(ctx.cursorId)
-          },
+          isDispute: (ctx) => {},
           isTradeable: (ctx) => {
             const packet = ctx.packets.get(ctx.cursorId)
             debug('isTradeable', !packet.traded)
@@ -367,13 +365,13 @@ describe('model based tests', () => {
     it.skip('check balances of all token types')
   })
   describe('packet closing', () => {
-    it.skip('multiple solutions funded within appealWindow')
-    it.skip('defund during appealWindow is honored if solution rejected')
+    it.skip('multiple solutions funded within disputeWindow')
+    it.skip('defund during disputeWindow is honored if solution rejected')
     it.skip('solve a packet that has already been solved')
     it.skip('wrap a packet in a solution to solve another packet')
   })
-  describe('appeals', () => {
-    it.skip('appeals cannot be appealed')
-    it.skip('cannot appeal a packet')
+  describe('disputes', () => {
+    it.skip('disputes cannot be disputed')
+    it.skip('cannot dispute a packet')
   })
 })

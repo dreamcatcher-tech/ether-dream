@@ -3,7 +3,7 @@ pragma solidity ^0.8.9;
 
 address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
-uint constant APPEAL_WINDOW = 3 days;
+uint constant DISPUTE_WINDOW = 3 days;
 
 struct Change {
   ChangeType changeType;
@@ -15,7 +15,7 @@ struct Change {
   mapping(address => uint) lockedFundingShares;
   mapping(address => Wallet) withdrawals;
   mapping(address => uint) solutionShares; // assigned by QA
-  uint appealWindowStart;
+  uint disputeWindowStart;
   uint uplink; //packets to headers, solutions to packets, appeals to metas
   uint[] downlinks; // packets to solutions, metas to appeals
 }
@@ -42,7 +42,7 @@ enum ChangeType {
   HEADER,
   PACKET,
   SOLUTION,
-  APPEAL
+  DISPUTE
 }
 struct Shares {
   address owner;

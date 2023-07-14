@@ -46,7 +46,7 @@ contract DreamEther {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
     Change storage change = changes[id];
     require(change.timestamp != 0, 'Transition does not exist');
-    require(change.appealWindowStart == 0, 'Appeal period started');
+    require(change.disputeWindowStart == 0, 'Dispute period started');
 
     Wallet storage funds = change.funds;
     Wallet storage shares = change.fundingShares[msg.sender];
@@ -94,7 +94,7 @@ contract DreamEther {
     require(change.timestamp != 0, 'Transition does not exist');
     uint lockedTime = change.lockedFundingShares[msg.sender];
     uint elapsedTime = block.timestamp - lockedTime;
-    require(elapsedTime > APPEAL_WINDOW, 'Defund timeout not reached');
+    require(elapsedTime > DISPUTE_WINDOW, 'Defund timeout not reached');
 
     // process the unfunding
     // notify the QA
@@ -131,54 +131,54 @@ contract DreamEther {
   function qaLoad(uint id) internal returns (Change storage) {
     Change storage change = changes[id];
     require(change.timestamp != 0, 'Transition does not exist');
-    require(change.appealWindowStart == 0, 'Appeal period started');
+    require(change.disputeWindowStart == 0, 'Dispute period started');
     require(isQa(id), 'Must be transition QA');
 
-    change.appealWindowStart = block.timestamp;
+    change.disputeWindowStart = block.timestamp;
     return change;
   }
 
-  function appealShares(uint id, bytes32 reason, Shares[] calldata s) public {
+  function disputeShares(uint id, bytes32 reason, Shares[] calldata s) public {
     // used if the resolve is fine, but the shares are off.
     // passing this change will modify the shares split
-    // are resolve the appealed change
+    // and resolve the disputed change allowing finalization
   }
 
-  function appealResolve(uint id, bytes32 reason) public {
+  function disputeResolve(uint id, bytes32 reason) public {
     // the resolve should have been a rejection
     // will halt the transition, return the qa funds, and await
   }
 
-  function appealRejection(uint id, bytes32 reason) public {
+  function disputeRejection(uint id, bytes32 reason) public {
     require(isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
     require(c.timestamp != 0, 'Transition does not exist');
-    require(c.appealWindowStart > 0, 'Appeal window not started');
-    uint elapsedTime = block.timestamp - c.appealWindowStart;
-    require(elapsedTime < APPEAL_WINDOW, 'Appeal window closed');
+    require(c.disputeWindowStart > 0, 'Dispute window not started');
+    uint elapsedTime = block.timestamp - c.disputeWindowStart;
+    require(elapsedTime < DISPUTE_WINDOW, 'Dispute window closed');
     require(c.rejectionReason > 0, 'Not a rejection');
 
-    uint appealId = ++changesCount;
-    Change storage appeal = changes[appealId];
-    appeal.changeType = ChangeType.APPEAL;
-    appeal.timestamp = block.timestamp;
-    appeal.contents = reason;
-    appeal.uplink = id;
+    uint disputelId = ++changesCount;
+    Change storage dispute = changes[disputelId];
+    dispute.changeType = ChangeType.DISPUTE;
+    dispute.timestamp = block.timestamp;
+    dispute.contents = reason;
+    dispute.uplink = id;
 
     if (c.changeType == ChangeType.HEADER) {
-      emit HeaderAppealed(appealId);
+      emit HeaderDisputed(disputelId);
     }
     if (c.changeType == ChangeType.SOLUTION) {
-      emit SolutionAppealed(id);
+      emit SolutionDisputed(id);
     }
   }
 
   function finalize(uint id) public {
     Change storage c = changes[id];
-    require(c.appealWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - c.appealWindowStart;
-    require(elapsedTime > APPEAL_WINDOW, 'Appeal window still open');
-    // TODO check no other appeals are open too
+    require(c.disputeWindowStart > 0, 'Not passed by QA');
+    uint elapsedTime = block.timestamp - c.disputeWindowStart;
+    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    // TODO check no other disputes are open too
 
     if (c.changeType == ChangeType.HEADER) {
       require(c.downlinks.length == 0, 'Header already consumed');
@@ -296,7 +296,7 @@ contract DreamEther {
 
     // TODO go thru all solutions targetting this packet
     // and check if this is the last one
-    // what if another solution is in appeal ?
+    // what if another solution is in dispute too ?
 
     return true;
   }
@@ -320,7 +320,7 @@ contract DreamEther {
     if (change.changeType == ChangeType.PACKET) {
       return isQa(change.uplink);
     }
-    if (change.changeType == ChangeType.APPEAL) {
+    if (change.changeType == ChangeType.DISPUTE) {
       return isQa(change.uplink);
     }
     revert('Invalid change');
@@ -340,8 +340,8 @@ contract DreamEther {
   event PacketCreated(uint packetId);
   event SolutionProposed(uint solutionId);
   event PacketResolved(uint packetId);
-  event SolutionAppealed(uint solutionHash);
-  event HeaderAppealed(uint headerId);
+  event SolutionDisputed(uint solutionHash);
+  event HeaderDisputed(uint headerId);
 }
 
 // packet solving another packet must be in the solved state

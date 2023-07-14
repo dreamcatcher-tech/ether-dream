@@ -14,11 +14,11 @@ interface IDreamcatcher {
 
   function qaReject(uint id, bytes32 reason) external;
 
-  function appealShares(uint id, bytes32 reason, Shares[] calldata s) external;
+  function disputeShares(uint id, bytes32 reason, Shares[] calldata s) external;
 
-  function appealResolve(uint id, bytes32 reason) external;
+  function disputeResolve(uint id, bytes32 reason) external;
 
-  function appealRejection(uint id, bytes32 reason) external;
+  function disputeRejection(uint id, bytes32 reason) external;
 
   function finalize(uint id) external;
 
