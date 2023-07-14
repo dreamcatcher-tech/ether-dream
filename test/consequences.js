@@ -18,7 +18,6 @@ import {
 import { createTestModel, createTestMachine } from '@xstate/test'
 import Debug from 'debug'
 const debug = Debug('test:consequences')
-Debug.enable('test:consequences')
 const log = (string = 'log') => assign(() => debug(string))
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -128,17 +127,21 @@ describe('consequences', () => {
                 })
               ),
           }),
-          fund: assign((ctx) => {
-            const { cursorId, transitions } = ctx
-            const transition = transitions.get(cursorId)
-            const next = transition.set('funded', true)
-            return { transitions: transitions.set(cursorId, next) }
+          fund: assign({
+            transitions: (ctx) => {
+              const { cursorId, transitions } = ctx
+              const transition = transitions.get(cursorId)
+              const next = transition.set('funded', true)
+              return transitions.set(cursorId, next)
+            },
           }),
-          qaResolve: assign((ctx) => {
-            const { cursorId } = ctx
-            const transition = ctx.transitions.get(cursorId)
-            const next = transition.set('qaResolved', true)
-            return { transitions: ctx.transitions.set(cursorId, next) }
+          qaResolve: assign({
+            transitions: (ctx) => {
+              const { cursorId } = ctx
+              const transition = ctx.transitions.get(cursorId)
+              const next = transition.set('qaResolved', true)
+              return ctx.transitions.set(cursorId, next)
+            },
           }),
           finalizeHeader: assign((ctx) => {
             const transition = ctx.transitions.get(ctx.cursorId)
@@ -157,14 +160,16 @@ describe('consequences', () => {
                 .set(packetId, packet),
             }
           }),
-          finalizeSolution: assign((ctx) => {
-            // make the NFTs tradeable
-            // store the shares from the QA
-            // make the packet as finalized as well as the solution
-            //
-            const transition = ctx.transitions.get(ctx.cursorId)
-            const next = transition.set('finalized', true)
-            return { transitions: ctx.transitions.set(ctx.cursorId, next) }
+          finalizeSolution: assign({
+            transitions: (ctx) => {
+              // make the NFTs tradeable
+              // store the shares from the QA
+              // make the packet as finalized as well as the solution
+              //
+              const transition = ctx.transitions.get(ctx.cursorId)
+              const next = transition.set('finalized', true)
+              return ctx.transitions.set(ctx.cursorId, next)
+            },
           }),
           proposeSolution: assign((ctx) => {
             const solutionId = ctx.transitionsCount
@@ -234,11 +239,22 @@ describe('consequences', () => {
     return { dreamEther, qa, owner, qaAddress, ethers }
   }
 
-  const shortestPaths = model.getShortestPaths()
+  const shortestPaths = model.getShortestPaths({
+    // a bug in @xstate/test requires this
+    // https://github.com/statelyai/xstate/issues/4146
+    toState: (state) => state.matches('solved'),
+  })
   describe(`shortest ${shortestPaths.length} paths`, () => {
-    shortestPaths.length = 1
+    // Debug.enable('test:consequences')
+
+    // shortestPaths.length = 1
+    let i = 0
     shortestPaths.forEach((path) => {
-      it(description(path), async () => {
+      const index = `[${i}] `
+      if (i++ !== 8) {
+        // return
+      }
+      it(index + description(path), async () => {
         const fixture = await loadFixture(deploy)
         const ipfs = fakeIpfsGenerator()
         await path.test({
@@ -275,7 +291,8 @@ describe('consequences', () => {
             QA_RESOLVE: async ({ state: { context } }) => {
               const { cursorId } = context
               const { dreamEther, qa } = fixture
-              debug('qa resolving', cursorId)
+              const { type } = context.transitions.get(cursorId)
+              debug('qa resolving', type, cursorId)
               await expect(qa.passQA(cursorId, dreamEther.target))
                 .to.emit(dreamEther, 'QAResolved')
                 .withArgs(cursorId)
@@ -304,39 +321,40 @@ describe('consequences', () => {
                   .withArgs(targetId)
               }
             },
-            SOLVE: async ({ state: { context } }) => {
+            SOLVE: async ({ state: { context }, ...rest }) => {
               const { dreamEther } = fixture
               const { cursorId } = context
               const contents = ipfs()
-              debug('solving', cursorId)
+              const { type } = context.transitions.get(cursorId)
+              debug('solving', type, cursorId)
               await expect(
                 dreamEther.proposeSolution(cursorId, contents)
               ).to.emit(dreamEther, 'SolutionProposed')
             },
 
             // OLD
-            SOLUTION_FAIL_QA: async () => {
-              const { dreamEther, solutionId, qa } = fixture
-              const failHash = ipfs()
-              tx = qa.failQA(solutionId, failHash, dreamEther.target)
-            },
-            SOLUTION_APPEAL_REJECTION: async () => {
-              const { dreamEther, solutionId } = fixture
-              const reason = ipfs()
-              tx = dreamEther.appealRejection(solutionId, reason)
-            },
-            'Solution Failed QA': async () => {
-              const { dreamEther, solutionId } = fixture
-              await expect(tx)
-                .to.emit(dreamEther, 'QARejected')
-                .withArgs(solutionId)
-            },
-            'Solution Appealing Rejection': async () => {
-              const { dreamEther, solutionId } = fixture
-              await expect(tx)
-                .to.emit(dreamEther, 'SolutionAppealed')
-                .withArgs(solutionId)
-            },
+            // SOLUTION_FAIL_QA: async () => {
+            //   const { dreamEther, solutionId, qa } = fixture
+            //   const failHash = ipfs()
+            //   tx = qa.failQA(solutionId, failHash, dreamEther.target)
+            // },
+            // SOLUTION_APPEAL_REJECTION: async () => {
+            //   const { dreamEther, solutionId } = fixture
+            //   const reason = ipfs()
+            //   tx = dreamEther.appealRejection(solutionId, reason)
+            // },
+            // 'Solution Failed QA': async () => {
+            //   const { dreamEther, solutionId } = fixture
+            //   await expect(tx)
+            //     .to.emit(dreamEther, 'QARejected')
+            //     .withArgs(solutionId)
+            // },
+            // 'Solution Appealing Rejection': async () => {
+            //   const { dreamEther, solutionId } = fixture
+            //   await expect(tx)
+            //     .to.emit(dreamEther, 'SolutionAppealed')
+            //     .withArgs(solutionId)
+            // },
           },
         })
       })
