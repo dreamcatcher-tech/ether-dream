@@ -16,6 +16,9 @@ interface IQA {
 
   // if now under threshold, unpublish from opensea
   function defunded(uint id) external returns (bool);
+
+  // no id => uri of the whole team.  id => uri of the individual qa'er
+  function getUri(uint id) external view returns (string memory);
 }
 
 contract QA is IQA {
