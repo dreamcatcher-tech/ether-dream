@@ -53,4 +53,9 @@ contract QA is IQA {
     IDreamcatcher dreamcatcher = IDreamcatcher(dc);
     dreamcatcher.qaReject(id, reason);
   }
+
+  function getUri(uint id) external view override returns (string memory) {
+    // TODO
+    return 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  }
 }
