@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 
-// Uncomment this line to use console.log
-import 'hardhat/console.sol';
 import './Types.sol';
-import './QA.sol';
+import './IQA.sol';
 
 interface IERC20 {
   function transferFrom(
@@ -21,14 +19,20 @@ contract DreamEther {
   uint public changesCount = 0;
   mapping(uint => Change) private changes;
   // what amounts of all the tokens in this contract does each address hodl
+  // used for balanceOf() requests
   mapping(address => TokenWallet) private balances;
 
-  mapping(uint => uint[]) public payableSolutions; // packetId => solutionIds
+  // used to generate our own NFTs for every funding type
+  uint public nftCount = 2; // 0 is qa, 1 is solution
+  mapping(uint => Token) private tokenMap;
+
+  mapping(uint => Funding) private fundingNfts;
+
   mapping(uint => address) public qaMap; // headerHash => qa
 
   function proposePacket(bytes32 contents, address qa) public {
     require(isIpfs(contents), 'Invalid header');
-    require(isContract(qa), 'QA must be a contract');
+    require(qa.code.length > 0, 'QA must be a contract');
     uint headerId = ++changesCount;
     Change storage header = changes[headerId];
     require(header.timestamp == 0, 'Header already exists');
@@ -64,7 +68,7 @@ contract DreamEther {
       updateWallet(shares, p.token, p.tokenId, p.amount);
       // TODO handle erc1155 token transfers
     }
-    delete change.lockedFundingShares[msg.sender];
+    delete change.defundWindowStart[msg.sender];
     emit FundedTransition(id, msg.sender);
   }
 
@@ -76,25 +80,23 @@ contract DreamEther {
     // they always relate to a packetId
 
     // call the QA contract and get it to list
-    QA qa = QA(qaMap[transitionHash]);
+    IQA qa = IQA(qaMap[transitionHash]);
     require(qa.publishTransition(transitionHash));
   }
 
-  function defund(uint id) public {
-    // TODO defund a specific item, not just all by default ?
+  function defundStart(uint id) public {
     Change storage change = changes[id];
     require(change.timestamp != 0, 'Transition does not exist');
-    require(change.lockedFundingShares[msg.sender] == 0);
-
-    change.lockedFundingShares[msg.sender] = block.timestamp;
+    require(change.defundWindowStart[msg.sender] == 0);
+    change.defundWindowStart[msg.sender] = block.timestamp;
   }
 
-  function finalizeDefund(uint id) public {
+  function defund(uint id) public {
     Change storage change = changes[id];
     require(change.timestamp != 0, 'Transition does not exist');
-    uint lockedTime = change.lockedFundingShares[msg.sender];
+    uint lockedTime = change.defundWindowStart[msg.sender];
     uint elapsedTime = block.timestamp - lockedTime;
-    require(elapsedTime > DISPUTE_WINDOW, 'Defund timeout not reached');
+    require(elapsedTime > DEFUND_WINDOW, 'Defund timeout not reached');
 
     // process the unfunding
     // notify the QA
@@ -103,32 +105,40 @@ contract DreamEther {
     // qa.defunded(id); // QA contract may delist from opensea
     // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so
+    // TODO ensure not in the dispute period, which means no defunding
   }
 
-  function qaResolve(uint id, Shares[] calldata shares) public {
+  function qaResolve(uint id, Share[] calldata shares) public {
     require(shares.length > 0, 'Must provide shares');
 
-    Change storage c = qaLoad(id);
+    Change storage c = qaStart(id);
+    uint total = 0;
     for (uint i = 0; i < shares.length; i++) {
-      Shares memory share = shares[i];
-      require(c.solutionShares[share.owner] == 0, 'Duplicate owner');
+      Share memory share = shares[i];
       require(share.owner != address(0), 'Owner cannot be 0');
       require(share.owner != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
-      c.solutionShares[share.owner] = share.amount;
+      require(c.solutionShares.shares[share.owner] == 0, 'Owner exists');
+      if (c.solutionShares.shares[share.owner] == 0) {
+        c.solutionShares.owners.push(share.owner);
+      }
+      c.solutionShares.shares[share.owner] = share.amount;
+      total += share.amount;
     }
+    require(total == SHARES_DECIMALS, 'Shares must sum to SHARES_DECIMALS');
+    c.solutionShares.total = total;
     emit QAResolved(id);
   }
 
   function qaReject(uint id, bytes32 reason) public {
     require(isIpfs(reason), 'Invalid rejection hash');
 
-    Change storage c = qaLoad(id);
+    Change storage c = qaStart(id);
     c.rejectionReason = reason;
     emit QARejected(id);
   }
 
-  function qaLoad(uint id) internal returns (Change storage) {
+  function qaStart(uint id) internal returns (Change storage) {
     Change storage change = changes[id];
     require(change.timestamp != 0, 'Transition does not exist');
     require(change.disputeWindowStart == 0, 'Dispute period started');
@@ -138,7 +148,7 @@ contract DreamEther {
     return change;
   }
 
-  function disputeShares(uint id, bytes32 reason, Shares[] calldata s) public {
+  function disputeShares(uint id, bytes32 reason, Share[] calldata s) public {
     // used if the resolve is fine, but the shares are off.
     // passing this change will modify the shares split
     // and resolve the disputed change allowing finalization
@@ -153,10 +163,10 @@ contract DreamEther {
     require(isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
     require(c.timestamp != 0, 'Transition does not exist');
+    require(c.rejectionReason != 0, 'Not a rejection');
     require(c.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime < DISPUTE_WINDOW, 'Dispute window closed');
-    require(c.rejectionReason > 0, 'Not a rejection');
 
     uint disputelId = ++changesCount;
     Change storage dispute = changes[disputelId];
@@ -173,7 +183,7 @@ contract DreamEther {
     }
   }
 
-  function finalize(uint id) public {
+  function enact(uint id) public {
     Change storage c = changes[id];
     require(c.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
@@ -181,7 +191,7 @@ contract DreamEther {
     // TODO check no other disputes are open too
 
     if (c.changeType == ChangeType.HEADER) {
-      require(c.downlinks.length == 0, 'Header already consumed');
+      require(c.downlinks.length == 0, 'Header already enacted');
       uint packetId = ++changesCount;
       Change storage packet = changes[packetId];
       require(packet.timestamp == 0, 'Packet already exists');
@@ -191,28 +201,37 @@ contract DreamEther {
       c.downlinks.push(packetId);
 
       emit PacketCreated(packetId);
-      return;
-    }
-    if (c.changeType == ChangeType.SOLUTION) {
+    } else if (c.changeType == ChangeType.SOLUTION) {
       emit SolutionAccepted(id);
-      if (isFinalSolution(id)) {
-        Change storage packet = changes[c.uplink];
-        require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-        require(packet.timestamp != 0, 'Packet does not exist');
+      // TODO handle concurrent solutions
+      Change storage packet = changes[c.uplink];
+      require(packet.timestamp != 0, 'Packet does not exist');
+      require(packet.changeType == ChangeType.PACKET, 'Not a packet');
+      require(!c.solutionShares.isChanging, 'Solution error');
+      require(c.solutionShares.total == SHARES_DECIMALS, 'Solution error');
 
-        for (uint i = 0; i < packet.downlinks.length; i++) {
-          uint solutionId = packet.downlinks[i];
-          payableSolutions[c.uplink].push(solutionId);
+      mergeShareTable(packet.solutionShares, c.solutionShares);
+
+      for (uint i = 0; i < packet.downlinks.length; i++) {
+        uint solutionId = packet.downlinks[i];
+        Change storage solution = changes[solutionId];
+        if (isPossible(solution)) {
+          packet.solutionShares.isChanging = true;
+          return; // this is not the final solution
         }
-        // ???? how to mark the packet as resolved tho ?
-        emit PacketResolved(c.uplink);
       }
-      return;
+      packet.solutionShares.isChanging = false;
+      emit PacketResolved(c.uplink);
+    } else if (c.changeType == ChangeType.DISPUTE) {
+      // TODO
+    } else if (c.changeType == ChangeType.EDIT) {
+      // TODO
+    } else {
+      revert('Invalid transition type');
     }
-    revert('Invalid transition type');
   }
 
-  function proposeSolution(uint packetId, bytes32 contents) public {
+  function solve(uint packetId, bytes32 contents) public {
     Change storage packet = changes[packetId];
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
     require(packet.timestamp != 0, 'Packet does not exist');
@@ -229,19 +248,12 @@ contract DreamEther {
     emit SolutionProposed(solutionId);
   }
 
-  function mergePackets(uint fromId, uint toId, uint mergeHash) public {
-    // this transition would merge two packets together
+  function merge(uint fromId, uint toId, bytes32 reasons) public {
+    // merge the change of fromId to the change of toId for the given reasons
   }
 
-  function modify(uint currentHash, uint nextHash, address qa) public {
-    // ? is this a merge ?
-    // if is a packet header, then can suggest the next qa
-    // this should be the same as modifying any transition
-    // if the transition was a packet header, then the packet is updated
-    // qa can choose if they accept it or not as both the succession
-    // and separately, for the original goal of the transition
-    // it can be accepted as succesor, but not as goal
-    // only existing qa can pass on to a new qa
+  function edit(uint id, bytes32 contents, bytes32 reasons) public {
+    // edit the given id with the new contents for the given reasons
   }
 
   function consume(uint packetId, uint[] calldata ratios) public payable {
@@ -259,7 +271,9 @@ contract DreamEther {
     // this is the foundational training set we need
   }
 
-  function withdrawAllPossible(uint id) public {
+  function claim(uint id) public {
+    // withdraw your entitlement based on the shares you have
+    // TODO must freeze transfers for a period to prevent rug pulls
     // withdraws all the divisible tokens you have
     // trading between solutionShares needs to occur before non divisible
     // tokens can be withdrawn
@@ -268,14 +282,26 @@ contract DreamEther {
     //
   }
 
-  function drain(uint[] calldata id) public {
-    // take all the funds available in all the ids provided
-    // and store them in the top level wallet for the
-    // calling address.
-    // Purpose is to allow a bulk withdrawl of all funds with
-    // lowest possible tx costs.
-    // Eg: if you have 1000 solutions all with DAI, you can drain them all
-    // then make a single DAI withdrawl call.
+  function claimBatch(uint[] calldata ids) public {
+    uint opCost = 0;
+    for (uint i = 0; i < ids.length; i++) {
+      uint id = ids[i];
+      uint256 gasRemaining = gasleft();
+      if (gasRemaining < opCost) {
+        break;
+      }
+      claim(id);
+      if (i == 0) {
+        uint safetyFactor = 2;
+        opCost = safetyFactor * (gasRemaining - gasleft());
+      }
+    }
+  }
+
+  function claimAll() public {
+    // get the address of the caller
+    // work our way thru a list of all tokens they hold
+    // claim any one they still have funds inside of
   }
 
   function updateWallet(
@@ -301,8 +327,31 @@ contract DreamEther {
     return true;
   }
 
-  function isContract(address account) internal view returns (bool) {
-    return account.code.length > 0;
+  function isPossible(Change storage solution) internal returns (bool) {
+    // is it possible that this solution become an accepted solution
+    return false;
+  }
+
+  function isSolved(Change storage solution) internal returns (bool) {
+    // ???? how to mark the packet as resolved tho ?
+    return true;
+  }
+
+  function mergeShareTable(
+    ShareTable storage to,
+    ShareTable storage from
+  ) internal {
+    require(from.total == SHARES_DECIMALS, 'Must sum to SHARES_DECIMALS');
+    require(from.isChanging == false, 'Cannot merge changing table');
+    for (uint i = 0; i < from.owners.length; i++) {
+      address owner = from.owners[i];
+      uint amount = from.shares[owner];
+      if (to.shares[owner] == 0) {
+        to.owners.push(owner);
+      }
+      to.shares[owner] += amount;
+    }
+    to.total += from.total;
   }
 
   function isIpfs(bytes32 ipfsHash) public pure returns (bool) {
@@ -326,7 +375,7 @@ contract DreamEther {
     revert('Invalid change');
   }
 
-  function ipfsCid(uint id) public view returns (string memory) {
+  function getIpfsCid(uint id) public view returns (string memory) {
     // TODO https://github.com/storyicon/base58-solidity
     Change storage c = changes[id];
     return string(abi.encodePacked('todo', c.contents));
@@ -343,9 +392,3 @@ contract DreamEther {
   event SolutionDisputed(uint solutionHash);
   event HeaderDisputed(uint headerId);
 }
-
-// packet solving another packet must be in the solved state
-// we need to ensure that no loops can occur - that problem solution tree is DAG
-
-// block datahashes from being reused
-// switch to indices for all transitions

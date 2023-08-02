@@ -80,11 +80,11 @@ describe('model based tests', () => {
           },
           pending: {
             on: {
-              FINALIZE: [
+              ENACT: [
                 { target: 'open', actions: 'finalizeHeader', cond: 'isHeader' },
                 {
                   target: 'solved',
-                  actions: 'finalizeSolution',
+                  actions: 'enactSolution',
                   cond: 'isSolution',
                 },
               ],
@@ -154,7 +154,7 @@ describe('model based tests', () => {
                 .set(packetId, packet),
             }
           }),
-          finalizeSolution: assign({
+          enactSolution: assign({
             transitions: (ctx) => {
               // make the NFTs tradeable
               // store the shares from the QA
@@ -289,13 +289,13 @@ describe('model based tests', () => {
                 .to.emit(dreamEther, 'QAResolved')
                 .withArgs(cursorId)
             },
-            FINALIZE: async ({ state: { context } }) => {
+            ENACT: async ({ state: { context } }) => {
               const { transitionsCount, cursorId } = context
               const { dreamEther } = fixture
               const { type, targetId } = context.transitions.get(cursorId)
               const THREE_DAYS_IN_SECONDS = 3600 * 24 * 3
               await time.increase(THREE_DAYS_IN_SECONDS)
-              const tx = dreamEther.finalize(cursorId)
+              const tx = dreamEther.enact(cursorId)
               expect(type).to.not.equal(types.PACKET)
               debug('finalizing', type, cursorId)
               if (type === types.PACKET) {
@@ -319,9 +319,10 @@ describe('model based tests', () => {
               const contents = ipfs()
               const { type } = context.transitions.get(cursorId)
               debug('solving', type, cursorId)
-              await expect(
-                dreamEther.proposeSolution(cursorId, contents)
-              ).to.emit(dreamEther, 'SolutionProposed')
+              await expect(dreamEther.solve(cursorId, contents)).to.emit(
+                dreamEther,
+                'SolutionProposed'
+              )
             },
 
             // OLD
