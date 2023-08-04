@@ -10,4 +10,9 @@ module.exports = {
     token: 'ETH',
     coinmarketcap: process.env.CMC,
   },
+  // networks: {
+  //   hardhat: {
+  //     allowUnlimitedContractSize: true,
+  //   },
+  // },
 }

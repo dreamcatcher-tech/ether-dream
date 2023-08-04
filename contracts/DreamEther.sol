@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
-
+import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
+import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
+import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
 import './Types.sol';
 import './IQA.sol';
 
@@ -15,30 +17,36 @@ interface IERC20 {
 /**
  * Convert assets into task completion, with quality oversight
  */
-contract DreamEther {
-  uint public changesCount = 0;
+
+contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
+  using Counters for Counters.Counter;
+  using EnumerableMap for EnumerableMap.AddressToUintMap;
+  using EnumerableMap for EnumerableMap.UintToUintMap;
+  using EnumerableSet for EnumerableSet.AddressSet;
+
+  Counters.Counter changeCounter;
   mapping(uint => Change) private changes;
-  // what amounts of all the tokens in this contract does each address hodl
-  // used for balanceOf() requests
-  mapping(address => TokenWallet) private balances;
 
-  // used to generate our own NFTs for every funding type
-  uint public nftCount = 2; // 0 is qa, 1 is solution
-  mapping(uint => Token) private tokenMap;
+  mapping(uint => address) public qaMap; // headerId => qa
 
-  mapping(uint => Funding) private fundingNfts;
+  Counters.Counter nftCounter;
+  mapping(uint => TaskNft) private taskNfts;
+  TaskNftsLut taskNftsLut; // changeId => assetId => nftId
 
-  mapping(uint => address) public qaMap; // headerHash => qa
+  Counters.Counter assetCounter;
+  mapping(uint => Asset) public assets; // saves storage space
+  AssetsLut assetsLut; // token => tokenId => assetId
 
   function proposePacket(bytes32 contents, address qa) public {
     require(isIpfs(contents), 'Invalid header');
     require(qa.code.length > 0, 'QA must be a contract');
-    uint headerId = ++changesCount;
+    changeCounter.increment();
+    uint headerId = changeCounter.current();
     Change storage header = changes[headerId];
-    require(header.timestamp == 0, 'Header already exists');
+    require(header.createdAt == 0, 'Header already exists');
 
     header.changeType = ChangeType.HEADER;
-    header.timestamp = block.timestamp;
+    header.createdAt = block.timestamp;
     header.contents = contents;
 
     require(qaMap[headerId] == address(0), 'QA exists');
@@ -49,14 +57,18 @@ contract DreamEther {
   function fund(uint id, Payment[] calldata payments) public payable {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
     Change storage change = changes[id];
-    require(change.timestamp != 0, 'Transition does not exist');
+    require(change.createdAt != 0, 'Transition does not exist');
     require(change.disputeWindowStart == 0, 'Dispute period started');
 
-    Wallet storage funds = change.funds;
-    Wallet storage shares = change.fundingShares[msg.sender];
+    change.fundingShares.holders.add(msg.sender);
+    EnumerableMap.UintToUintMap storage funds = change.funds;
+    EnumerableMap.UintToUintMap storage shares = change.fundingShares.balances[
+      msg.sender
+    ];
     if (msg.value > 0) {
-      updateWallet(funds, ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
-      updateWallet(shares, ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
+      Payment memory eth = Payment(ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
+      updateNftHoldings(id, funds, eth);
+      updateNftHoldings(id, shares, eth);
     }
     for (uint i = 0; i < payments.length; i++) {
       Payment memory p = payments[i];
@@ -64,11 +76,11 @@ contract DreamEther {
       require(p.token != address(0), 'Token cannot be 0');
       IERC20 token = IERC20(p.token);
       require(token.transferFrom(msg.sender, address(this), p.amount));
-      updateWallet(funds, p.token, p.tokenId, p.amount);
-      updateWallet(shares, p.token, p.tokenId, p.amount);
+      updateNftHoldings(id, funds, p);
+      updateNftHoldings(id, shares, p);
       // TODO handle erc1155 token transfers
     }
-    delete change.defundWindowStart[msg.sender];
+    change.fundingShares.defundWindows.remove(msg.sender);
     emit FundedTransition(id, msg.sender);
   }
 
@@ -86,15 +98,18 @@ contract DreamEther {
 
   function defundStart(uint id) public {
     Change storage change = changes[id];
-    require(change.timestamp != 0, 'Transition does not exist');
-    require(change.defundWindowStart[msg.sender] == 0);
-    change.defundWindowStart[msg.sender] = block.timestamp;
+    require(change.createdAt != 0, 'Transition does not exist');
+    require(!change.fundingShares.defundWindows.contains(msg.sender));
+
+    change.fundingShares.defundWindows.set(msg.sender, block.timestamp);
   }
 
   function defund(uint id) public {
     Change storage change = changes[id];
-    require(change.timestamp != 0, 'Transition does not exist');
-    uint lockedTime = change.defundWindowStart[msg.sender];
+    require(change.createdAt != 0, 'Transition does not exist');
+    require(change.fundingShares.defundWindows.contains(msg.sender));
+
+    uint lockedTime = change.fundingShares.defundWindows.get(msg.sender);
     uint elapsedTime = block.timestamp - lockedTime;
     require(elapsedTime > DEFUND_WINDOW, 'Defund timeout not reached');
 
@@ -108,25 +123,24 @@ contract DreamEther {
     // TODO ensure not in the dispute period, which means no defunding
   }
 
-  function qaResolve(uint id, Share[] calldata shares) public {
+  function qaResolve(uint id, Share[] calldata shares) external {
     require(shares.length > 0, 'Must provide shares');
 
     Change storage c = qaStart(id);
+    require(c.contentShares.holders.length() == 0);
     uint total = 0;
     for (uint i = 0; i < shares.length; i++) {
       Share memory share = shares[i];
-      require(share.owner != address(0), 'Owner cannot be 0');
-      require(share.owner != msg.sender, 'Owner cannot be QA');
+      require(share.holder != address(0), 'Owner cannot be 0');
+      require(share.holder != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
-      require(c.solutionShares.shares[share.owner] == 0, 'Owner exists');
-      if (c.solutionShares.shares[share.owner] == 0) {
-        c.solutionShares.owners.push(share.owner);
-      }
-      c.solutionShares.shares[share.owner] = share.amount;
+      require(!c.contentShares.holders.contains(share.holder), 'Owner exists');
+
+      c.contentShares.holders.add(share.holder);
+      c.contentShares.balances[share.holder] = share.amount;
       total += share.amount;
     }
     require(total == SHARES_DECIMALS, 'Shares must sum to SHARES_DECIMALS');
-    c.solutionShares.total = total;
     emit QAResolved(id);
   }
 
@@ -140,7 +154,7 @@ contract DreamEther {
 
   function qaStart(uint id) internal returns (Change storage) {
     Change storage change = changes[id];
-    require(change.timestamp != 0, 'Transition does not exist');
+    require(change.createdAt != 0, 'Transition does not exist');
     require(change.disputeWindowStart == 0, 'Dispute period started');
     require(isQa(id), 'Must be transition QA');
 
@@ -162,16 +176,17 @@ contract DreamEther {
   function disputeRejection(uint id, bytes32 reason) public {
     require(isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
-    require(c.timestamp != 0, 'Transition does not exist');
+    require(c.createdAt != 0, 'Transition does not exist');
     require(c.rejectionReason != 0, 'Not a rejection');
     require(c.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime < DISPUTE_WINDOW, 'Dispute window closed');
 
-    uint disputelId = ++changesCount;
+    changeCounter.increment();
+    uint disputelId = changeCounter.current();
     Change storage dispute = changes[disputelId];
     dispute.changeType = ChangeType.DISPUTE;
-    dispute.timestamp = block.timestamp;
+    dispute.createdAt = block.timestamp;
     dispute.contents = reason;
     dispute.uplink = id;
 
@@ -192,11 +207,12 @@ contract DreamEther {
 
     if (c.changeType == ChangeType.HEADER) {
       require(c.downlinks.length == 0, 'Header already enacted');
-      uint packetId = ++changesCount;
+      changeCounter.increment();
+      uint packetId = changeCounter.current();
       Change storage packet = changes[packetId];
-      require(packet.timestamp == 0, 'Packet already exists');
+      require(packet.createdAt == 0, 'Packet already exists');
       packet.changeType = ChangeType.PACKET;
-      packet.timestamp = block.timestamp;
+      packet.createdAt = block.timestamp;
       packet.uplink = id;
       c.downlinks.push(packetId);
 
@@ -205,22 +221,20 @@ contract DreamEther {
       emit SolutionAccepted(id);
       // TODO handle concurrent solutions
       Change storage packet = changes[c.uplink];
-      require(packet.timestamp != 0, 'Packet does not exist');
+      require(packet.createdAt != 0, 'Packet does not exist');
       require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-      require(!c.solutionShares.isChanging, 'Solution error');
-      require(c.solutionShares.total == SHARES_DECIMALS, 'Solution error');
 
-      mergeShareTable(packet.solutionShares, c.solutionShares);
+      packet.contentShares.concurrency.increment();
+      mergeShareTable(packet.contentShares, c.contentShares);
 
       for (uint i = 0; i < packet.downlinks.length; i++) {
         uint solutionId = packet.downlinks[i];
         Change storage solution = changes[solutionId];
         if (isPossible(solution)) {
-          packet.solutionShares.isChanging = true;
           return; // this is not the final solution
         }
       }
-      packet.solutionShares.isChanging = false;
+      normalizeShares(packet.contentShares);
       emit PacketResolved(c.uplink);
     } else if (c.changeType == ChangeType.DISPUTE) {
       // TODO
@@ -234,14 +248,15 @@ contract DreamEther {
   function solve(uint packetId, bytes32 contents) public {
     Change storage packet = changes[packetId];
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-    require(packet.timestamp != 0, 'Packet does not exist');
+    require(packet.createdAt != 0, 'Packet does not exist');
 
-    uint solutionId = ++changesCount;
+    changeCounter.increment();
+    uint solutionId = changeCounter.current();
     Change storage solution = changes[solutionId];
-    require(solution.timestamp == 0, 'Solution exists');
+    require(solution.createdAt == 0, 'Solution exists');
 
     solution.changeType = ChangeType.SOLUTION;
-    solution.timestamp = block.timestamp;
+    solution.createdAt = block.timestamp;
     solution.contents = contents;
     solution.uplink = packetId;
     packet.downlinks.push(solutionId);
@@ -263,7 +278,7 @@ contract DreamEther {
     uint dependencies = ratios[2];
     require(solvers + funders + dependencies > 0);
     Change storage packet = changes[packetId];
-    require(packet.timestamp != 0, 'Packet does not exist');
+    require(packet.createdAt != 0, 'Packet does not exist');
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
     // TODO buffer the payments so Dreamcatcher can disperse
     // people can send in funds that get dispersed to the contributors
@@ -272,10 +287,15 @@ contract DreamEther {
   }
 
   function claim(uint id) public {
+    // you either take it all, or take nothing - no partial withdraws
+    // else we get portions of portions and solidity sucks for fractions
+    // if you haven't withdrawn it, then you can't transfer it ?
+    // TODO either claim or transfer freezes any actions for a period
+    // TODO block transfer during defund timeout
     // withdraw your entitlement based on the shares you have
     // TODO must freeze transfers for a period to prevent rug pulls
     // withdraws all the divisible tokens you have
-    // trading between solutionShares needs to occur before non divisible
+    // trading between contentShares needs to occur before non divisible
     // tokens can be withdrawn
     // will keep going until the block gas limit is reached
     // must track the withdrawls, in case something indivisible is stuck.
@@ -304,17 +324,38 @@ contract DreamEther {
     // claim any one they still have funds inside of
   }
 
-  function updateWallet(
-    Wallet storage wallet,
-    address token,
-    uint tokenId,
-    uint amount
+  function updateNftHoldings(
+    uint changeId,
+    EnumerableMap.UintToUintMap storage holdings,
+    Payment memory payment
   ) internal {
-    require(amount > 0, 'Amount cannot be 0');
-    if (wallet.tokenWallet[token].balances[tokenId] == 0) {
-      wallet.tokenWallet[token].tokenIds.push(tokenId);
+    require(payment.amount > 0, 'Amount cannot be 0');
+
+    uint assetId = assetsLut.lut[payment.token][payment.tokenId];
+    if (assetId == 0) {
+      assetCounter.increment();
+      assetId = assetCounter.current();
+      Asset storage asset = assets[assetId];
+      asset.tokenContract = payment.token;
+      asset.tokenId = payment.tokenId;
+      assetsLut.lut[payment.token][payment.tokenId] = assetId;
     }
-    wallet.tokenWallet[token].balances[tokenId] += amount;
+
+    uint nftId = taskNftsLut.lut[changeId][assetId];
+    if (nftId == 0) {
+      nftCounter.increment();
+      nftId = nftCounter.current();
+      TaskNft storage nft = taskNfts[nftId];
+      nft.changeId = changeId;
+      nft.assetId = assetId;
+      taskNftsLut.lut[changeId][assetId] = nftId;
+    }
+
+    uint balance = 0;
+    if (holdings.contains(nftId)) {
+      balance = holdings.get(nftId);
+    }
+    holdings.set(nftId, balance + payment.amount);
   }
 
   function isFinalSolution(uint solutionId) internal returns (bool) {
@@ -338,20 +379,30 @@ contract DreamEther {
   }
 
   function mergeShareTable(
-    ShareTable storage to,
-    ShareTable storage from
+    ContentShares storage into,
+    ContentShares storage from
   ) internal {
-    require(from.total == SHARES_DECIMALS, 'Must sum to SHARES_DECIMALS');
-    require(from.isChanging == false, 'Cannot merge changing table');
-    for (uint i = 0; i < from.owners.length; i++) {
-      address owner = from.owners[i];
-      uint amount = from.shares[owner];
-      if (to.shares[owner] == 0) {
-        to.owners.push(owner);
+    require(into.concurrency.current() > 0, 'into is not concurrent');
+    require(from.concurrency.current() == 0, 'From is not final');
+
+    uint holdersCount = from.holders.length();
+    for (uint i = 0; i < holdersCount; i++) {
+      address holder = from.holders.at(i);
+      if (!into.holders.contains(holder)) {
+        into.holders.add(holder);
       }
-      to.shares[owner] += amount;
+      into.balances[holder] += from.balances[holder];
     }
-    to.total += from.total;
+  }
+
+  function normalizeShares(ContentShares storage contentShares) internal {
+    // TODO normalize all shares to 1000 again
+    uint concurrency = contentShares.concurrency.current();
+    contentShares.concurrency.reset();
+
+    // loop thru all holders and divide by the concurrency
+    // if they have less than 1, then remove them
+    // select someone randomly to receive the remainder
   }
 
   function isIpfs(bytes32 ipfsHash) public pure returns (bool) {
@@ -378,7 +429,7 @@ contract DreamEther {
   function getIpfsCid(uint id) public view returns (string memory) {
     // TODO https://github.com/storyicon/base58-solidity
     Change storage c = changes[id];
-    return string(abi.encodePacked('todo', c.contents));
+    return string(abi.encodePacked('todo ', c.contents));
   }
 
   event ProposedPacket(uint headerId);
@@ -391,4 +442,69 @@ contract DreamEther {
   event PacketResolved(uint packetId);
   event SolutionDisputed(uint solutionHash);
   event HeaderDisputed(uint headerId);
+
+  // to notify opensea to halt trading
+  event Locked(uint256 tokenId);
+  event Unlocked(uint256 tokenId);
+  // or, if the number of events is high
+  event Staked(address indexed user, uint256[] tokenIds, uint256 stakeTime);
+  event Unstaked(address indexed user, uint256[] tokenIds);
+
+  function balanceOf(
+    address account,
+    uint256 id
+  ) public view returns (uint256) {}
+
+  function balanceOfBatch(
+    address[] calldata accounts,
+    uint256[] calldata ids
+  ) external view returns (uint256[] memory) {}
+
+  function setApprovalForAll(address operator, bool approved) external {}
+
+  function isApprovedForAll(
+    address account,
+    address operator
+  ) external view returns (bool) {}
+
+  function safeTransferFrom(
+    address from,
+    address to,
+    uint256 id,
+    uint256 amount,
+    bytes calldata data
+  ) external {}
+
+  function safeBatchTransferFrom(
+    address from,
+    address to,
+    uint256[] calldata ids,
+    uint256[] calldata amounts,
+    bytes calldata data
+  ) external {}
+
+  function supportsInterface(bytes4 interfaceId) external view returns (bool) {}
+
+  // ERC1155Supply extension
+  function totalSupply(uint256 id) public view virtual returns (uint256) {}
+
+  // IERC1155Receiver
+  function onERC1155Received(
+    address operator,
+    address from,
+    uint256 id,
+    uint256 value,
+    bytes calldata data
+  ) external returns (bytes4) {}
+
+  function onERC1155BatchReceived(
+    address operator,
+    address from,
+    uint256[] calldata ids,
+    uint256[] calldata values,
+    bytes calldata data
+  ) external returns (bytes4) {}
+
+  // IERC1155MetadataURI
+  function uri(uint256 id) external view returns (string memory) {}
 }

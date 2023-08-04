@@ -1,43 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 
+import '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
+import '@openzeppelin/contracts/utils/structs/EnumerableMap.sol';
+import '@openzeppelin/contracts/utils/Counters.sol';
+
 address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
 uint constant DISPUTE_WINDOW = 3 days;
 uint constant DEFUND_WINDOW = 7 days;
 uint constant SHARES_DECIMALS = 1000;
-
-struct Change {
-  ChangeType changeType;
-  uint timestamp;
-  bytes32 contents; // v1 CID hash component
-  bytes32 rejectionReason;
-  Wallet funds;
-  mapping(address => Wallet) fundingShares;
-  mapping(address => uint) defundWindowStart;
-  mapping(address => Wallet) withdrawals;
-  ShareTable solutionShares; // assigned by QA
-  uint disputeWindowStart;
-  uint uplink; //packets to headers, solutions to packets, appeals to metas
-  uint[] downlinks; // packets to solutions, metas to appeals
-}
-
-struct Payment {
-  address token;
-  uint tokenId;
-  uint amount;
-}
-
-enum NftType {
-  MetaFunding,
-  MetaSolution,
-  MetaQA,
-  PacketFunding,
-  PacketSolution,
-  PacketQA,
-  PacketBuying,
-  Correction
-}
 
 enum ChangeType {
   HEADER,
@@ -48,47 +20,58 @@ enum ChangeType {
   MERGE,
   DELETE
 }
-struct Share {
-  address owner;
-  uint amount;
+struct Change {
+  //
+  // info
+  ChangeType changeType;
+  uint createdAt;
+  bytes32 contents; // v1 CID hash component
+  bytes32 rejectionReason;
+  uint disputeWindowStart;
+  //
+  // shares
+  EnumerableMap.UintToUintMap funds; // nftId => amount
+  FundingShares fundingShares;
+  ContentShares contentShares; // assigned by QA
+  //
+  // links
+  uint uplink; //packets to headers, solutions to packets, appeals to metas
+  uint[] downlinks; // packets to solutions, metas to appeals
 }
-struct ShareTable {
-  address[] owners;
-  uint total;
-  mapping(address => uint) shares;
-  // in a packet with multiple solutions, we need to block claims until all
-  // possible solutions have been enacted.
-  bool isChanging;
+struct FundingShares {
+  EnumerableSet.AddressSet holders;
+  mapping(address => EnumerableMap.UintToUintMap) balances; // nftId => amount
+  EnumerableMap.AddressToUintMap defundWindows;
 }
 
-struct Wallet {
-  // wallet holds many tokens.  Each funder has one, as does the trans.
-  address[] tokens;
-  // token addresses => PerTokenWallet
-  mapping(address => TokenWallet) tokenWallet;
+struct ContentShares {
+  EnumerableSet.AddressSet holders;
+  mapping(address => uint) balances;
+  Counters.Counter concurrency; // multiple solutions are being enacted
+  mapping(address => EnumerableMap.UintToUintMap) claims; // nftId => amount
 }
-struct TokenWallet {
-  // TokenWallet is scoped to a token address
-  uint[] tokenIds;
-  // token ids => amount
-  mapping(uint => uint) balances;
+struct Share {
+  address holder;
+  uint amount;
 }
-struct Token {
-  address tokenAddress;
+struct Payment {
+  address token;
+  uint tokenId;
+  uint amount;
+}
+struct TaskNft {
+  uint changeId;
+  uint assetId;
+}
+struct TaskNftsLut {
+  // changeId => assetId => nftId
+  mapping(uint => mapping(uint => uint)) lut;
+}
+struct Asset {
+  address tokenContract;
   uint tokenId;
 }
-struct Funding {
-  uint changeId;
-  uint tokenMapId;
-  uint amount;
+struct AssetsLut {
+  // token => tokenId => assetId
+  mapping(address => mapping(uint => uint)) lut;
 }
-// each funding share is of the form:
-// address > token address > token id > amount
-// so each time funding occurs, we need to make a new NFT listing
-// wallets can be compacted into this central LUT
-// basically our own NFT representation of all external tokens
-
-// but then we need a mapping for each packet scoped version of the token
-// so we have our nft id, and this points to a packet and a tokenMap id
-// from the tokenmap we get the address and tokenId of that token
-// from the packet we get the amount that was funded
