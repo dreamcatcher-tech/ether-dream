@@ -6,6 +6,8 @@ import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol
 import './Types.sol';
 import './IQA.sol';
 import './IDreamcatcher.sol';
+import './LibraryUtils.sol';
+import './LibraryQA.sol';
 
 interface IERC20 {
   function transferFrom(
@@ -43,8 +45,10 @@ contract DreamEther is
   mapping(uint => Asset) public assets; // saves storage space
   AssetsLut assetsLut; // token => tokenId => assetId
 
+  mapping(address => EnumerableMap.UintToUintMap) private exits;
+
   function proposePacket(bytes32 contents, address qa) external {
-    require(isIpfs(contents), 'Invalid header');
+    require(Utils.isIpfs(contents), 'Invalid header');
     require(qa.code.length > 0, 'QA must be a contract');
     changeCounter.increment();
     uint headerId = changeCounter.current();
@@ -150,7 +154,7 @@ contract DreamEther is
     for (uint i = 0; i < withdrawals.length; i++) {
       Payment memory p = withdrawals[i];
       // TODO handle ERC20
-      if (isEther(p)) {
+      if (Utils.isEther(p)) {
         payable(msg.sender).transfer(p.amount);
       } else {
         IERC1155 token = IERC1155(p.token);
@@ -172,28 +176,14 @@ contract DreamEther is
   }
 
   function qaResolve(uint id, Share[] calldata shares) external {
-    require(shares.length > 0, 'Must provide shares');
-
-    Change storage c = qaStart(id);
-    require(c.contentShares.holders.length() == 0);
-    uint total = 0;
-    for (uint i = 0; i < shares.length; i++) {
-      Share memory share = shares[i];
-      require(share.holder != address(0), 'Owner cannot be 0');
-      require(share.holder != msg.sender, 'Owner cannot be QA');
-      require(share.amount > 0, 'Amount cannot be 0');
-      require(!c.contentShares.holders.contains(share.holder), 'Owner exists');
-
-      c.contentShares.holders.add(share.holder);
-      c.contentShares.balances[share.holder] = share.amount;
-      total += share.amount;
-    }
-    require(total == SHARES_DECIMALS, 'Shares must sum to SHARES_DECIMALS');
+    require(isQa(id), 'Must be transition QA');
+    Change storage change = changes[id];
+    LibraryQA.qaResolve(change, shares);
     emit QAResolved(id);
   }
 
   function qaReject(uint id, bytes32 reason) public {
-    require(isIpfs(reason), 'Invalid rejection hash');
+    require(Utils.isIpfs(reason), 'Invalid rejection hash');
 
     Change storage c = qaStart(id);
     c.rejectionReason = reason;
@@ -222,7 +212,7 @@ contract DreamEther is
   }
 
   function disputeRejection(uint id, bytes32 reason) external {
-    require(isIpfs(reason), 'Invalid reason hash');
+    require(Utils.isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
     require(c.createdAt != 0, 'Transition does not exist');
     require(c.rejectionReason != 0, 'Not a rejection');
@@ -431,6 +421,26 @@ contract DreamEther is
     // claim any one they still have funds inside of
   }
 
+  function exit(uint index) external {}
+
+  function exitAll() external {}
+
+  function exitList() external view returns (Payment[] memory) {
+    EnumerableMap.UintToUintMap storage balances = exits[msg.sender];
+    uint[] memory assetIds = balances.keys();
+    Payment[] memory payments = new Payment[](assetIds.length);
+    for (uint i = 0; i < assetIds.length; i++) {
+      uint assetId = assetIds[i];
+      Asset memory asset = assets[assetId];
+      payments[i] = Payment(
+        asset.tokenContract,
+        asset.tokenId,
+        balances.get(assetId)
+      );
+    }
+    return payments;
+  }
+
   function updateNftHoldings(
     uint changeId,
     EnumerableMap.UintToUintMap storage holdings,
@@ -512,10 +522,6 @@ contract DreamEther is
     // select someone randomly to receive the remainder
   }
 
-  function isIpfs(bytes32 ipfsHash) internal pure returns (bool) {
-    return true;
-  }
-
   function isQa(uint id) internal view returns (bool) {
     Change storage change = changes[id];
     if (change.changeType == ChangeType.HEADER) {
@@ -531,10 +537,6 @@ contract DreamEther is
       return isQa(change.uplink);
     }
     revert('Invalid change');
-  }
-
-  function isEther(Payment memory p) internal pure returns (bool) {
-    return p.token == ETH_ADDRESS && p.tokenId == ETH_TOKEN_ID;
   }
 
   function getIpfsCid(uint id) external view returns (string memory) {

@@ -219,7 +219,12 @@ describe('model based tests', () => {
     // Contracts are deployed using the first signer/account by default
     const [owner, qaAddress] = await ethers.getSigners()
 
-    const DreamEther = await ethers.getContractFactory('DreamEther')
+    const LibraryQA = await ethers.getContractFactory('LibraryQA')
+    const libraryQA = await LibraryQA.deploy()
+
+    const DreamEther = await ethers.getContractFactory('DreamEther', {
+      libraries: { LibraryQA: libraryQA.target },
+    })
     const dreamEther = await DreamEther.deploy()
 
     const QA = await ethers.getContractFactory('QA')
