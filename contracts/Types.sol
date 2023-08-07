@@ -17,8 +17,7 @@ enum ChangeType {
   SOLUTION,
   DISPUTE,
   EDIT,
-  MERGE,
-  DELETE
+  MERGE
 }
 struct Change {
   //
@@ -41,7 +40,7 @@ struct Change {
 struct FundingShares {
   EnumerableSet.AddressSet holders;
   mapping(address => EnumerableMap.UintToUintMap) balances; // nftId => amount
-  EnumerableMap.AddressToUintMap defundWindows;
+  mapping(address => uint) defundWindows;
 }
 
 struct ContentShares {

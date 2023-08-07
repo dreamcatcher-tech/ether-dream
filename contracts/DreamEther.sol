@@ -5,6 +5,7 @@ import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
 import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
 import './Types.sol';
 import './IQA.sol';
+import './IDreamcatcher.sol';
 
 interface IERC20 {
   function transferFrom(
@@ -18,7 +19,12 @@ interface IERC20 {
  * Convert assets into task completion, with quality oversight
  */
 
-contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
+contract DreamEther is
+  IERC1155,
+  IERC1155Receiver,
+  IERC1155MetadataURI,
+  IDreamcatcher
+{
   using Counters for Counters.Counter;
   using EnumerableMap for EnumerableMap.AddressToUintMap;
   using EnumerableMap for EnumerableMap.UintToUintMap;
@@ -30,14 +36,14 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   mapping(uint => address) public qaMap; // headerId => qa
 
   Counters.Counter nftCounter;
-  mapping(uint => TaskNft) private taskNfts;
+  mapping(uint => TaskNft) public taskNfts;
   TaskNftsLut taskNftsLut; // changeId => assetId => nftId
 
   Counters.Counter assetCounter;
   mapping(uint => Asset) public assets; // saves storage space
   AssetsLut assetsLut; // token => tokenId => assetId
 
-  function proposePacket(bytes32 contents, address qa) public {
+  function proposePacket(bytes32 contents, address qa) external {
     require(isIpfs(contents), 'Invalid header');
     require(qa.code.length > 0, 'QA must be a contract');
     changeCounter.increment();
@@ -54,7 +60,7 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     emit ProposedPacket(headerId);
   }
 
-  function fund(uint id, Payment[] calldata payments) public payable {
+  function fund(uint id, Payment[] calldata payments) external payable {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
     Change storage change = changes[id];
     require(change.createdAt != 0, 'Transition does not exist');
@@ -73,18 +79,17 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     for (uint i = 0; i < payments.length; i++) {
       Payment memory p = payments[i];
       require(p.amount > 0, 'Amount cannot be 0');
-      require(p.token != address(0), 'Token cannot be 0');
+      require(p.token != address(0), 'Token address invalid');
       IERC20 token = IERC20(p.token);
       require(token.transferFrom(msg.sender, address(this), p.amount));
       updateNftHoldings(id, funds, p);
       updateNftHoldings(id, shares, p);
-      // TODO handle erc1155 token transfers
     }
-    change.fundingShares.defundWindows.remove(msg.sender);
+    delete change.fundingShares.defundWindows[msg.sender];
     emit FundedTransition(id, msg.sender);
   }
 
-  function listTransition(uint transitionHash) public {
+  function listChange(uint id) public {
     // by default, proposed packets are not listed on opensea
     // but this function allows them to be, it just costs
     // more gas plus some min qa payment to prevent spam
@@ -92,32 +97,75 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     // they always relate to a packetId
 
     // call the QA contract and get it to list
-    IQA qa = IQA(qaMap[transitionHash]);
-    require(qa.publishTransition(transitionHash));
+    IQA qa = IQA(qaMap[id]);
+    require(qa.publishTransition(id));
   }
 
-  function defundStart(uint id) public {
+  function defundStart(uint id) external {
     Change storage change = changes[id];
     require(change.createdAt != 0, 'Transition does not exist');
-    require(!change.fundingShares.defundWindows.contains(msg.sender));
+    require(change.fundingShares.defundWindows[msg.sender] == 0);
 
-    change.fundingShares.defundWindows.set(msg.sender, block.timestamp);
+    change.fundingShares.defundWindows[msg.sender] = block.timestamp;
   }
 
   function defund(uint id) public {
     Change storage change = changes[id];
+    FundingShares storage shares = change.fundingShares;
     require(change.createdAt != 0, 'Transition does not exist');
-    require(change.fundingShares.defundWindows.contains(msg.sender));
+    require(shares.defundWindows[msg.sender] != 0);
 
-    uint lockedTime = change.fundingShares.defundWindows.get(msg.sender);
+    uint lockedTime = shares.defundWindows[msg.sender];
     uint elapsedTime = block.timestamp - lockedTime;
     require(elapsedTime > DEFUND_WINDOW, 'Defund timeout not reached');
 
-    // process the unfunding
-    // notify the QA
-    // uint headerHash = _findHeaderHash(id);
-    // IQA qa = IQA(qaMap[headerHash]);
-    // qa.defunded(id); // QA contract may delist from opensea
+    EnumerableMap.UintToUintMap storage holdings = shares.balances[msg.sender];
+    uint[] memory nftIds = holdings.keys(); // nftId => amount
+    Payment[] memory withdrawals;
+    uint wid = 0;
+    for (uint i = 0; i < nftIds.length; i++) {
+      uint nftId = nftIds[i];
+      uint amount = holdings.get(nftId);
+      // TODO emit burn event
+      holdings.remove(nftId);
+      uint total = change.funds.get(nftId);
+      uint newTotal = total - amount;
+      if (newTotal == 0) {
+        change.funds.remove(nftId);
+      } else {
+        change.funds.set(nftId, newTotal);
+      }
+      TaskNft memory nft = taskNfts[nftId];
+      Asset memory asset = assets[nft.assetId];
+      withdrawals[wid++] = Payment(asset.tokenContract, asset.tokenId, amount);
+    }
+
+    delete shares.defundWindows[msg.sender];
+    delete shares.balances[msg.sender];
+    shares.holders.remove(msg.sender);
+
+    // TODO handle misbehaving contracts that might take all your gas
+    // possibly move to a holding area and allow withdrawal later of
+    // specific assets, letting you pool your balance
+    for (uint i = 0; i < withdrawals.length; i++) {
+      Payment memory p = withdrawals[i];
+      // TODO handle ERC20
+      if (isEther(p)) {
+        payable(msg.sender).transfer(p.amount);
+      } else {
+        IERC1155 token = IERC1155(p.token);
+        try
+          token.safeTransferFrom(
+            address(this),
+            msg.sender,
+            p.tokenId,
+            p.amount,
+            ''
+          )
+        {} catch {}
+      }
+    }
+
     // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so
     // TODO ensure not in the dispute period, which means no defunding
@@ -162,18 +210,18 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     return change;
   }
 
-  function disputeShares(uint id, bytes32 reason, Share[] calldata s) public {
+  function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
     // used if the resolve is fine, but the shares are off.
     // passing this change will modify the shares split
     // and resolve the disputed change allowing finalization
   }
 
-  function disputeResolve(uint id, bytes32 reason) public {
+  function disputeResolve(uint id, bytes32 reason) external {
     // the resolve should have been a rejection
     // will halt the transition, return the qa funds, and await
   }
 
-  function disputeRejection(uint id, bytes32 reason) public {
+  function disputeRejection(uint id, bytes32 reason) external {
     require(isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
     require(c.createdAt != 0, 'Transition does not exist');
@@ -181,24 +229,21 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     require(c.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime < DISPUTE_WINDOW, 'Dispute window closed');
+    require(c.changeType != ChangeType.PACKET, 'Cannot dispute packets');
+    require(c.changeType != ChangeType.DISPUTE, 'Cannot dispute disputes');
 
     changeCounter.increment();
-    uint disputelId = changeCounter.current();
-    Change storage dispute = changes[disputelId];
+    uint disputeId = changeCounter.current();
+    Change storage dispute = changes[disputeId];
     dispute.changeType = ChangeType.DISPUTE;
     dispute.createdAt = block.timestamp;
     dispute.contents = reason;
     dispute.uplink = id;
 
-    if (c.changeType == ChangeType.HEADER) {
-      emit HeaderDisputed(disputelId);
-    }
-    if (c.changeType == ChangeType.SOLUTION) {
-      emit SolutionDisputed(id);
-    }
+    emit ChangeDisputed(disputeId);
   }
 
-  function enact(uint id) public {
+  function enact(uint id) external {
     Change storage c = changes[id];
     require(c.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
@@ -219,7 +264,6 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
       emit PacketCreated(packetId);
     } else if (c.changeType == ChangeType.SOLUTION) {
       emit SolutionAccepted(id);
-      // TODO handle concurrent solutions
       Change storage packet = changes[c.uplink];
       require(packet.createdAt != 0, 'Packet does not exist');
       require(packet.changeType == ChangeType.PACKET, 'Not a packet');
@@ -227,25 +271,38 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
       packet.contentShares.concurrency.increment();
       mergeShareTable(packet.contentShares, c.contentShares);
 
-      for (uint i = 0; i < packet.downlinks.length; i++) {
-        uint solutionId = packet.downlinks[i];
-        Change storage solution = changes[solutionId];
-        if (isPossible(solution)) {
-          return; // this is not the final solution
-        }
-      }
-      normalizeShares(packet.contentShares);
-      emit PacketResolved(c.uplink);
+      enactPacket(c.uplink);
     } else if (c.changeType == ChangeType.DISPUTE) {
       // TODO
     } else if (c.changeType == ChangeType.EDIT) {
       // TODO
+    } else if (c.changeType == ChangeType.MERGE) {
+      // TODO
     } else {
-      revert('Invalid transition type');
+      if (c.changeType != ChangeType.PACKET) {
+        revert('Invalid transition type');
+      }
     }
   }
 
-  function solve(uint packetId, bytes32 contents) public {
+  function enactPacket(uint packetId) public {
+    // may be called externally if a packet gets stuck due to isPossible()
+    // TODO remove this function and make it automatic
+    Change storage packet = changes[packetId];
+    require(packet.createdAt != 0, 'Packet does not exist');
+    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
+    for (uint i = 0; i < packet.downlinks.length; i++) {
+      uint solutionId = packet.downlinks[i];
+      Change storage solution = changes[solutionId];
+      if (isPossible(solution)) {
+        return; // this is not the final solution
+      }
+    }
+    normalizeShares(packet.contentShares);
+    emit PacketResolved(packetId);
+  }
+
+  function solve(uint packetId, bytes32 contents) external {
     Change storage packet = changes[packetId];
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
     require(packet.createdAt != 0, 'Packet does not exist');
@@ -263,15 +320,15 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     emit SolutionProposed(solutionId);
   }
 
-  function merge(uint fromId, uint toId, bytes32 reasons) public {
+  function merge(uint fromId, uint toId, bytes32 reasons) external {
     // merge the change of fromId to the change of toId for the given reasons
   }
 
-  function edit(uint id, bytes32 contents, bytes32 reasons) public {
+  function edit(uint id, bytes32 contents, bytes32 reasons) external {
     // edit the given id with the new contents for the given reasons
   }
 
-  function consume(uint packetId, uint[] calldata ratios) public payable {
+  function consume(uint packetId, uint[] calldata ratios) external payable {
     require(ratios.length == 3);
     uint solvers = ratios[0];
     uint funders = ratios[1];
@@ -287,22 +344,72 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   }
 
   function claim(uint id) public {
-    // you either take it all, or take nothing - no partial withdraws
-    // else we get portions of portions and solidity sucks for fractions
-    // if you haven't withdrawn it, then you can't transfer it ?
-    // TODO either claim or transfer freezes any actions for a period
-    // TODO block transfer during defund timeout
-    // withdraw your entitlement based on the shares you have
-    // TODO must freeze transfers for a period to prevent rug pulls
-    // withdraws all the divisible tokens you have
-    // trading between contentShares needs to occur before non divisible
-    // tokens can be withdrawn
-    // will keep going until the block gas limit is reached
-    // must track the withdrawls, in case something indivisible is stuck.
-    //
+    Change storage c = changes[id];
+    require(c.createdAt != 0, 'Transition does not exist');
+    require(c.disputeWindowStart > 0, 'Not passed by QA');
+    uint elapsedTime = block.timestamp - c.disputeWindowStart;
+    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    if (c.changeType == ChangeType.PACKET) {
+      require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
+      require(c.contentShares.concurrency.current() == 0, 'Not normalized');
+    } else {
+      require(isQa(id), 'Must be transition QA');
+    }
+
+    uint[] memory nftIds = c.funds.keys();
+    for (uint i = 0; i < nftIds.length; i++) {
+      uint nftId = nftIds[i];
+      uint total = c.funds.get(nftId);
+      TaskNft memory nft = taskNfts[nftId];
+      require(nft.changeId == id, 'NFT not for this transition');
+      Asset memory asset = assets[nft.assetId];
+      uint withdrawable = 0;
+      uint claimableAmount = 0;
+
+      if (c.changeType == ChangeType.PACKET) {
+        uint share = c.contentShares.balances[msg.sender];
+        require(share > 0, 'No share');
+        claimableAmount = (total * share) / SHARES_DECIMALS;
+        uint claimed = 0;
+        if (c.contentShares.claims[msg.sender].contains(nftId)) {
+          claimed = c.contentShares.claims[msg.sender].get(nftId);
+        }
+        if (claimableAmount > claimed) {
+          withdrawable = claimableAmount - claimed;
+        }
+      } else {
+        // QA is claiming, so hand it all over
+        withdrawable = total;
+      }
+      if (withdrawable == 0) {
+        continue;
+      }
+
+      // TODO handle ERC20 and Ether
+      IERC1155 token = IERC1155(asset.tokenContract);
+      try
+        token.safeTransferFrom(
+          address(this),
+          msg.sender,
+          asset.tokenId,
+          withdrawable,
+          ''
+        )
+      {
+        if ((total - withdrawable) == 0) {
+          c.funds.remove(nftId);
+        } else {
+          c.funds.set(nftId, total - withdrawable);
+        }
+        if (claimableAmount > 0) {
+          c.contentShares.claims[msg.sender].set(nftId, claimableAmount);
+        }
+      } catch {}
+      // TODO check the gas before starting again
+    }
   }
 
-  function claimBatch(uint[] calldata ids) public {
+  function claimBatch(uint[] calldata ids) external {
     uint opCost = 0;
     for (uint i = 0; i < ids.length; i++) {
       uint id = ids[i];
@@ -318,7 +425,7 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     }
   }
 
-  function claimAll() public {
+  function claimAll() external {
     // get the address of the caller
     // work our way thru a list of all tokens they hold
     // claim any one they still have funds inside of
@@ -405,7 +512,7 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     // select someone randomly to receive the remainder
   }
 
-  function isIpfs(bytes32 ipfsHash) public pure returns (bool) {
+  function isIpfs(bytes32 ipfsHash) internal pure returns (bool) {
     return true;
   }
 
@@ -426,7 +533,11 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     revert('Invalid change');
   }
 
-  function getIpfsCid(uint id) public view returns (string memory) {
+  function isEther(Payment memory p) internal pure returns (bool) {
+    return p.token == ETH_ADDRESS && p.tokenId == ETH_TOKEN_ID;
+  }
+
+  function getIpfsCid(uint id) external view returns (string memory) {
     // TODO https://github.com/storyicon/base58-solidity
     Change storage c = changes[id];
     return string(abi.encodePacked('todo ', c.contents));
@@ -440,8 +551,7 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   event PacketCreated(uint packetId);
   event SolutionProposed(uint solutionId);
   event PacketResolved(uint packetId);
-  event SolutionDisputed(uint solutionHash);
-  event HeaderDisputed(uint headerId);
+  event ChangeDisputed(uint disputeId);
 
   // to notify opensea to halt trading
   event Locked(uint256 tokenId);
@@ -453,7 +563,7 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   function balanceOf(
     address account,
     uint256 id
-  ) public view returns (uint256) {}
+  ) external view returns (uint256) {}
 
   function balanceOfBatch(
     address[] calldata accounts,
@@ -473,7 +583,10 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
     uint256 id,
     uint256 amount,
     bytes calldata data
-  ) external {}
+  ) external {
+    // if you haven't withdrawn it, then you can't transfer it
+    // TODO transfer resets the defund window
+  }
 
   function safeBatchTransferFrom(
     address from,
@@ -486,7 +599,7 @@ contract DreamEther is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   function supportsInterface(bytes4 interfaceId) external view returns (bool) {}
 
   // ERC1155Supply extension
-  function totalSupply(uint256 id) public view virtual returns (uint256) {}
+  function totalSupply(uint256 id) public view returns (uint256) {}
 
   // IERC1155Receiver
   function onERC1155Received(
