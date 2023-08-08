@@ -6,6 +6,12 @@ import './IDreamcatcher.sol';
 import './IQA.sol';
 
 contract QA is IQA {
+  IDreamcatcher dreamcatcher;
+
+  constructor(address _dreamcatcher) {
+    dreamcatcher = IDreamcatcher(_dreamcatcher);
+  }
+
   function isJudgeable(uint id) external pure returns (bool) {
     // TODO - check funding
     return true;
@@ -16,20 +22,27 @@ contract QA is IQA {
     return true;
   }
 
-  function passQA(uint id, address dreamcatcher) external {
+  function passQA(uint id) external {
     IDreamcatcher dc = IDreamcatcher(dreamcatcher);
     Share[] memory shares = new Share[](1);
     shares[0] = Share(msg.sender, 1000);
     dc.qaResolve(id, shares);
   }
 
-  function failQA(uint id, bytes32 reason, address dc) external {
-    IDreamcatcher dreamcatcher = IDreamcatcher(dc);
+  function failQA(uint id, bytes32 reason) external {
     dreamcatcher.qaReject(id, reason);
   }
 
   function getUri(uint id) external view override returns (string memory) {
     // TODO
     return 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  }
+
+  function disputeDismissed(uint id, bytes32 reason) external {
+    dreamcatcher.disputeDismissed(id, reason);
+  }
+
+  function disputeUpheld(uint id) external {
+    dreamcatcher.disputeUpheld(id);
   }
 }

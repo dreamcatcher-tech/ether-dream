@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
+
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
 import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
@@ -47,6 +48,8 @@ contract DreamEther is
 
   mapping(address => EnumerableMap.UintToUintMap) private exits;
 
+  mapping(address => mapping(address => bool)) private approvals;
+
   function proposePacket(bytes32 contents, address qa) external {
     require(Utils.isIpfs(contents), 'Invalid header');
     require(qa.code.length > 0, 'QA must be a contract');
@@ -84,9 +87,24 @@ contract DreamEther is
       Payment memory p = payments[i];
       require(p.amount > 0, 'Amount cannot be 0');
       require(p.token != address(0), 'Token address invalid');
-      IERC20 token = IERC20(p.token);
-      require(token.transferFrom(msg.sender, address(this), p.amount));
-      // TODO handle erc1155
+      if (p.tokenId == 0) {
+        // TODO handle erc1155 with a tokenId of zero
+        IERC20 token = IERC20(p.token);
+        require(token.transferFrom(msg.sender, address(this), p.amount));
+      } else {
+        IERC1155 token = IERC1155(p.token);
+        try
+          token.safeTransferFrom(
+            msg.sender,
+            address(this),
+            p.tokenId,
+            p.amount,
+            ''
+          )
+        {} catch {
+          revert('Transfer failed');
+        }
+      }
       updateNftHoldings(id, funds, p);
       updateNftHoldings(id, shares, p);
     }
@@ -112,6 +130,14 @@ contract DreamEther is
     require(change.fundingShares.defundWindows[msg.sender] == 0);
 
     change.fundingShares.defundWindows[msg.sender] = block.timestamp;
+  }
+
+  function defundStop(uint id) external {
+    Change storage change = changes[id];
+    require(change.createdAt != 0, 'Change does not exist');
+    require(change.fundingShares.defundWindows[msg.sender] != 0);
+
+    delete change.fundingShares.defundWindows[msg.sender];
   }
 
   function defund(uint id) public {
@@ -217,14 +243,26 @@ contract DreamEther is
     return disputeId;
   }
 
-  function endDisputeDismiss(uint id) external {
-    // the QA contract is responsible for handling its escalation processes
-    // the dispute settlement is final
+  function disputeDismissed(uint id, bytes32 reason) external {
+    require(isQa(id));
+    require(Utils.isIpfs(reason), 'Invalid reason hash');
+    Change storage dispute = changes[id];
+    require(dispute.createdAt != 0, 'Change does not exist');
+    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
+
+    dispute.rejectionReason = reason;
+    emit DisputeDismissed(id);
   }
 
-  function endDisputeUphold(uint id) external {
-    // the QA contract is responsible for handling its escalation processes
-    // the dispute settlement is final
+  function disputeUpheld(uint id) external {
+    require(isQa(id));
+    Change storage dispute = changes[id];
+    require(dispute.createdAt != 0, 'Change does not exist');
+    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
+
+    // TODO
+
+    emit DisputeUpheld(id);
   }
 
   function enact(uint id) external {
@@ -349,6 +387,10 @@ contract DreamEther is
     // people can send in funds that get dispersed to the contributors
     // can send in any erc20 or erc1155 that can be dispersed
     // this is the foundational training set we need
+  }
+
+  function isClaimable(uint id) public {
+    // tests if a given change has any claimable funds for the sender
   }
 
   function claim(uint id) public {
@@ -569,6 +611,8 @@ contract DreamEther is
   event SolutionProposed(uint solutionId);
   event PacketResolved(uint packetId);
   event ChangeDisputed(uint disputeId);
+  event DisputeDismissed(uint disputeId);
+  event DisputeUpheld(uint disputeId);
 
   // to notify opensea to halt trading
   event Locked(uint256 tokenId);
@@ -577,22 +621,44 @@ contract DreamEther is
   event Staked(address indexed user, uint256[] tokenIds, uint256 stakeTime);
   event Unstaked(address indexed user, uint256[] tokenIds);
 
-  function balanceOf(
-    address account,
-    uint256 id
-  ) external view returns (uint256) {}
+  function balanceOf(address account, uint256 id) public view returns (uint) {
+    TaskNft memory nft = taskNfts[id];
+    Change storage change = changes[nft.changeId];
+    if (change.funds.contains(id)) {
+      if (change.fundingShares.holders.contains(account)) {
+        return change.fundingShares.balances[account].get(id);
+      }
+      return 0;
+    } else if (change.contentShares.holders.contains(account)) {
+      // TODO handle id being part of an open share dispute
+      return change.contentShares.balances[account];
+    }
+    return 0;
+  }
 
   function balanceOfBatch(
     address[] calldata accounts,
     uint256[] calldata ids
-  ) external view returns (uint256[] memory) {}
+  ) external view returns (uint256[] memory) {
+    uint[] memory balances = new uint[](ids.length);
+    for (uint i = 0; i < ids.length; i++) {
+      balances[i] = balanceOf(accounts[i], ids[i]);
+    }
+    return balances;
+  }
 
-  function setApprovalForAll(address operator, bool approved) external {}
+  function setApprovalForAll(address operator, bool approved) external {
+    require(msg.sender != operator, 'Setting approval status for self');
+    approvals[msg.sender][operator] = approved;
+    emit ApprovalForAll(msg.sender, operator, approved);
+  }
 
   function isApprovedForAll(
     address account,
     address operator
-  ) external view returns (bool) {}
+  ) external view returns (bool) {
+    return approvals[account][operator];
+  }
 
   function safeTransferFrom(
     address from,
@@ -601,8 +667,46 @@ contract DreamEther is
     uint256 amount,
     bytes calldata data
   ) external {
-    // if you haven't withdrawn it, then you can't transfer it
-    // TODO transfer resets the defund window
+    // TODO if you haven't withdrawn it, then you can't transfer it
+
+    TaskNft memory nft = taskNfts[id];
+    Change storage change = changes[nft.changeId];
+    if (change.funds.contains(id)) {
+      require(change.fundingShares.holders.contains(from));
+      require(change.fundingShares.defundWindows[to] == 0, 'to is defunding');
+
+      uint fromBalance = change.fundingShares.balances[from].get(id);
+      require(fromBalance >= amount, 'Insufficient funds');
+      uint fromRemaining = fromBalance - amount;
+      if (fromRemaining == 0) {
+        change.fundingShares.balances[from].remove(id);
+        change.fundingShares.holders.remove(from);
+        delete change.fundingShares.defundWindows[from];
+      } else {
+        change.fundingShares.balances[from].set(id, fromRemaining);
+      }
+
+      // TODO check if to is a contract and call onERC1155Received
+      if (!change.fundingShares.holders.contains(to)) {
+        change.fundingShares.holders.add(to);
+      }
+      uint toBalance = change.fundingShares.balances[to].get(id);
+      change.fundingShares.balances[to].set(id, toBalance + amount);
+    } else if (change.contentShares.holders.contains(from)) {
+      // TODO handle id being part of an open share dispute
+      require(change.contentShares.concurrency.current() == 0, 'Unnormalized');
+      uint fromBalance = change.contentShares.balances[from];
+      require(fromBalance >= amount, 'Insufficient funds');
+      uint fromRemaining = fromBalance - amount;
+      // move the claims over too
+      if (fromRemaining == 0) {
+        change.contentShares.holders.remove(from);
+        delete change.contentShares.balances[from];
+        delete change.contentShares.claims[from];
+      } else {
+        change.contentShares.balances[from] = fromRemaining;
+      }
+    }
   }
 
   function safeBatchTransferFrom(

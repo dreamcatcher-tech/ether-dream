@@ -228,7 +228,7 @@ describe('model based tests', () => {
     const dreamEther = await DreamEther.deploy()
 
     const QA = await ethers.getContractFactory('QA')
-    const qa = await QA.deploy()
+    const qa = await QA.deploy(dreamEther.target)
 
     const Dai = await ethers.getContractFactory('MockDai')
     const dai = await Dai.deploy()
@@ -290,7 +290,7 @@ describe('model based tests', () => {
               const { dreamEther, qa } = fixture
               const { type } = context.transitions.get(cursorId)
               debug('qa resolving', type, cursorId)
-              await expect(qa.passQA(cursorId, dreamEther.target))
+              await expect(qa.passQA(cursorId))
                 .to.emit(dreamEther, 'QAResolved')
                 .withArgs(cursorId)
             },

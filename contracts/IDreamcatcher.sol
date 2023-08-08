@@ -10,6 +10,8 @@ interface IDreamcatcher {
 
   function defundStart(uint id) external;
 
+  function defundStop(uint id) external;
+
   function defund(uint id) external;
 
   function qaResolve(uint id, Share[] calldata shares) external;
@@ -21,6 +23,10 @@ interface IDreamcatcher {
   function disputeResolve(uint id, bytes32 reason) external;
 
   function disputeRejection(uint id, bytes32 reason) external;
+
+  function disputeDismissed(uint id, bytes32 reason) external;
+
+  function disputeUpheld(uint id) external;
 
   function enact(uint id) external;
 
