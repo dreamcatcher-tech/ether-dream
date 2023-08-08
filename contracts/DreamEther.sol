@@ -166,7 +166,11 @@ contract DreamEther is
         change.funds.set(nftId, newTotal);
       }
       TaskNft memory nft = taskNfts[nftId];
-      debts.set(nft.assetId, debts.get(nft.assetId) + amount);
+      uint debt = 0;
+      if (debts.contains(nft.assetId)) {
+        debt = debts.get(nft.assetId);
+      }
+      debts.set(nft.assetId, debt + amount);
     }
 
     delete shares.defundWindows[msg.sender];
@@ -407,41 +411,47 @@ contract DreamEther is
     }
 
     uint[] memory nftIds = c.funds.keys();
-    EnumerableMap.UintToUintMap storage balances = exits[msg.sender];
+    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
-      uint total = c.funds.get(nftId);
+      uint totalFunds = c.funds.get(nftId);
       TaskNft memory nft = taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
       uint withdrawable = 0;
 
       if (c.changeType == ChangeType.PACKET) {
-        uint share = c.contentShares.balances[msg.sender];
-        require(share > 0, 'No share');
-        uint claimableAmount = (total * share) / SHARES_DECIMALS;
+        uint shares = c.contentShares.balances[msg.sender];
+        require(shares > 0, 'No shares');
+        uint claimableAmount = (totalFunds * shares) / SHARES_DECIMALS;
         uint claimed = 0;
         if (c.contentShares.claims[msg.sender].contains(nftId)) {
           claimed = c.contentShares.claims[msg.sender].get(nftId);
         }
         if (claimableAmount > claimed) {
           withdrawable = claimableAmount - claimed;
+          // !! claims must be in contentShare units, so it can be transferred
+
           c.contentShares.claims[msg.sender].set(nftId, claimableAmount);
         }
       } else {
         // QA is claiming, so hand it all over
-        withdrawable = total;
+        withdrawable = totalFunds;
       }
       if (withdrawable == 0) {
         continue;
       }
 
-      balances.set(nft.assetId, balances.get(nft.assetId) + withdrawable);
+      uint debt = 0;
+      if (debts.contains(nft.assetId)) {
+        debt = debts.get(nft.assetId);
+      }
+      debts.set(nft.assetId, debt + withdrawable);
 
-      if ((total - withdrawable) == 0) {
+      if ((totalFunds - withdrawable) == 0) {
         c.funds.remove(nftId);
       } else {
-        c.funds.set(nftId, total - withdrawable);
+        c.funds.set(nftId, totalFunds - withdrawable);
       }
     }
   }
