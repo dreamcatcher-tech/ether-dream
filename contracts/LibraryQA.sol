@@ -11,7 +11,22 @@ library LibraryQA {
     require(shares.length > 0, 'Must provide shares');
     require(c.contentShares.holders.length() == 0);
     qaStart(c);
+    allocateShares(c, shares);
+  }
 
+  function qaReject(Change storage change, bytes32 reason) public {
+    require(Utils.isIpfs(reason), 'Invalid rejection hash');
+    qaStart(change);
+    change.rejectionReason = reason;
+  }
+
+  function qaStart(Change storage change) internal {
+    require(change.createdAt != 0, 'Transition does not exist');
+    require(change.disputeWindowStart == 0, 'Dispute period started');
+    change.disputeWindowStart = block.timestamp;
+  }
+
+  function allocateShares(Change storage c, Share[] calldata shares) internal {
     uint total = 0;
     for (uint i = 0; i < shares.length; i++) {
       Share memory share = shares[i];
@@ -25,17 +40,5 @@ library LibraryQA {
       total += share.amount;
     }
     require(total == SHARES_DECIMALS, 'Shares must sum to SHARES_DECIMALS');
-  }
-
-  function qaReject(Change storage change, bytes32 reason) public {
-    require(Utils.isIpfs(reason), 'Invalid rejection hash');
-    qaStart(change);
-    change.rejectionReason = reason;
-  }
-
-  function qaStart(Change storage change) internal {
-    require(change.createdAt != 0, 'Transition does not exist');
-    require(change.disputeWindowStart == 0, 'Dispute period started');
-    change.disputeWindowStart = block.timestamp;
   }
 }

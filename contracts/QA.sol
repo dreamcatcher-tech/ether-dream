@@ -6,17 +6,12 @@ import './IDreamcatcher.sol';
 import './IQA.sol';
 
 contract QA is IQA {
-  function fundThreshold() external view override returns (Payment memory) {
-    // TODO
-    return Payment(ETH_ADDRESS, ETH_TOKEN_ID, 0);
-  }
-
-  function publishTransition(uint id) external override returns (bool) {
-    // TODO
+  function isJudgeable(uint id) external pure returns (bool) {
+    // TODO - check funding
     return true;
   }
 
-  function defunded(uint id) external override returns (bool) {
+  function publishTransition(uint id) external override returns (bool) {
     // TODO
     return true;
   }

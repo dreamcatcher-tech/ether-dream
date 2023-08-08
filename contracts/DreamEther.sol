@@ -67,7 +67,7 @@ contract DreamEther is
   function fund(uint id, Payment[] calldata payments) external payable {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
     Change storage change = changes[id];
-    require(change.createdAt != 0, 'Transition does not exist');
+    require(change.createdAt != 0, 'Change does not exist');
     require(change.disputeWindowStart == 0, 'Dispute period started');
 
     change.fundingShares.holders.add(msg.sender);
@@ -86,6 +86,7 @@ contract DreamEther is
       require(p.token != address(0), 'Token address invalid');
       IERC20 token = IERC20(p.token);
       require(token.transferFrom(msg.sender, address(this), p.amount));
+      // TODO handle erc1155
       updateNftHoldings(id, funds, p);
       updateNftHoldings(id, shares, p);
     }
@@ -107,7 +108,7 @@ contract DreamEther is
 
   function defundStart(uint id) external {
     Change storage change = changes[id];
-    require(change.createdAt != 0, 'Transition does not exist');
+    require(change.createdAt != 0, 'Change does not exist');
     require(change.fundingShares.defundWindows[msg.sender] == 0);
 
     change.fundingShares.defundWindows[msg.sender] = block.timestamp;
@@ -116,7 +117,7 @@ contract DreamEther is
   function defund(uint id) public {
     Change storage change = changes[id];
     FundingShares storage shares = change.fundingShares;
-    require(change.createdAt != 0, 'Transition does not exist');
+    require(change.createdAt != 0, 'Change does not exist');
     require(shares.defundWindows[msg.sender] != 0);
 
     uint lockedTime = shares.defundWindows[msg.sender];
@@ -125,13 +126,12 @@ contract DreamEther is
 
     EnumerableMap.UintToUintMap storage holdings = shares.balances[msg.sender];
     uint[] memory nftIds = holdings.keys(); // nftId => amount
-    Payment[] memory withdrawals;
-    uint wid = 0;
+    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
       uint amount = holdings.get(nftId);
       // TODO emit burn event
-      holdings.remove(nftId);
       uint total = change.funds.get(nftId);
       uint newTotal = total - amount;
       if (newTotal == 0) {
@@ -140,35 +140,12 @@ contract DreamEther is
         change.funds.set(nftId, newTotal);
       }
       TaskNft memory nft = taskNfts[nftId];
-      Asset memory asset = assets[nft.assetId];
-      withdrawals[wid++] = Payment(asset.tokenContract, asset.tokenId, amount);
+      debts.set(nft.assetId, debts.get(nft.assetId) + amount);
     }
 
     delete shares.defundWindows[msg.sender];
     delete shares.balances[msg.sender];
     shares.holders.remove(msg.sender);
-
-    // TODO handle misbehaving contracts that might take all your gas
-    // possibly move to a holding area and allow withdrawal later of
-    // specific assets, letting you pool your balance
-    for (uint i = 0; i < withdrawals.length; i++) {
-      Payment memory p = withdrawals[i];
-      // TODO handle ERC20
-      if (Utils.isEther(p)) {
-        payable(msg.sender).transfer(p.amount);
-      } else {
-        IERC1155 token = IERC1155(p.token);
-        try
-          token.safeTransferFrom(
-            address(this),
-            msg.sender,
-            p.tokenId,
-            p.amount,
-            ''
-          )
-        {} catch {}
-      }
-    }
 
     // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so
@@ -183,39 +160,43 @@ contract DreamEther is
   }
 
   function qaReject(uint id, bytes32 reason) public {
-    require(Utils.isIpfs(reason), 'Invalid rejection hash');
-
-    Change storage c = qaStart(id);
-    c.rejectionReason = reason;
+    require(isQa(id), 'Must be transition QA');
+    Change storage change = changes[id];
+    LibraryQA.qaReject(change, reason);
     emit QARejected(id);
   }
 
-  function qaStart(uint id) internal returns (Change storage) {
-    Change storage change = changes[id];
-    require(change.createdAt != 0, 'Transition does not exist');
-    require(change.disputeWindowStart == 0, 'Dispute period started');
-    require(isQa(id), 'Must be transition QA');
-
-    change.disputeWindowStart = block.timestamp;
-    return change;
-  }
-
   function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
-    // used if the resolve is fine, but the shares are off.
-    // passing this change will modify the shares split
-    // and resolve the disputed change allowing finalization
+    Change storage c = changes[id];
+    require(c.rejectionReason == 0, 'Not a resolve');
+    require(c.contentShares.holders.length() != 0, 'Not solved');
+    require(c.contentShares.concurrency.current() == 0, 'Not normalized');
+
+    uint disputeId = disputeStart(id, reason);
+    Change storage dispute = changes[disputeId];
+    LibraryQA.allocateShares(dispute, s);
   }
 
   function disputeResolve(uint id, bytes32 reason) external {
-    // the resolve should have been a rejection
-    // will halt the transition, return the qa funds, and await
+    Change storage c = changes[id];
+    require(c.rejectionReason == 0, 'Not a resolve');
+    require(c.contentShares.holders.length() != 0, 'Not solved');
+    require(c.contentShares.concurrency.current() == 0, 'Not normalized');
+
+    disputeStart(id, reason);
   }
 
   function disputeRejection(uint id, bytes32 reason) external {
+    Change storage c = changes[id];
+    require(c.rejectionReason != 0, 'Not a rejection');
+
+    disputeStart(id, reason);
+  }
+
+  function disputeStart(uint id, bytes32 reason) internal returns (uint) {
     require(Utils.isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
-    require(c.createdAt != 0, 'Transition does not exist');
-    require(c.rejectionReason != 0, 'Not a rejection');
+    require(c.createdAt != 0, 'Change does not exist');
     require(c.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime < DISPUTE_WINDOW, 'Dispute window closed');
@@ -230,7 +211,20 @@ contract DreamEther is
     dispute.contents = reason;
     dispute.uplink = id;
 
+    c.downlinks.push(disputeId);
+
     emit ChangeDisputed(disputeId);
+    return disputeId;
+  }
+
+  function endDisputeDismiss(uint id) external {
+    // the QA contract is responsible for handling its escalation processes
+    // the dispute settlement is final
+  }
+
+  function endDisputeUphold(uint id) external {
+    // the QA contract is responsible for handling its escalation processes
+    // the dispute settlement is final
   }
 
   function enact(uint id) external {
@@ -240,8 +234,15 @@ contract DreamEther is
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
     // TODO check no other disputes are open too
 
+    if (c.rejectionReason != 0) {
+      if (c.changeType == ChangeType.SOLUTION) {
+        enactPacket(c.uplink);
+      }
+      return;
+    }
+
     if (c.changeType == ChangeType.HEADER) {
-      require(c.downlinks.length == 0, 'Header already enacted');
+      require(c.uplink == 0, 'Header already enacted');
       changeCounter.increment();
       uint packetId = changeCounter.current();
       Change storage packet = changes[packetId];
@@ -249,7 +250,7 @@ contract DreamEther is
       packet.changeType = ChangeType.PACKET;
       packet.createdAt = block.timestamp;
       packet.uplink = id;
-      c.downlinks.push(packetId);
+      c.uplink = packetId;
 
       emit PacketCreated(packetId);
     } else if (c.changeType == ChangeType.SOLUTION) {
@@ -275,21 +276,36 @@ contract DreamEther is
     }
   }
 
-  function enactPacket(uint packetId) public {
-    // may be called externally if a packet gets stuck due to isPossible()
-    // TODO remove this function and make it automatic
+  function enactPacket(uint packetId) internal {
     Change storage packet = changes[packetId];
     require(packet.createdAt != 0, 'Packet does not exist');
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
     for (uint i = 0; i < packet.downlinks.length; i++) {
       uint solutionId = packet.downlinks[i];
-      Change storage solution = changes[solutionId];
-      if (isPossible(solution)) {
+      if (isPossible(solutionId)) {
         return; // this is not the final solution
       }
     }
+    if (packet.contentShares.concurrency.current() == 0) {
+      return; // packet already enacted
+    }
     normalizeShares(packet.contentShares);
     emit PacketResolved(packetId);
+  }
+
+  function isPossible(uint id) internal view returns (bool) {
+    Change storage solution = changes[id];
+    require(solution.createdAt != 0, 'Change does not exist');
+    require(solution.changeType == ChangeType.SOLUTION, 'Not a solution');
+
+    if (solution.disputeWindowStart == 0) {
+      Change storage packet = changes[solution.uplink];
+      IQA qa = IQA(qaMap[packet.uplink]);
+      return qa.isJudgeable(id);
+    }
+    uint elapsedTime = block.timestamp - solution.disputeWindowStart;
+    return elapsedTime < DISPUTE_WINDOW;
+    // TODO handle disputes being outstanding after the window closed
   }
 
   function solve(uint packetId, bytes32 contents) external {
@@ -318,11 +334,13 @@ contract DreamEther is
     // edit the given id with the new contents for the given reasons
   }
 
-  function consume(uint packetId, uint[] calldata ratios) external payable {
-    require(ratios.length == 3);
-    uint solvers = ratios[0];
-    uint funders = ratios[1];
-    uint dependencies = ratios[2];
+  function consume(
+    uint packetId,
+    uint solvers,
+    uint funders,
+    uint dependencies,
+    Payment[] calldata payments
+  ) external payable {
     require(solvers + funders + dependencies > 0);
     Change storage packet = changes[packetId];
     require(packet.createdAt != 0, 'Packet does not exist');
@@ -335,7 +353,7 @@ contract DreamEther is
 
   function claim(uint id) public {
     Change storage c = changes[id];
-    require(c.createdAt != 0, 'Transition does not exist');
+    require(c.createdAt != 0, 'Change does not exist');
     require(c.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
@@ -347,25 +365,26 @@ contract DreamEther is
     }
 
     uint[] memory nftIds = c.funds.keys();
+    EnumerableMap.UintToUintMap storage balances = exits[msg.sender];
+
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
       uint total = c.funds.get(nftId);
       TaskNft memory nft = taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
-      Asset memory asset = assets[nft.assetId];
       uint withdrawable = 0;
-      uint claimableAmount = 0;
 
       if (c.changeType == ChangeType.PACKET) {
         uint share = c.contentShares.balances[msg.sender];
         require(share > 0, 'No share');
-        claimableAmount = (total * share) / SHARES_DECIMALS;
+        uint claimableAmount = (total * share) / SHARES_DECIMALS;
         uint claimed = 0;
         if (c.contentShares.claims[msg.sender].contains(nftId)) {
           claimed = c.contentShares.claims[msg.sender].get(nftId);
         }
         if (claimableAmount > claimed) {
           withdrawable = claimableAmount - claimed;
+          c.contentShares.claims[msg.sender].set(nftId, claimableAmount);
         }
       } else {
         // QA is claiming, so hand it all over
@@ -375,59 +394,29 @@ contract DreamEther is
         continue;
       }
 
-      // TODO handle ERC20 and Ether
-      IERC1155 token = IERC1155(asset.tokenContract);
-      try
-        token.safeTransferFrom(
-          address(this),
-          msg.sender,
-          asset.tokenId,
-          withdrawable,
-          ''
-        )
-      {
-        if ((total - withdrawable) == 0) {
-          c.funds.remove(nftId);
-        } else {
-          c.funds.set(nftId, total - withdrawable);
-        }
-        if (claimableAmount > 0) {
-          c.contentShares.claims[msg.sender].set(nftId, claimableAmount);
-        }
-      } catch {}
-      // TODO check the gas before starting again
-    }
-  }
+      balances.set(nft.assetId, balances.get(nft.assetId) + withdrawable);
 
-  function claimBatch(uint[] calldata ids) external {
-    uint opCost = 0;
-    for (uint i = 0; i < ids.length; i++) {
-      uint id = ids[i];
-      uint256 gasRemaining = gasleft();
-      if (gasRemaining < opCost) {
-        break;
-      }
-      claim(id);
-      if (i == 0) {
-        uint safetyFactor = 2;
-        opCost = safetyFactor * (gasRemaining - gasleft());
+      if ((total - withdrawable) == 0) {
+        c.funds.remove(nftId);
+      } else {
+        c.funds.set(nftId, total - withdrawable);
       }
     }
   }
 
-  function claimAll() external {
-    // get the address of the caller
-    // work our way thru a list of all tokens they hold
-    // claim any one they still have funds inside of
+  function exit() external {
+    Payment[] memory payments = exitList();
+    delete exits[msg.sender];
+
+    for (uint i = 0; i < payments.length; i++) {
+      Payment memory p = payments[i];
+      exitPayment(p);
+    }
   }
 
-  function exit(uint index) external {}
-
-  function exitAll() external {}
-
-  function exitList() external view returns (Payment[] memory) {
-    EnumerableMap.UintToUintMap storage balances = exits[msg.sender];
-    uint[] memory assetIds = balances.keys();
+  function exitList() public view returns (Payment[] memory) {
+    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    uint[] memory assetIds = debts.keys();
     Payment[] memory payments = new Payment[](assetIds.length);
     for (uint i = 0; i < assetIds.length; i++) {
       uint assetId = assetIds[i];
@@ -435,10 +424,31 @@ contract DreamEther is
       payments[i] = Payment(
         asset.tokenContract,
         asset.tokenId,
-        balances.get(assetId)
+        debts.get(assetId)
       );
     }
     return payments;
+  }
+
+  function exitPayment(Payment memory payment) internal returns (bool) {
+    // TODO handle ERC20
+    if (Utils.isEther(payment)) {
+      payable(msg.sender).transfer(payment.amount);
+    } else {
+      IERC1155 token = IERC1155(payment.token);
+      try
+        token.safeTransferFrom(
+          address(this),
+          msg.sender,
+          payment.tokenId,
+          payment.amount,
+          ''
+        )
+      {} catch {
+        return false;
+      }
+    }
+    return true;
   }
 
   function updateNftHoldings(
@@ -475,26 +485,6 @@ contract DreamEther is
     holdings.set(nftId, balance + payment.amount);
   }
 
-  function isFinalSolution(uint solutionId) internal returns (bool) {
-    // TODO make sure no other valid solutions are present
-
-    // TODO go thru all solutions targetting this packet
-    // and check if this is the last one
-    // what if another solution is in dispute too ?
-
-    return true;
-  }
-
-  function isPossible(Change storage solution) internal returns (bool) {
-    // is it possible that this solution become an accepted solution
-    return false;
-  }
-
-  function isSolved(Change storage solution) internal returns (bool) {
-    // ???? how to mark the packet as resolved tho ?
-    return true;
-  }
-
   function mergeShareTable(
     ContentShares storage into,
     ContentShares storage from
@@ -513,13 +503,38 @@ contract DreamEther is
   }
 
   function normalizeShares(ContentShares storage contentShares) internal {
-    // TODO normalize all shares to 1000 again
     uint concurrency = contentShares.concurrency.current();
+    require(concurrency > 0);
     contentShares.concurrency.reset();
+    uint holdersCount = contentShares.holders.length();
+    uint total = 0;
+    uint biggestBalance = 0;
+    uint biggestIndex = 0;
+    address[] memory toDelete;
+    uint toDeleteIndex = 0;
 
-    // loop thru all holders and divide by the concurrency
-    // if they have less than 1, then remove them
-    // select someone randomly to receive the remainder
+    for (uint i = 0; i < holdersCount; i++) {
+      address holder = contentShares.holders.at(i);
+      uint balance = contentShares.balances[holder];
+      if (balance > biggestBalance) {
+        biggestBalance = balance;
+        biggestIndex = i;
+      }
+      uint newBalance = balance / concurrency;
+      if (newBalance == 0) {
+        toDelete[toDeleteIndex++] = holder;
+        continue;
+      }
+      contentShares.balances[holder] = newBalance;
+      total += newBalance;
+    }
+    uint remainder = SHARES_DECIMALS - total;
+    contentShares.balances[contentShares.holders.at(biggestIndex)] += remainder;
+    for (uint i = 0; i < toDelete.length; i++) {
+      address holder = toDelete[i];
+      delete contentShares.balances[holder];
+      contentShares.holders.remove(holder);
+    }
   }
 
   function isQa(uint id) internal view returns (bool) {

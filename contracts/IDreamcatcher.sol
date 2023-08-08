@@ -24,21 +24,21 @@ interface IDreamcatcher {
 
   function enact(uint id) external;
 
-  function enactPacket(uint id) external;
-
   function solve(uint packetId, bytes32 contents) external;
 
   function merge(uint fromId, uint toId, bytes32 reasons) external;
 
   function edit(uint id, bytes32 contents, bytes32 reasons) external;
 
-  function consume(uint packetId, uint[] calldata ratios) external payable;
+  function consume(
+    uint packetId,
+    uint solvers,
+    uint funders,
+    uint dependencies,
+    Payment[] calldata payments
+  ) external payable;
 
   function claim(uint id) external;
-
-  function claimBatch(uint[] calldata ids) external;
-
-  function claimAll() external;
 
   function getIpfsCid(uint id) external view returns (string memory);
 }
