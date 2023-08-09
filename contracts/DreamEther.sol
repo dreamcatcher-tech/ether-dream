@@ -393,22 +393,31 @@ contract DreamEther is
     // this is the foundational training set we need
   }
 
-  function isClaimable(uint id) public {
-    // tests if a given change has any claimable funds for the sender
+  function isTransferrable(Change storage change) internal returns (bool) {
+    uint shares = change.contentShares.balances[msg.sender];
+    uint claimed = change.contentShares.claims[msg.sender];
+    return shares == claimed;
+    // TODO handle non packets being always transferrable
   }
 
   function claim(uint id) public {
     Change storage c = changes[id];
+    require(c.changeType == ChangeType.PACKET);
     require(c.createdAt != 0, 'Change does not exist');
     require(c.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
-    if (c.changeType == ChangeType.PACKET) {
-      require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
-      require(c.contentShares.concurrency.current() == 0, 'Not normalized');
-    } else {
-      require(isQa(id), 'Must be transition QA');
+    require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
+    require(c.contentShares.concurrency.current() == 0, 'Not normalized');
+
+    uint shares = c.contentShares.balances[msg.sender];
+    uint claimed = c.contentShares.claims[msg.sender];
+    uint unclaimed = shares - claimed;
+    if (unclaimed == 0) {
+      return;
     }
+    c.contentShares.totalClaims += unclaimed;
+    c.contentShares.claims[msg.sender] = shares;
 
     uint[] memory nftIds = c.funds.keys();
     EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
@@ -419,24 +428,10 @@ contract DreamEther is
       TaskNft memory nft = taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
       uint withdrawable = 0;
-
-      if (c.changeType == ChangeType.PACKET) {
-        uint shares = c.contentShares.balances[msg.sender];
-        require(shares > 0, 'No shares');
-        uint claimableAmount = (totalFunds * shares) / SHARES_DECIMALS;
-        uint claimed = 0;
-        if (c.contentShares.claims[msg.sender].contains(nftId)) {
-          claimed = c.contentShares.claims[msg.sender].get(nftId);
-        }
-        if (claimableAmount > claimed) {
-          withdrawable = claimableAmount - claimed;
-          // !! claims must be in contentShare units, so it can be transferred
-
-          c.contentShares.claims[msg.sender].set(nftId, claimableAmount);
-        }
-      } else {
-        // QA is claiming, so hand it all over
+      if (c.contentShares.totalClaims == SHARES_DECIMALS) {
         withdrawable = totalFunds;
+      } else {
+        withdrawable = (totalFunds * unclaimed) / SHARES_DECIMALS;
       }
       if (withdrawable == 0) {
         continue;
@@ -453,6 +448,33 @@ contract DreamEther is
       } else {
         c.funds.set(nftId, totalFunds - withdrawable);
       }
+    }
+  }
+
+  function claimQa(uint id) external {
+    require(isQa(id), 'Must be transition QA');
+    Change storage change = changes[id];
+    require(change.changeType != ChangeType.PACKET);
+    require(change.createdAt != 0, 'Change does not exist');
+    require(change.disputeWindowStart > 0, 'Not passed by QA');
+    uint elapsedTime = block.timestamp - change.disputeWindowStart;
+    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+
+    uint[] memory nftIds = change.funds.keys();
+    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+
+    for (uint i = 0; i < nftIds.length; i++) {
+      uint nftId = nftIds[i];
+      uint totalFunds = change.funds.get(nftId);
+      TaskNft memory nft = taskNfts[nftId];
+      require(nft.changeId == id, 'NFT not for this transition');
+
+      uint debt = 0;
+      if (debts.contains(nft.assetId)) {
+        debt = debts.get(nft.assetId);
+      }
+      debts.set(nft.assetId, debt + totalFunds);
+      change.funds.remove(nftId);
     }
   }
 

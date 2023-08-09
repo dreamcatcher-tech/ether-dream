@@ -47,7 +47,8 @@ struct ContentShares {
   EnumerableSet.AddressSet holders;
   mapping(address => uint) balances;
   Counters.Counter concurrency; // multiple solutions are being enacted
-  mapping(address => EnumerableMap.UintToUintMap) claims; // nftId => amount
+  mapping(address => uint) claims; // holder => claimedShareCount
+  uint totalClaims;
 }
 struct Share {
   address holder;

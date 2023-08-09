@@ -380,4 +380,7 @@ describe('model based tests', () => {
     it.skip('disputes cannot be disputed')
     it.skip('cannot dispute a packet')
   })
+  describe('claiming', () => {
+    it.skip('a single NFT can be claimed between two content share holders')
+  })
 })
