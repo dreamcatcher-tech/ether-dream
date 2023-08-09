@@ -44,7 +44,7 @@ contract DreamEther is
 
   Counters.Counter assetCounter;
   mapping(uint => Asset) public assets; // saves storage space
-  AssetsLut assetsLut; // token => tokenId => assetId
+  AssetsLut assetsLut; // tokenAddress => tokenId => assetId
 
   mapping(address => EnumerableMap.UintToUintMap) private exits;
 
@@ -72,6 +72,7 @@ contract DreamEther is
     Change storage change = changes[id];
     require(change.createdAt != 0, 'Change does not exist');
     require(change.disputeWindowStart == 0, 'Dispute period started');
+    // TODO consume exits balance first
 
     change.fundingShares.holders.add(msg.sender);
     EnumerableMap.UintToUintMap storage funds = change.funds;
@@ -247,7 +248,7 @@ contract DreamEther is
     return disputeId;
   }
 
-  function disputeDismissed(uint id, bytes32 reason) external {
+  function qaDisputeDismissed(uint id, bytes32 reason) external {
     require(isQa(id));
     require(Utils.isIpfs(reason), 'Invalid reason hash');
     Change storage dispute = changes[id];
@@ -258,7 +259,7 @@ contract DreamEther is
     emit DisputeDismissed(id);
   }
 
-  function disputeUpheld(uint id) external {
+  function qaDisputeUpheld(uint id) external {
     require(isQa(id));
     Change storage dispute = changes[id];
     require(dispute.createdAt != 0, 'Change does not exist');
@@ -282,6 +283,8 @@ contract DreamEther is
       }
       return;
     }
+
+    upsertNftId(id, CONTENT_ASSET_ID);
 
     if (c.changeType == ChangeType.HEADER) {
       require(c.uplink == 0, 'Header already enacted');
@@ -332,6 +335,7 @@ contract DreamEther is
       return; // packet already enacted
     }
     normalizeShares(packet.contentShares);
+    upsertNftId(packetId, CONTENT_ASSET_ID);
     emit PacketResolved(packetId);
   }
 
@@ -393,11 +397,16 @@ contract DreamEther is
     // this is the foundational training set we need
   }
 
-  function isTransferrable(Change storage change) internal returns (bool) {
-    uint shares = change.contentShares.balances[msg.sender];
-    uint claimed = change.contentShares.claims[msg.sender];
+  function isTransferrable(
+    Change storage c,
+    address holder
+  ) internal view returns (bool) {
+    if (c.changeType != ChangeType.PACKET) {
+      return true;
+    }
+    uint shares = c.contentShares.balances[holder];
+    uint claimed = c.contentShares.claims[holder];
     return shares == claimed;
-    // TODO handle non packets being always transferrable
   }
 
   function claim(uint id) public {
@@ -424,32 +433,34 @@ contract DreamEther is
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
-      uint totalFunds = c.funds.get(nftId);
       TaskNft memory nft = taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
+
+      uint initialFunds = c.funds.get(nftId);
+      uint withdrawn = c.contentShares.withdrawn[nftId];
+      uint remainingFunds = initialFunds - withdrawn;
       uint withdrawable = 0;
-      if (c.contentShares.totalClaims == SHARES_DECIMALS) {
-        withdrawable = totalFunds;
+      if (c.contentShares.totalClaims == SHARES_TOTAL) {
+        // final claim gets all residues
+        withdrawable = remainingFunds;
       } else {
-        withdrawable = (totalFunds * unclaimed) / SHARES_DECIMALS;
+        withdrawable = (remainingFunds * unclaimed) / SHARES_TOTAL;
       }
       if (withdrawable == 0) {
         continue;
       }
+      c.contentShares.withdrawn[nftId] += withdrawable;
 
       uint debt = 0;
       if (debts.contains(nft.assetId)) {
         debt = debts.get(nft.assetId);
       }
       debts.set(nft.assetId, debt + withdrawable);
-
-      if ((totalFunds - withdrawable) == 0) {
-        c.funds.remove(nftId);
-      } else {
-        c.funds.set(nftId, totalFunds - withdrawable);
-      }
     }
   }
+
+  // TODO set approval for opensea to do transfers for all
+  // TODO remove the concurrency for shares and do a merge only when complete
 
   function claimQa(uint id) external {
     require(isQa(id), 'Must be transition QA');
@@ -542,16 +553,7 @@ contract DreamEther is
       assetsLut.lut[payment.token][payment.tokenId] = assetId;
     }
 
-    uint nftId = taskNftsLut.lut[changeId][assetId];
-    if (nftId == 0) {
-      nftCounter.increment();
-      nftId = nftCounter.current();
-      TaskNft storage nft = taskNfts[nftId];
-      nft.changeId = changeId;
-      nft.assetId = assetId;
-      taskNftsLut.lut[changeId][assetId] = nftId;
-    }
-
+    uint nftId = upsertNftId(changeId, assetId);
     uint balance = 0;
     if (holdings.contains(nftId)) {
       balance = holdings.get(nftId);
@@ -602,13 +604,26 @@ contract DreamEther is
       contentShares.balances[holder] = newBalance;
       total += newBalance;
     }
-    uint remainder = SHARES_DECIMALS - total;
+    uint remainder = SHARES_TOTAL - total;
     contentShares.balances[contentShares.holders.at(biggestIndex)] += remainder;
     for (uint i = 0; i < toDelete.length; i++) {
       address holder = toDelete[i];
       delete contentShares.balances[holder];
       contentShares.holders.remove(holder);
     }
+  }
+
+  function upsertNftId(uint changeId, uint assetId) internal returns (uint) {
+    uint nftId = taskNftsLut.lut[changeId][assetId];
+    if (nftId == 0) {
+      nftCounter.increment();
+      nftId = nftCounter.current();
+      TaskNft storage nft = taskNfts[nftId];
+      nft.changeId = changeId;
+      nft.assetId = assetId;
+      taskNftsLut.lut[changeId][assetId] = nftId;
+    }
+    return nftId;
   }
 
   function isQa(uint id) internal view returns (bool) {
@@ -655,15 +670,17 @@ contract DreamEther is
 
   function balanceOf(address account, uint256 id) public view returns (uint) {
     TaskNft memory nft = taskNfts[id];
+    require(nft.changeId != 0, 'NFT does not exist');
     Change storage change = changes[nft.changeId];
-    if (change.funds.contains(id)) {
-      if (change.fundingShares.holders.contains(account)) {
-        return change.fundingShares.balances[account].get(id);
+    if (nft.assetId == CONTENT_ASSET_ID) {
+      if (change.contentShares.holders.contains(account)) {
+        // TODO handle id being part of an open share dispute
+        return change.contentShares.balances[account];
       }
       return 0;
-    } else if (change.contentShares.holders.contains(account)) {
-      // TODO handle id being part of an open share dispute
-      return change.contentShares.balances[account];
+    }
+    if (change.fundingShares.holders.contains(account)) {
+      return change.fundingShares.balances[account].get(id);
     }
     return 0;
   }
@@ -688,71 +705,103 @@ contract DreamEther is
   function isApprovedForAll(
     address account,
     address operator
-  ) external view returns (bool) {
+  ) public view returns (bool) {
+    if (account == operator) {
+      return true;
+    }
+    if (operator == OPEN_SEA) {
+      // TODO allow for revocation of opensea approval
+      return true;
+    }
     return approvals[account][operator];
   }
 
   function safeTransferFrom(
     address from,
     address to,
-    uint256 id,
+    uint256 nftId,
     uint256 amount,
     bytes calldata data
-  ) external {
-    // TODO if you haven't withdrawn it, then you can't transfer it
+  ) public {
+    require(data.length == 0, 'Data not supported');
+    require(isApprovedForAll(from, msg.sender), 'Not approved');
+    require(balanceOf(from, nftId) >= amount, 'Insufficient funds');
 
-    TaskNft memory nft = taskNfts[id];
+    TaskNft memory nft = taskNfts[nftId];
     Change storage change = changes[nft.changeId];
-    if (change.funds.contains(id)) {
-      require(change.fundingShares.holders.contains(from));
-      require(change.fundingShares.defundWindows[to] == 0, 'to is defunding');
 
-      uint fromBalance = change.fundingShares.balances[from].get(id);
-      require(fromBalance >= amount, 'Insufficient funds');
-      uint fromRemaining = fromBalance - amount;
-      if (fromRemaining == 0) {
-        change.fundingShares.balances[from].remove(id);
-        change.fundingShares.holders.remove(from);
-        delete change.fundingShares.defundWindows[from];
-      } else {
-        change.fundingShares.balances[from].set(id, fromRemaining);
-      }
-
-      // TODO check if to is a contract and call onERC1155Received
-      if (!change.fundingShares.holders.contains(to)) {
-        change.fundingShares.holders.add(to);
-      }
-      uint toBalance = change.fundingShares.balances[to].get(id);
-      change.fundingShares.balances[to].set(id, toBalance + amount);
-    } else if (change.contentShares.holders.contains(from)) {
+    if (nft.assetId == CONTENT_ASSET_ID) {
+      require(isTransferrable(change, from), 'Not transferrable');
       // TODO handle id being part of an open share dispute
-      require(change.contentShares.concurrency.current() == 0, 'Unnormalized');
       uint fromBalance = change.contentShares.balances[from];
-      require(fromBalance >= amount, 'Insufficient funds');
       uint fromRemaining = fromBalance - amount;
-      // move the claims over too
       if (fromRemaining == 0) {
         change.contentShares.holders.remove(from);
         delete change.contentShares.balances[from];
         delete change.contentShares.claims[from];
       } else {
         change.contentShares.balances[from] = fromRemaining;
+        change.contentShares.claims[from] = fromRemaining;
       }
+      if (!change.contentShares.holders.contains(to)) {
+        change.contentShares.holders.add(to);
+      }
+      change.contentShares.balances[to] += amount;
+      change.contentShares.claims[to] += amount;
+    } else {
+      require(change.fundingShares.holders.contains(from));
+      require(change.fundingShares.defundWindows[to] == 0, 'to is defunding');
+
+      uint fromBalance = change.fundingShares.balances[from].get(nftId);
+      uint fromRemaining = fromBalance - amount;
+      if (fromRemaining == 0) {
+        change.fundingShares.balances[from].remove(nftId);
+        if (change.fundingShares.balances[from].length() == 0) {
+          change.fundingShares.holders.remove(from);
+          delete change.fundingShares.balances[from];
+          delete change.fundingShares.defundWindows[from];
+        }
+      } else {
+        change.fundingShares.balances[from].set(nftId, fromRemaining);
+      }
+
+      // TODO check if to is a contract and call onERC1155Received
+      if (!change.fundingShares.holders.contains(to)) {
+        change.fundingShares.holders.add(to);
+      }
+      uint toBalance = 0;
+      if (change.fundingShares.balances[to].contains(nftId)) {
+        toBalance = change.fundingShares.balances[to].get(nftId);
+      }
+      change.fundingShares.balances[to].set(nftId, toBalance + amount);
     }
   }
 
   function safeBatchTransferFrom(
     address from,
     address to,
-    uint256[] calldata ids,
-    uint256[] calldata amounts,
+    uint[] calldata ids,
+    uint[] calldata amounts,
     bytes calldata data
-  ) external {}
+  ) external {
+    for (uint i = 0; i < ids.length; i++) {
+      safeTransferFrom(from, to, ids[i], amounts[i], data);
+    }
+  }
 
   function supportsInterface(bytes4 interfaceId) external view returns (bool) {}
 
   // ERC1155Supply extension
-  function totalSupply(uint256 id) public view returns (uint256) {}
+  function totalSupply(uint id) public view returns (uint) {
+    TaskNft memory nft = taskNfts[id];
+    require(nft.changeId != 0, 'NFT does not exist');
+    if (nft.assetId == CONTENT_ASSET_ID) {
+      return SHARES_TOTAL;
+    }
+    Change storage change = changes[nft.changeId];
+    require(change.funds.contains(id), 'NFT not found');
+    return change.funds.get(id);
+  }
 
   // IERC1155Receiver
   function onERC1155Received(

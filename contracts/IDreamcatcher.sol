@@ -24,9 +24,9 @@ interface IDreamcatcher {
 
   function disputeRejection(uint id, bytes32 reason) external;
 
-  function disputeDismissed(uint id, bytes32 reason) external;
+  function qaDisputeDismissed(uint id, bytes32 reason) external;
 
-  function disputeUpheld(uint id) external;
+  function qaDisputeUpheld(uint id) external;
 
   function enact(uint id) external;
 
@@ -36,6 +36,12 @@ interface IDreamcatcher {
 
   function edit(uint id, bytes32 contents, bytes32 reasons) external;
 
+  function claim(uint id) external;
+
+  function claimQa(uint id) external;
+
+  function getIpfsCid(uint id) external view returns (string memory);
+
   function consume(
     uint packetId,
     uint solvers,
@@ -43,10 +49,4 @@ interface IDreamcatcher {
     uint dependencies,
     Payment[] calldata payments
   ) external payable;
-
-  function claim(uint id) external;
-
-  function claimQa(uint id) external;
-
-  function getIpfsCid(uint id) external view returns (string memory);
 }

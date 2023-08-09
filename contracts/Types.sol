@@ -5,11 +5,13 @@ import '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import '@openzeppelin/contracts/utils/structs/EnumerableMap.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
 
+address constant OPEN_SEA = address(0x495f947276749Ce646f68AC8c248420045cb7b5e);
 address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
 uint constant DISPUTE_WINDOW = 3 days;
 uint constant DEFUND_WINDOW = 7 days;
-uint constant SHARES_DECIMALS = 1000;
+uint constant SHARES_TOTAL = 1000;
+uint constant CONTENT_ASSET_ID = 0;
 
 enum ChangeType {
   HEADER,
@@ -42,12 +44,12 @@ struct FundingShares {
   mapping(address => EnumerableMap.UintToUintMap) balances; // nftId => amount
   mapping(address => uint) defundWindows;
 }
-
 struct ContentShares {
   EnumerableSet.AddressSet holders;
   mapping(address => uint) balances;
   Counters.Counter concurrency; // multiple solutions are being enacted
   mapping(address => uint) claims; // holder => claimedShareCount
+  mapping(uint => uint) withdrawn; // nftId => amount
   uint totalClaims;
 }
 struct Share {
@@ -72,6 +74,6 @@ struct Asset {
   uint tokenId;
 }
 struct AssetsLut {
-  // token => tokenId => assetId
+  // tokenAddress => tokenId => assetId
   mapping(address => mapping(uint => uint)) lut;
 }

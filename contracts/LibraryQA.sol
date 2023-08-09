@@ -27,11 +27,12 @@ library LibraryQA {
   }
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
+    bool isDispute = c.changeType == ChangeType.DISPUTE;
     uint total = 0;
     for (uint i = 0; i < shares.length; i++) {
       Share memory share = shares[i];
       require(share.holder != address(0), 'Owner cannot be 0');
-      require(share.holder != msg.sender, 'Owner cannot be QA');
+      require(isDispute || share.holder != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
       require(!c.contentShares.holders.contains(share.holder), 'Owner exists');
 
@@ -39,6 +40,6 @@ library LibraryQA {
       c.contentShares.balances[share.holder] = share.amount;
       total += share.amount;
     }
-    require(total == SHARES_DECIMALS, 'Shares must sum to SHARES_DECIMALS');
+    require(total == SHARES_TOTAL, 'Shares must sum to SHARES_TOTAL');
   }
 }

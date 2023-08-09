@@ -39,10 +39,10 @@ contract QA is IQA {
   }
 
   function disputeDismissed(uint id, bytes32 reason) external {
-    dreamcatcher.disputeDismissed(id, reason);
+    dreamcatcher.qaDisputeDismissed(id, reason);
   }
 
   function disputeUpheld(uint id) external {
-    dreamcatcher.disputeUpheld(id);
+    dreamcatcher.qaDisputeUpheld(id);
   }
 }
