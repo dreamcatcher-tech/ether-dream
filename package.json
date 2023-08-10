@@ -3,6 +3,7 @@
     "test": "hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
     "watch": "nodemon --exec \"hardhat test --grep model\"",
+    "watch:coverage": "nodemon --exec \"hardhat coverage\"",
     "coverage": "hardhat coverage"
   },
   "devDependencies": {
@@ -22,9 +23,10 @@
   "nodemonConfig": {
     "ignore": [
       "artifacts/**",
-      "cache/**"
+      "cache/**",
+      "coverage/**"
     ],
-    "ext": "js,mjs,json,sol"
+    "ext": "js,mjs,sol"
   },
   "prettier": {
     "trailingComma": "es5",
