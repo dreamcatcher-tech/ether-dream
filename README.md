@@ -1,5 +1,7 @@
 # ether-dream
 
+[![Coverage Status](https://coveralls.io/repos/github/dreamcatcher-tech/ether-dream/badge.svg?branch=main)](https://coveralls.io/github/dreamcatcher-tech/ether-dream?branch=main)
+
 This project uses hardhat as the framework for developing ethereum smart contracts that provide a payments and escrow service for the [Dreamcatcher](https://dreamcatcher.land)
 
 Use `npm` and not `yarn` as hardhat requires `npm` for its plugins to work correctly.  Apparently.
