@@ -47,7 +47,6 @@ struct FundingShares {
 struct ContentShares {
   EnumerableSet.AddressSet holders;
   mapping(address => uint) balances;
-  Counters.Counter concurrency; // multiple solutions are being enacted
   mapping(address => uint) claims; // holder => claimedShareCount
   mapping(uint => uint) withdrawn; // nftId => amount
   uint totalClaims;

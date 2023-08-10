@@ -143,8 +143,8 @@ contract DreamEther is
 
   function defund(uint id) public {
     Change storage change = changes[id];
-    FundingShares storage shares = change.fundingShares;
     require(change.createdAt != 0, 'Change does not exist');
+    FundingShares storage shares = change.fundingShares;
     require(shares.defundWindows[msg.sender] != 0);
 
     uint lockedTime = shares.defundWindows[msg.sender];
@@ -201,7 +201,6 @@ contract DreamEther is
     Change storage c = changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
     require(c.contentShares.holders.length() != 0, 'Not solved');
-    require(c.contentShares.concurrency.current() == 0, 'Not normalized');
 
     uint disputeId = disputeStart(id, reason);
     Change storage dispute = changes[disputeId];
@@ -212,7 +211,6 @@ contract DreamEther is
     Change storage c = changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
     require(c.contentShares.holders.length() != 0, 'Not solved');
-    require(c.contentShares.concurrency.current() == 0, 'Not normalized');
 
     disputeStart(id, reason);
   }
@@ -265,7 +263,10 @@ contract DreamEther is
     require(dispute.createdAt != 0, 'Change does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
 
-    // TODO
+    // TODO if shares, change the share allocations
+    // TODO if resolve, then undo the resolve, change back to open
+    // TODO if reject, then undo the reject, change back to open
+    // TODO handle concurrent disputes
 
     emit DisputeUpheld(id);
   }
@@ -275,6 +276,8 @@ contract DreamEther is
     require(c.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(c.changeType != ChangeType.DISPUTE, 'Cannot enact disputes');
+    require(c.changeType != ChangeType.PACKET, 'Cannot enact packets');
     // TODO check no other disputes are open too
 
     if (c.rejectionReason != 0) {
@@ -304,20 +307,13 @@ contract DreamEther is
       require(packet.createdAt != 0, 'Packet does not exist');
       require(packet.changeType == ChangeType.PACKET, 'Not a packet');
 
-      packet.contentShares.concurrency.increment();
-      mergeShareTable(packet.contentShares, c.contentShares);
-
       enactPacket(c.uplink);
-    } else if (c.changeType == ChangeType.DISPUTE) {
-      // TODO
     } else if (c.changeType == ChangeType.EDIT) {
       // TODO
     } else if (c.changeType == ChangeType.MERGE) {
       // TODO
     } else {
-      if (c.changeType != ChangeType.PACKET) {
-        revert('Invalid transition type');
-      }
+      revert('Invalid transition type');
     }
   }
 
@@ -325,16 +321,15 @@ contract DreamEther is
     Change storage packet = changes[packetId];
     require(packet.createdAt != 0, 'Packet does not exist');
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
+    require(packet.contentShares.holders.length() == 0, 'Already enacted');
+
     for (uint i = 0; i < packet.downlinks.length; i++) {
       uint solutionId = packet.downlinks[i];
       if (isPossible(solutionId)) {
         return; // this is not the final solution
       }
     }
-    if (packet.contentShares.concurrency.current() == 0) {
-      return; // packet already enacted
-    }
-    normalizeShares(packet.contentShares);
+    mergeShares(packet);
     upsertNftId(packetId, CONTENT_ASSET_ID);
     emit PacketResolved(packetId);
   }
@@ -417,7 +412,6 @@ contract DreamEther is
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
     require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
-    require(c.contentShares.concurrency.current() == 0, 'Not normalized');
 
     uint shares = c.contentShares.balances[msg.sender];
     uint claimed = c.contentShares.claims[msg.sender];
@@ -561,51 +555,67 @@ contract DreamEther is
     holdings.set(nftId, balance + payment.amount);
   }
 
-  function mergeShareTable(
-    ContentShares storage into,
-    ContentShares storage from
-  ) internal {
-    require(into.concurrency.current() > 0, 'into is not concurrent');
-    require(from.concurrency.current() == 0, 'From is not final');
+  function mergeShares(Change storage packet) internal {
+    ContentShares storage contentShares = packet.contentShares;
+    require(contentShares.holders.length() == 0);
 
-    uint holdersCount = from.holders.length();
-    for (uint i = 0; i < holdersCount; i++) {
-      address holder = from.holders.at(i);
-      if (!into.holders.contains(holder)) {
-        into.holders.add(holder);
+    uint solutionCount = 0;
+    for (uint i = 0; i < packet.downlinks.length; i++) {
+      uint solutionId = packet.downlinks[i];
+      Change storage solution = changes[solutionId];
+      require(solution.changeType == ChangeType.SOLUTION);
+
+      if (solution.rejectionReason != 0) {
+        continue;
       }
-      into.balances[holder] += from.balances[holder];
+      if (solution.disputeWindowStart == 0) {
+        // dispute window has passed, else isPossible() would have failed.
+        continue;
+      }
+      uint holdersCount = solution.contentShares.holders.length();
+      require(holdersCount > 0);
+      for (uint j = 0; j < holdersCount; j++) {
+        address holder = solution.contentShares.holders.at(j);
+        uint balance = solution.contentShares.balances[holder];
+        if (!contentShares.holders.contains(holder)) {
+          contentShares.holders.add(holder);
+        }
+        contentShares.balances[holder] += balance;
+      }
+      solutionCount++;
     }
-  }
+    require(solutionCount > 0, 'Must have downlinks');
+    if (solutionCount == 1) {
+      // no need to merge
+      return;
+    }
 
-  function normalizeShares(ContentShares storage contentShares) internal {
-    uint concurrency = contentShares.concurrency.current();
-    require(concurrency > 0);
-    contentShares.concurrency.reset();
-    uint holdersCount = contentShares.holders.length();
-    uint total = 0;
     uint biggestBalance = 0;
-    uint biggestIndex = 0;
+    address biggestHolder = address(0);
     address[] memory toDelete;
     uint toDeleteIndex = 0;
+    uint sum = 0;
 
-    for (uint i = 0; i < holdersCount; i++) {
+    uint packetHoldersCount = contentShares.holders.length();
+    for (uint i = 0; i < packetHoldersCount; i++) {
       address holder = contentShares.holders.at(i);
       uint balance = contentShares.balances[holder];
       if (balance > biggestBalance) {
         biggestBalance = balance;
-        biggestIndex = i;
+        biggestHolder = holder;
       }
-      uint newBalance = balance / concurrency;
+      uint newBalance = balance / solutionCount;
       if (newBalance == 0) {
         toDelete[toDeleteIndex++] = holder;
         continue;
       }
       contentShares.balances[holder] = newBalance;
-      total += newBalance;
+      sum += newBalance;
     }
-    uint remainder = SHARES_TOTAL - total;
-    contentShares.balances[contentShares.holders.at(biggestIndex)] += remainder;
+    require(biggestHolder != address(0), 'Must have biggest holder');
+    uint remainder = SHARES_TOTAL - sum;
+    contentShares.balances[biggestHolder] += remainder;
+
     for (uint i = 0; i < toDelete.length; i++) {
       address holder = toDelete[i];
       delete contentShares.balances[holder];
@@ -680,7 +690,9 @@ contract DreamEther is
       return 0;
     }
     if (change.fundingShares.holders.contains(account)) {
-      return change.fundingShares.balances[account].get(id);
+      if (change.fundingShares.balances[account].contains(id)) {
+        return change.fundingShares.balances[account].get(id);
+      }
     }
     return 0;
   }
@@ -700,6 +712,7 @@ contract DreamEther is
     require(msg.sender != operator, 'Setting approval status for self');
     approvals[msg.sender][operator] = approved;
     emit ApprovalForAll(msg.sender, operator, approved);
+    // TODO add disapprovals so can deny default approved operators
   }
 
   function isApprovedForAll(
