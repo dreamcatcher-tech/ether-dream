@@ -2,7 +2,8 @@
   "scripts": {
     "test": "hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
-    "watch": "nodemon --exec \"hardhat test --grep model\""
+    "watch": "nodemon --exec \"hardhat test --grep model\"",
+    "coverage": "hardhat coverage"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",

@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "nomicfoundation.hardhat-solidity",
-        "statelyai.stately-vscode"
+        "statelyai.stately-vscode",
+        "ryanluker.vscode-coverage-gutters"
     ]
 }
