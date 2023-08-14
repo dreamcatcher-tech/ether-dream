@@ -5,6 +5,7 @@ import {
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
 import { types } from './machine.js'
+import { hash } from '../utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -58,7 +59,7 @@ export const initializeSut = async () => {
       HEADER: async ({ state: { context } }) => {
         const { cursorId } = context
         const { dreamEther, qa } = fixture
-        const header = ipfs()
+        const header = hash('header' + cursorId)
         debug('header', cursorId)
         await expect(dreamEther.proposePacket(header, qa.target))
           .to.emit(dreamEther, 'ProposedPacket')
@@ -123,7 +124,7 @@ export const initializeSut = async () => {
       SOLVE: async ({ state: { context } }) => {
         const { dreamEther } = fixture
         const { cursorId } = context
-        const contents = ipfs()
+        const contents = hash('solving ' + cursorId)
         const { type } = context.transitions.get(cursorId)
         debug('solving', type, cursorId)
         await expect(dreamEther.solve(cursorId, contents)).to.emit(

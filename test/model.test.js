@@ -5,7 +5,7 @@ import { machine } from './machine.js'
 import Debug from 'debug'
 const debug = Debug('test:consequences')
 
-describe.skip('model based tests', () => {
+describe('model based tests', () => {
   const shortestPaths = machine.getShortestPaths({
     // a bug in @xstate/test requires this
     // https://github.com/statelyai/xstate/issues/4146
