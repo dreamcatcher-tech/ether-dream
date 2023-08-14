@@ -9,6 +9,7 @@ import './IQA.sol';
 import './IDreamcatcher.sol';
 import './LibraryUtils.sol';
 import './LibraryQA.sol';
+import './LibraryChanges.sol';
 
 interface IERC20 {
   function transferFrom(
@@ -32,6 +33,7 @@ contract DreamEther is
   using EnumerableMap for EnumerableMap.AddressToUintMap;
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using EnumerableSet for EnumerableSet.AddressSet;
+  using LibraryChanges for Change;
 
   Counters.Counter changeCounter;
   mapping(uint => Change) private changes;
@@ -48,10 +50,10 @@ contract DreamEther is
 
   mapping(address => EnumerableMap.UintToUintMap) private exits;
 
-  mapping(address => mapping(address => bool)) private approvals;
+  mapping(address => mapping(address => Approval)) private approvals;
 
   function proposePacket(bytes32 contents, address qa) external {
-    require(Utils.isIpfs(contents), 'Invalid header');
+    require(LibraryUtils.isIpfs(contents), 'Invalid header');
     require(qa.code.length > 0, 'QA must be a contract');
     changeCounter.increment();
     uint headerId = changeCounter.current();
@@ -64,6 +66,7 @@ contract DreamEther is
 
     require(qaMap[headerId] == address(0), 'QA exists');
     qaMap[headerId] = qa;
+    upsertNftId(headerId, CONTENT_ASSET_ID);
     emit ProposedPacket(headerId);
   }
 
@@ -74,15 +77,13 @@ contract DreamEther is
     require(change.disputeWindowStart == 0, 'Dispute period started');
     // TODO consume exits balance first
 
-    change.fundingShares.holders.add(msg.sender);
-    EnumerableMap.UintToUintMap storage funds = change.funds;
-    EnumerableMap.UintToUintMap storage shares = change.fundingShares.balances[
-      msg.sender
-    ];
+    if (!change.fundingShares.holders.contains(msg.sender)) {
+      change.fundingShares.holders.add(msg.sender);
+    }
     if (msg.value > 0) {
       Payment memory eth = Payment(ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
-      updateNftHoldings(id, funds, eth);
-      updateNftHoldings(id, shares, eth);
+      updateNftHoldings(id, change.funds, eth);
+      updateNftHoldings(id, change.fundingShares.balances[msg.sender], eth);
     }
     for (uint i = 0; i < payments.length; i++) {
       Payment memory p = payments[i];
@@ -106,8 +107,8 @@ contract DreamEther is
           revert('Transfer failed');
         }
       }
-      updateNftHoldings(id, funds, p);
-      updateNftHoldings(id, shares, p);
+      updateNftHoldings(id, change.funds, p);
+      updateNftHoldings(id, change.fundingShares.balances[msg.sender], p);
     }
     delete change.fundingShares.defundWindows[msg.sender];
     emit FundedTransition(id, msg.sender);
@@ -223,7 +224,7 @@ contract DreamEther is
   }
 
   function disputeStart(uint id, bytes32 reason) internal returns (uint) {
-    require(Utils.isIpfs(reason), 'Invalid reason hash');
+    require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage c = changes[id];
     require(c.createdAt != 0, 'Change does not exist');
     require(c.disputeWindowStart > 0, 'Dispute window not started');
@@ -248,7 +249,7 @@ contract DreamEther is
 
   function qaDisputeDismissed(uint id, bytes32 reason) external {
     require(isQa(id));
-    require(Utils.isIpfs(reason), 'Invalid reason hash');
+    require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage dispute = changes[id];
     require(dispute.createdAt != 0, 'Change does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
@@ -268,6 +269,7 @@ contract DreamEther is
     // TODO if reject, then undo the reject, change back to open
     // TODO handle concurrent disputes
 
+    // mint dispute nfts
     emit DisputeUpheld(id);
   }
 
@@ -375,28 +377,14 @@ contract DreamEther is
     // edit the given id with the new contents for the given reasons
   }
 
-  function consume(
-    uint packetId,
-    uint solvers,
-    uint funders,
-    uint dependencies,
-    Payment[] calldata payments
-  ) external payable {
-    require(solvers + funders + dependencies > 0);
-    Change storage packet = changes[packetId];
-    require(packet.createdAt != 0, 'Packet does not exist');
-    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-    // TODO buffer the payments so Dreamcatcher can disperse
-    // people can send in funds that get dispersed to the contributors
-    // can send in any erc20 or erc1155 that can be dispersed
-    // this is the foundational training set we need
-  }
-
   function isTransferrable(
     Change storage c,
     address holder
   ) internal view returns (bool) {
     if (c.changeType != ChangeType.PACKET) {
+      return true;
+    }
+    if (c.fundingShares.holders.length() == 0) {
       return true;
     }
     uint shares = c.contentShares.balances[holder];
@@ -406,18 +394,15 @@ contract DreamEther is
 
   function claim(uint id) public {
     Change storage c = changes[id];
-    require(c.changeType == ChangeType.PACKET);
-    require(c.createdAt != 0, 'Change does not exist');
-    require(c.disputeWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - c.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(c.isPacketSolved());
     require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
+    require(c.fundingShares.holders.length() != 0, 'No funds to claim');
 
     uint shares = c.contentShares.balances[msg.sender];
     uint claimed = c.contentShares.claims[msg.sender];
     uint unclaimed = shares - claimed;
     if (unclaimed == 0) {
-      return;
+      revert('Already claimed');
     }
     c.contentShares.totalClaims += unclaimed;
     c.contentShares.claims[msg.sender] = shares;
@@ -428,7 +413,7 @@ contract DreamEther is
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
       TaskNft memory nft = taskNfts[nftId];
-      require(nft.changeId == id, 'NFT not for this transition');
+      require(nft.changeId == id, 'NFT is not for this transition');
 
       uint initialFunds = c.funds.get(nftId);
       uint withdrawn = c.contentShares.withdrawn[nftId];
@@ -451,10 +436,8 @@ contract DreamEther is
       }
       debts.set(nft.assetId, debt + withdrawable);
     }
+    emit Claimed(id, msg.sender, unclaimed);
   }
-
-  // TODO set approval for opensea to do transfers for all
-  // TODO remove the concurrency for shares and do a merge only when complete
 
   function claimQa(uint id) external {
     require(isQa(id), 'Must be transition QA');
@@ -511,7 +494,7 @@ contract DreamEther is
 
   function exitPayment(Payment memory payment) internal returns (bool) {
     // TODO handle ERC20
-    if (Utils.isEther(payment)) {
+    if (LibraryUtils.isEther(payment)) {
       payable(msg.sender).transfer(payment.amount);
     } else {
       IERC1155 token = IERC1155(payment.token);
@@ -586,7 +569,6 @@ contract DreamEther is
     }
     require(solutionCount > 0, 'Must have downlinks');
     if (solutionCount == 1) {
-      // no need to merge
       return;
     }
 
@@ -653,12 +635,6 @@ contract DreamEther is
     revert('Invalid change');
   }
 
-  function getIpfsCid(uint id) external view returns (string memory) {
-    // TODO https://github.com/storyicon/base58-solidity
-    Change storage c = changes[id];
-    return string(abi.encodePacked('todo ', c.contents));
-  }
-
   event ProposedPacket(uint headerId);
   event FundedTransition(uint transitionHash, address owner);
   event QAResolved(uint transitionHash);
@@ -670,6 +646,7 @@ contract DreamEther is
   event ChangeDisputed(uint disputeId);
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
+  event Claimed(uint packetId, address holder, uint sharesClaimed);
 
   // to notify opensea to halt trading
   event Locked(uint256 tokenId);
@@ -709,10 +686,18 @@ contract DreamEther is
   }
 
   function setApprovalForAll(address operator, bool approved) external {
+    require(operator != address(0));
     require(msg.sender != operator, 'Setting approval status for self');
-    approvals[msg.sender][operator] = approved;
+    Approval positive = operator == OPEN_SEA
+      ? Approval.NONE
+      : Approval.APPROVED;
+    Approval negative = operator == OPEN_SEA
+      ? Approval.REJECTED
+      : Approval.NONE;
+
+    Approval approval = approved ? positive : negative;
+    approvals[msg.sender][operator] = approval;
     emit ApprovalForAll(msg.sender, operator, approved);
-    // TODO add disapprovals so can deny default approved operators
   }
 
   function isApprovedForAll(
@@ -722,11 +707,12 @@ contract DreamEther is
     if (account == operator) {
       return true;
     }
+    Approval approval = approvals[account][operator];
     if (operator == OPEN_SEA) {
-      // TODO allow for revocation of opensea approval
-      return true;
+      return approval == Approval.NONE;
+    } else {
+      return approval == Approval.APPROVED;
     }
-    return approvals[account][operator];
   }
 
   function safeTransferFrom(
@@ -834,5 +820,33 @@ contract DreamEther is
   ) external returns (bytes4) {}
 
   // IERC1155MetadataURI
-  function uri(uint256 id) external view returns (string memory) {}
+  function uri(uint256 id) external view returns (string memory) {
+    TaskNft memory nft = taskNfts[id];
+    require(nft.changeId != 0, 'NFT does not exist');
+    // determine what type of nft this is
+    // generate the base uri
+    // based on the type, give a subpath
+    Change storage c = changes[nft.changeId];
+    string memory suffix = '';
+    if (nft.assetId == CONTENT_ASSET_ID) {
+      if (c.changeType == ChangeType.PACKET) {
+        suffix = 'PACKET';
+      } else if (c.changeType == ChangeType.DISPUTE) {
+        suffix = 'DISPUTE';
+      } else {
+        suffix = 'META';
+      }
+    } else {
+      if (c.changeType == ChangeType.PACKET) {
+        suffix = 'PACKET_FUNDING';
+      } else if (c.changeType == ChangeType.DISPUTE) {
+        suffix = 'DISPUTE_FUNDING';
+      } else {
+        suffix = 'META_FUNDING';
+      }
+    }
+
+    // TODO figure out how to know if it was QA
+    return LibraryUtils.toCIDv0(c.contents, suffix);
+  }
 }

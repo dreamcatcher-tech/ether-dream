@@ -13,6 +13,15 @@ uint constant DEFUND_WINDOW = 7 days;
 uint constant SHARES_TOTAL = 1000;
 uint constant CONTENT_ASSET_ID = 0;
 
+enum NftType {
+  QA,
+  META, // content shares in a header, edit, or a merge
+  META_FUNDING, // funding shares in a header, solution, edit, or a merge
+  DISPUTE, // content shares in a dispute that was upheld
+  DISPUTE_FUNDING, // funding shares in a dispute that was upheld
+  PACKET, // content shares in a solution that solved a packet
+  PACKET_FUNDING // then subclasses into funding types
+}
 enum ChangeType {
   HEADER,
   PACKET,
@@ -75,4 +84,9 @@ struct Asset {
 struct AssetsLut {
   // tokenAddress => tokenId => assetId
   mapping(address => mapping(uint => uint)) lut;
+}
+enum Approval {
+  NONE,
+  APPROVED,
+  REJECTED
 }

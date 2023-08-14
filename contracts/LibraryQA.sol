@@ -15,7 +15,7 @@ library LibraryQA {
   }
 
   function qaReject(Change storage change, bytes32 reason) public {
-    require(Utils.isIpfs(reason), 'Invalid rejection hash');
+    require(LibraryUtils.isIpfs(reason), 'Invalid rejection hash');
     qaStart(change);
     change.rejectionReason = reason;
   }

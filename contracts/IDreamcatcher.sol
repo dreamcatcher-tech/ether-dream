@@ -39,14 +39,4 @@ interface IDreamcatcher {
   function claim(uint id) external;
 
   function claimQa(uint id) external;
-
-  function getIpfsCid(uint id) external view returns (string memory);
-
-  function consume(
-    uint packetId,
-    uint solvers,
-    uint funders,
-    uint dependencies,
-    Payment[] calldata payments
-  ) external payable;
 }

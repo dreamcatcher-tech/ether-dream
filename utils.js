@@ -1,26 +1,18 @@
 import { CID } from 'multiformats/cid'
-import * as json from 'multiformats/codecs/json'
 import { sha256 } from 'multiformats/hashes/sha2'
-
-export const fakeIpfsGenerator = () => {
-  let count = 0
-  return () => {
-    const value = { count }
-    count++
-    const bytes = json.encode(value)
-    const hash = sha256.digest(bytes)
-    const cid = CID.createV1(json.code, hash)
-    return ethers.hexlify(hash.digest)
-  }
-}
+import * as dagPB from '@ipld/dag-pb'
 
 export const hash = (value) => {
-  const bytes = json.encode(value)
+  const bytes = dagPB.encode({
+    Data: new TextEncoder().encode(value),
+    Links: [],
+  })
   const hash = sha256.digest(bytes)
+  // const cid = CID.createV0(hash)
   return ethers.hexlify(hash.digest)
 }
 
-export const description = (path) => {
+export const description = (path, index) => {
   let state = path.state.value
   if (typeof state !== 'string') {
     state = path.state.toStrings().pop()
@@ -41,5 +33,6 @@ export const description = (path) => {
     const count = counts[i]
     return count > 1 ? `${event} (x${count})` : event
   })
-  return `Reaches: '${state}' via: ${condensed.join(' -> ')}`
+  const prefix = index !== undefined ? `[${index}] ` : ''
+  return prefix + `Reaches: '${state}' via: ${condensed.join(' > ')}`
 }
