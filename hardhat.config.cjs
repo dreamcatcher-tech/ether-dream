@@ -9,6 +9,9 @@ module.exports = {
     currency: 'USD',
     token: 'ETH',
     coinmarketcap: process.env.CMC,
+    // token: 'MATIC',
+    // gasPriceApi:
+    //   'https://api.polygonscan.com/api?module=proxy&action=eth_gasPrice',
   },
   networks: {
     hardhat: {

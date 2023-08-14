@@ -114,18 +114,6 @@ contract DreamEther is
     emit FundedTransition(id, msg.sender);
   }
 
-  function listChange(uint id) public {
-    // by default, proposed packets are not listed on opensea
-    // but this function allows them to be, it just costs
-    // more gas plus some min qa payment to prevent spam
-    // this function is also the same for listing packets
-    // they always relate to a packetId
-
-    // call the QA contract and get it to list
-    IQA qa = IQA(qaMap[id]);
-    require(qa.publishTransition(id));
-  }
-
   function defundStart(uint id) external {
     Change storage change = changes[id];
     require(change.createdAt != 0, 'Change does not exist');
@@ -466,13 +454,19 @@ contract DreamEther is
     }
   }
 
+  function exitBurn(uint assetId) external {
+    // used when the exit is problematic
+    require(exits[msg.sender].contains(assetId), 'No exit for asset');
+    exits[msg.sender].remove(assetId);
+  }
+
   function exit() external {
     Payment[] memory payments = exitList();
     delete exits[msg.sender];
 
     for (uint i = 0; i < payments.length; i++) {
       Payment memory p = payments[i];
-      exitPayment(p);
+      exitSingle(p);
     }
   }
 
@@ -492,7 +486,7 @@ contract DreamEther is
     return payments;
   }
 
-  function exitPayment(Payment memory payment) internal returns (bool) {
+  function exitSingle(Payment memory payment) public returns (bool) {
     // TODO handle ERC20
     if (LibraryUtils.isEther(payment)) {
       payable(msg.sender).transfer(payment.amount);
@@ -513,13 +507,40 @@ contract DreamEther is
     return true;
   }
 
-  function updateNftHoldings(
-    uint changeId,
-    EnumerableMap.UintToUintMap storage holdings,
-    Payment memory payment
-  ) internal {
-    require(payment.amount > 0, 'Amount cannot be 0');
+  function enter(Payment[] calldata payments) external {
+    for (uint i = 0; i < payments.length; i++) {
+      Payment memory payment = payments[i];
+      require(payment.amount > 0, 'Amount cannot be 0');
+      require(payment.token != address(0), 'Token address invalid');
+      if (payment.tokenId == 0) {
+        // TODO handle erc1155 with a tokenId of zero
+        IERC20 token = IERC20(payment.token);
+        require(token.transferFrom(msg.sender, address(this), payment.amount));
+      } else {
+        IERC1155 token = IERC1155(payment.token);
+        try
+          token.safeTransferFrom(
+            msg.sender,
+            address(this),
+            payment.tokenId,
+            payment.amount,
+            ''
+          )
+        {} catch {
+          revert('Transfer failed');
+        }
+      }
+      uint assetId = upsertAssetId(payment);
+      EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+      uint debt = 0;
+      if (debts.contains(assetId)) {
+        debt = debts.get(assetId);
+      }
+      debts.set(assetId, debt + payment.amount);
+    }
+  }
 
+  function upsertAssetId(Payment memory payment) internal returns (uint) {
     uint assetId = assetsLut.lut[payment.token][payment.tokenId];
     if (assetId == 0) {
       assetCounter.increment();
@@ -529,7 +550,17 @@ contract DreamEther is
       asset.tokenId = payment.tokenId;
       assetsLut.lut[payment.token][payment.tokenId] = assetId;
     }
+    return assetId;
+  }
 
+  function updateNftHoldings(
+    uint changeId,
+    EnumerableMap.UintToUintMap storage holdings,
+    Payment memory payment
+  ) internal {
+    require(payment.amount > 0, 'Amount cannot be 0');
+
+    uint assetId = upsertAssetId(payment);
     uint nftId = upsertNftId(changeId, assetId);
     uint balance = 0;
     if (holdings.contains(nftId)) {
@@ -823,9 +854,6 @@ contract DreamEther is
   function uri(uint256 id) external view returns (string memory) {
     TaskNft memory nft = taskNfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
-    // determine what type of nft this is
-    // generate the base uri
-    // based on the type, give a subpath
     Change storage c = changes[nft.changeId];
     string memory suffix = '';
     if (nft.assetId == CONTENT_ASSET_ID) {

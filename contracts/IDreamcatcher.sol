@@ -39,4 +39,14 @@ interface IDreamcatcher {
   function claim(uint id) external;
 
   function claimQa(uint id) external;
+
+  function exit() external;
+
+  function exitList() external view returns (Payment[] memory);
+
+  function exitSingle(Payment memory payment) external returns (bool);
+
+  function exitBurn(uint assetId) external;
+
+  function enter(Payment[] calldata payments) external;
 }
