@@ -7,6 +7,7 @@ import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
 import './IDreamcatcher.sol';
 import './IQA.sol';
+import './LibraryChange.sol';
 
 interface IERC20 {
   function transferFrom(
@@ -19,21 +20,16 @@ interface IERC20 {
 library LibraryChanges {
   using EnumerableSet for EnumerableSet.AddressSet;
   using EnumerableMap for EnumerableMap.UintToUintMap;
-  using LibraryChanges for Change;
   using Counters for Counters.Counter;
+  using LibraryChange for Change;
 
   event PacketCreated(uint packetId);
   event SolutionAccepted(uint transitionHash);
   event PacketResolved(uint packetId);
   event ProposedPacket(uint headerId);
   event FundedTransition(uint transitionHash, address owner);
-
-  function isPacketSolved(Change storage packet) internal view returns (bool) {
-    require(packet.createdAt != 0, 'Packet does not exist');
-    require(packet.changeType == ChangeType.PACKET);
-
-    return packet.contentShares.holders.length() != 0;
-  }
+  event SolutionProposed(uint solutionId);
+  event Claimed(uint packetId, address holder);
 
   function createHeader(Change storage header, bytes32 contents) public {
     require(LibraryUtils.isIpfs(contents), 'Invalid contents');
@@ -70,28 +66,13 @@ library LibraryChanges {
     uint changeId,
     Payment[] calldata payments
   ) public {
-    Change storage change = state.changes[changeId];
-    Payment[] memory allPayments = change.fund(payments);
-    for (uint i = 0; i < allPayments.length; i++) {
-      uint assetId = upsertAssetId(state, allPayments[i]);
-      uint nftId = upsertNftId(state, changeId, assetId);
-      change.updateHoldings(nftId, allPayments[i]);
-    }
-    emit FundedTransition(changeId, msg.sender);
-  }
-
-  function fund(
-    Change storage change,
-    Payment[] calldata payments
-  ) internal returns (Payment[] memory) {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
-    require(change.isOpen(), 'Change is not open for funding');
+    Change storage change = state.changes[changeId];
+    require(isOpen(change), 'Change is not open for funding');
 
-    uint length = msg.value > 0 ? payments.length + 1 : payments.length;
-    Payment[] memory funded = new Payment[](length);
     if (msg.value > 0) {
       Payment memory eth = Payment(ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
-      funded[payments.length] = eth;
+      updateHoldings(state, changeId, eth);
     }
     for (uint i = 0; i < payments.length; i++) {
       Payment memory p = payments[i];
@@ -111,17 +92,22 @@ library LibraryChanges {
           ''
         );
       }
-      funded[i] = p;
+
+      updateHoldings(state, changeId, p);
     }
     delete change.fundingShares.defundWindows[msg.sender];
-    return funded;
+    emit FundedTransition(changeId, msg.sender);
   }
 
   function updateHoldings(
-    Change storage change,
-    uint nftId,
+    State storage state,
+    uint changeId,
     Payment memory payment
   ) internal {
+    Change storage change = state.changes[changeId];
+    uint assetId = upsertAssetId(state, payment);
+    uint nftId = upsertNftId(state, changeId, assetId);
+
     uint funds = 0;
     if (change.funds.contains(nftId)) {
       funds = change.funds.get(nftId);
@@ -141,25 +127,25 @@ library LibraryChanges {
     );
   }
 
-  function defundStart(Change storage change) public {
+  function defundStart(State storage state, uint id) public {
+    Change storage change = state.changes[id];
     require(change.isOpen(), 'Change is not open for defunding');
     require(change.fundingShares.defundWindows[msg.sender] == 0);
 
     change.fundingShares.defundWindows[msg.sender] = block.timestamp;
   }
 
-  function defundStop(Change storage change) public {
+  function defundStop(State storage state, uint id) external {
+    Change storage change = state.changes[id];
     require(change.createdAt != 0, 'Change does not exist');
     require(change.fundingShares.defundWindows[msg.sender] != 0);
 
     delete change.fundingShares.defundWindows[msg.sender];
   }
 
-  function defund(
-    Change storage change,
-    EnumerableMap.UintToUintMap storage debts,
-    mapping(uint => TaskNft) storage taskNfts
-  ) public {
+  function defund(State storage state, uint id) public {
+    Change storage change = state.changes[id];
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     require(change.isOpen(), 'Change is not open for defunding');
     FundingShares storage shares = change.fundingShares;
     require(shares.defundWindows[msg.sender] != 0);
@@ -183,10 +169,10 @@ library LibraryChanges {
         change.funds.set(nftId, newTotal);
       }
       uint debt = 0;
-      if (debts.contains(taskNfts[nftId].assetId)) {
-        debt = debts.get(taskNfts[nftId].assetId);
+      if (debts.contains(state.taskNfts[nftId].assetId)) {
+        debt = debts.get(state.taskNfts[nftId].assetId);
       }
-      debts.set(taskNfts[nftId].assetId, debt + amount);
+      debts.set(state.taskNfts[nftId].assetId, debt + amount);
     }
 
     delete shares.defundWindows[msg.sender];
@@ -198,96 +184,32 @@ library LibraryChanges {
   }
 
   function solve(
-    Change storage packet,
-    Change storage solution,
+    State storage state,
+    uint packetId,
     bytes32 contents
-  ) public {
+  ) external {
+    require(LibraryUtils.isIpfs(contents), 'Invalid contents');
+    Change storage packet = state.changes[packetId];
     require(packet.changeType == ChangeType.PACKET, 'Not a packet');
     require(packet.createdAt != 0, 'Packet does not exist');
+
+    state.changeCounter.increment();
+    uint solutionId = state.changeCounter.current();
+    Change storage solution = state.changes[solutionId];
     require(solution.createdAt == 0, 'Solution exists');
-    require(LibraryUtils.isIpfs(contents), 'Invalid contents');
 
     solution.changeType = ChangeType.SOLUTION;
     solution.createdAt = block.timestamp;
     solution.contents = contents;
+
+    solution.uplink = packetId;
+    packet.downlinks.push(solutionId);
+    emit SolutionProposed(solutionId);
   }
 
-  function mergeShares(
-    Change storage packet,
-    mapping(uint => Change) storage changes
-  ) internal {
-    ContentShares storage contentShares = packet.contentShares;
-    require(contentShares.holders.length() == 0);
-
-    uint solutionCount = 0;
-    for (uint i = 0; i < packet.downlinks.length; i++) {
-      uint solutionId = packet.downlinks[i];
-      Change storage solution = changes[solutionId];
-      require(solution.changeType == ChangeType.SOLUTION);
-
-      if (solution.rejectionReason != 0) {
-        continue;
-      }
-      if (solution.disputeWindowStart == 0) {
-        // dispute window has passed, else isPossible() would have failed.
-        continue;
-      }
-      uint holdersCount = solution.contentShares.holders.length();
-      require(holdersCount > 0);
-      for (uint j = 0; j < holdersCount; j++) {
-        address holder = solution.contentShares.holders.at(j);
-        uint balance = solution.contentShares.balances[holder];
-        if (!contentShares.holders.contains(holder)) {
-          contentShares.holders.add(holder);
-        }
-        contentShares.balances[holder] += balance;
-      }
-      solutionCount++;
-    }
-    require(solutionCount > 0, 'Must have downlinks');
-    if (solutionCount == 1) {
-      return;
-    }
-
-    uint biggestBalance = 0;
-    address biggestHolder = address(0);
-    address[] memory toDelete;
-    uint toDeleteIndex = 0;
-    uint sum = 0;
-
-    uint packetHoldersCount = contentShares.holders.length();
-    for (uint i = 0; i < packetHoldersCount; i++) {
-      address holder = contentShares.holders.at(i);
-      uint balance = contentShares.balances[holder];
-      if (balance > biggestBalance) {
-        biggestBalance = balance;
-        biggestHolder = holder;
-      }
-      uint newBalance = balance / solutionCount;
-      if (newBalance == 0) {
-        toDelete[toDeleteIndex++] = holder;
-        continue;
-      }
-      contentShares.balances[holder] = newBalance;
-      sum += newBalance;
-    }
-    require(biggestHolder != address(0), 'Must have biggest holder');
-    uint remainder = SHARES_TOTAL - sum;
-    contentShares.balances[biggestHolder] += remainder;
-
-    for (uint i = 0; i < toDelete.length; i++) {
-      address holder = toDelete[i];
-      delete contentShares.balances[holder];
-      contentShares.holders.remove(holder);
-    }
-  }
-
-  function claim(
-    Change storage c,
-    uint id,
-    EnumerableMap.UintToUintMap storage debts,
-    mapping(uint => TaskNft) storage taskNfts
-  ) public {
+  function claim(State storage state, uint id) public {
+    Change storage c = state.changes[id];
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     require(c.isPacketSolved());
     require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
     require(c.fundingShares.holders.length() != 0, 'No funds to claim');
@@ -305,7 +227,10 @@ library LibraryChanges {
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
-      require(taskNfts[nftId].changeId == id, 'NFT is not for this transition');
+      require(
+        state.taskNfts[nftId].changeId == id,
+        'NFT is not for this transition'
+      );
 
       uint initialFunds = c.funds.get(nftId);
       uint withdrawn = c.contentShares.withdrawn[nftId];
@@ -323,11 +248,12 @@ library LibraryChanges {
       c.contentShares.withdrawn[nftId] += withdrawable;
 
       uint debt = 0;
-      if (debts.contains(taskNfts[nftId].assetId)) {
-        debt = debts.get(taskNfts[nftId].assetId);
+      if (debts.contains(state.taskNfts[nftId].assetId)) {
+        debt = debts.get(state.taskNfts[nftId].assetId);
       }
-      debts.set(taskNfts[nftId].assetId, debt + withdrawable);
+      debts.set(state.taskNfts[nftId].assetId, debt + withdrawable);
     }
+    emit Claimed(id, msg.sender);
   }
 
   function isTransferrable(

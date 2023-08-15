@@ -25,8 +25,8 @@ contract DreamEther is
   using Counters for Counters.Counter;
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using EnumerableSet for EnumerableSet.AddressSet;
-  using LibraryChanges for Change;
   using LibraryQA for State;
+  using LibraryChanges for State;
 
   State state;
 
@@ -39,18 +39,15 @@ contract DreamEther is
   }
 
   function defundStart(uint id) external {
-    Change storage change = state.changes[id];
-    change.defundStart();
+    state.defundStart(id);
   }
 
   function defundStop(uint id) external {
-    Change storage change = state.changes[id];
-    change.defundStop();
+    state.defundStop(id);
   }
 
-  function defund(uint id) public {
-    Change storage change = state.changes[id];
-    change.defund(state.exits[msg.sender], state.taskNfts);
+  function defund(uint id) external {
+    state.defund(id);
   }
 
   function qaResolve(uint id, Share[] calldata shares) external {
@@ -110,14 +107,7 @@ contract DreamEther is
   }
 
   function solve(uint packetId, bytes32 contents) external {
-    Change storage packet = state.changes[packetId];
-    state.changeCounter.increment();
-    uint solutionId = state.changeCounter.current();
-    Change storage solution = state.changes[solutionId];
-    packet.solve(solution, contents);
-    solution.uplink = packetId;
-    packet.downlinks.push(solutionId);
-    emit SolutionProposed(solutionId);
+    state.solve(packetId, contents);
   }
 
   function merge(uint fromId, uint toId, bytes32 reasons) external {
@@ -136,9 +126,7 @@ contract DreamEther is
   }
 
   function claim(uint id) public {
-    Change storage c = state.changes[id];
-    c.claim(id, state.exits[msg.sender], state.taskNfts);
-    emit Claimed(id, msg.sender);
+    state.claim(id);
   }
 
   function claimQa(uint id) external {
@@ -323,7 +311,7 @@ contract DreamEther is
     Change storage change = state.changes[nft.changeId];
 
     if (nft.assetId == CONTENT_ASSET_ID) {
-      require(change.isTransferrable(from), 'Not transferrable');
+      require(LibraryChanges.isTransferrable(change, from), 'Untransferrable');
       // TODO handle id being part of an open share dispute
       uint fromBalance = change.contentShares.balances[from];
       uint fromRemaining = fromBalance - amount;

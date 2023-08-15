@@ -50,10 +50,8 @@ interface IDreamcatcher {
 
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
-  event SolutionProposed(uint solutionId);
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
-  event Claimed(uint packetId, address holder);
 
   // to notify opensea to halt trading
   event Locked(uint256 tokenId);
@@ -68,6 +66,8 @@ interface IDreamcatcher {
   event PacketResolved(uint packetId);
   event ProposedPacket(uint headerId);
   event FundedTransition(uint transitionHash, address owner);
+  event SolutionProposed(uint solutionId);
+  event Claimed(uint packetId, address holder);
 
   // from LibraryQA.sol
   event ChangeDisputed(uint disputeId);
