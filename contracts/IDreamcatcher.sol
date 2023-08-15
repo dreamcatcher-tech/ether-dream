@@ -47,4 +47,26 @@ interface IDreamcatcher {
   function exitSingle(uint assetId) external;
 
   function exitBurn(uint assetId) external;
+
+  event ProposedPacket(uint headerId);
+  event FundedTransition(uint transitionHash, address owner);
+  event QAResolved(uint transitionHash);
+  event QARejected(uint transitionHash);
+  event SolutionProposed(uint solutionId);
+  event ChangeDisputed(uint disputeId);
+  event DisputeDismissed(uint disputeId);
+  event DisputeUpheld(uint disputeId);
+  event Claimed(uint packetId, address holder);
+
+  // to notify opensea to halt trading
+  event Locked(uint256 tokenId);
+  event Unlocked(uint256 tokenId);
+  // or, if the number of events is high
+  event Staked(address indexed user, uint256[] tokenIds, uint256 stakeTime);
+  event Unstaked(address indexed user, uint256[] tokenIds);
+
+  // from LibraryChanges.sol
+  event PacketCreated(uint packetId);
+  event SolutionAccepted(uint transitionHash);
+  event PacketResolved(uint packetId);
 }

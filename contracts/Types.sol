@@ -90,3 +90,16 @@ enum Approval {
   APPROVED,
   REJECTED
 }
+struct State {
+  Counters.Counter changeCounter;
+  mapping(uint => Change) changes;
+  mapping(uint => address) qaMap; // headerId => qa
+  Counters.Counter nftCounter;
+  mapping(uint => TaskNft) taskNfts;
+  TaskNftsLut taskNftsLut;
+  Counters.Counter assetCounter;
+  mapping(uint => Asset) assets; // saves storage space
+  AssetsLut assetsLut; // tokenAddress => tokenId => assetId
+  mapping(address => EnumerableMap.UintToUintMap) exits;
+  mapping(address => mapping(address => Approval)) approvals;
+}

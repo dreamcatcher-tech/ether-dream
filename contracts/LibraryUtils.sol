@@ -12,10 +12,37 @@ library LibraryUtils {
     return ipfsHash != 0;
   }
 
+  function uri(
+    Change storage c,
+    uint assetId
+  ) public view returns (string memory) {
+    string memory suffix = '';
+    if (assetId == CONTENT_ASSET_ID) {
+      if (c.changeType == ChangeType.PACKET) {
+        suffix = 'PACKET';
+      } else if (c.changeType == ChangeType.DISPUTE) {
+        suffix = 'DISPUTE';
+      } else {
+        suffix = 'META';
+      }
+    } else {
+      if (c.changeType == ChangeType.PACKET) {
+        suffix = 'PACKET_FUNDING';
+      } else if (c.changeType == ChangeType.DISPUTE) {
+        suffix = 'DISPUTE_FUNDING';
+      } else {
+        suffix = 'META_FUNDING';
+      }
+    }
+
+    // TODO figure out how to know if it was QA
+    return toCIDv0(c.contents, suffix);
+  }
+
   function toCIDv0(
     bytes32 ipfsHash,
     string memory suffix
-  ) public pure returns (string memory) {
+  ) internal pure returns (string memory) {
     string memory cid = Base58.encodeToString(
       abi.encodePacked(hex'1220', ipfsHash)
     );

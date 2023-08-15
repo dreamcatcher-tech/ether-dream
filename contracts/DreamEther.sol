@@ -4,7 +4,8 @@ pragma solidity ^0.8.9;
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
 import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
-import './Types.sol';
+import '@openzeppelin/contracts/utils/Counters.sol';
+
 import './IQA.sol';
 import './IDreamcatcher.sol';
 import './LibraryUtils.sol';
@@ -22,43 +23,27 @@ contract DreamEther is
   IDreamcatcher
 {
   using Counters for Counters.Counter;
-  using EnumerableMap for EnumerableMap.AddressToUintMap;
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using EnumerableSet for EnumerableSet.AddressSet;
   using LibraryChanges for Change;
 
-  Counters.Counter changeCounter;
-  mapping(uint => Change) private changes;
-
-  mapping(uint => address) public qaMap; // headerId => qa
-
-  Counters.Counter nftCounter;
-  mapping(uint => TaskNft) public taskNfts;
-  TaskNftsLut taskNftsLut; // changeId => assetId => nftId
-
-  Counters.Counter assetCounter;
-  mapping(uint => Asset) public assets; // saves storage space
-  AssetsLut assetsLut; // tokenAddress => tokenId => assetId
-
-  mapping(address => EnumerableMap.UintToUintMap) private exits;
-
-  mapping(address => mapping(address => Approval)) private approvals;
+  State state;
 
   function proposePacket(bytes32 contents, address qa) external {
     require(qa.code.length > 0, 'QA must be a contract');
-    changeCounter.increment();
-    uint headerId = changeCounter.current();
-    Change storage header = changes[headerId];
+    state.changeCounter.increment();
+    uint headerId = state.changeCounter.current();
+    Change storage header = state.changes[headerId];
     header.createHeader(contents);
 
-    require(qaMap[headerId] == address(0), 'QA exists');
-    qaMap[headerId] = qa;
+    require(state.qaMap[headerId] == address(0), 'QA exists');
+    state.qaMap[headerId] = qa;
     upsertNftId(headerId, CONTENT_ASSET_ID);
     emit ProposedPacket(headerId);
   }
 
   function fund(uint changeId, Payment[] calldata payments) external payable {
-    Change storage change = changes[changeId];
+    Change storage change = state.changes[changeId];
     Payment[] memory allPayments = change.fund(payments);
     for (uint i = 0; i < allPayments.length; i++) {
       uint assetId = upsertAssetId(allPayments[i]);
@@ -69,46 +54,46 @@ contract DreamEther is
   }
 
   function defundStart(uint id) external {
-    Change storage change = changes[id];
+    Change storage change = state.changes[id];
     change.defundStart();
   }
 
   function defundStop(uint id) external {
-    Change storage change = changes[id];
+    Change storage change = state.changes[id];
     change.defundStop();
   }
 
   function defund(uint id) public {
-    Change storage change = changes[id];
-    change.defund(exits[msg.sender], taskNfts);
+    Change storage change = state.changes[id];
+    change.defund(state.exits[msg.sender], state.taskNfts);
   }
 
   function qaResolve(uint id, Share[] calldata shares) external {
     require(isQa(id), 'Must be transition QA');
-    Change storage change = changes[id];
+    Change storage change = state.changes[id];
     LibraryQA.qaResolve(change, shares);
     emit QAResolved(id);
   }
 
   function qaReject(uint id, bytes32 reason) public {
     require(isQa(id), 'Must be transition QA');
-    Change storage change = changes[id];
+    Change storage change = state.changes[id];
     LibraryQA.qaReject(change, reason);
     emit QARejected(id);
   }
 
   function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
-    Change storage c = changes[id];
+    Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
     require(c.contentShares.holders.length() != 0, 'Not solved');
 
     uint disputeId = disputeStart(id, reason);
-    Change storage dispute = changes[disputeId];
+    Change storage dispute = state.changes[disputeId];
     LibraryQA.allocateShares(dispute, s);
   }
 
   function disputeResolve(uint id, bytes32 reason) external {
-    Change storage c = changes[id];
+    Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
     require(c.contentShares.holders.length() != 0, 'Not solved');
 
@@ -116,7 +101,7 @@ contract DreamEther is
   }
 
   function disputeRejection(uint id, bytes32 reason) external {
-    Change storage c = changes[id];
+    Change storage c = state.changes[id];
     require(c.rejectionReason != 0, 'Not a rejection');
 
     disputeStart(id, reason);
@@ -124,7 +109,7 @@ contract DreamEther is
 
   function disputeStart(uint id, bytes32 reason) internal returns (uint) {
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
-    Change storage c = changes[id];
+    Change storage c = state.changes[id];
     require(c.createdAt != 0, 'Change does not exist');
     require(c.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;
@@ -132,9 +117,9 @@ contract DreamEther is
     require(c.changeType != ChangeType.PACKET, 'Cannot dispute packets');
     require(c.changeType != ChangeType.DISPUTE, 'Cannot dispute disputes');
 
-    changeCounter.increment();
-    uint disputeId = changeCounter.current();
-    Change storage dispute = changes[disputeId];
+    state.changeCounter.increment();
+    uint disputeId = state.changeCounter.current();
+    Change storage dispute = state.changes[disputeId];
     dispute.changeType = ChangeType.DISPUTE;
     dispute.createdAt = block.timestamp;
     dispute.contents = reason;
@@ -149,7 +134,7 @@ contract DreamEther is
   function qaDisputeDismissed(uint id, bytes32 reason) external {
     require(isQa(id));
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
-    Change storage dispute = changes[id];
+    Change storage dispute = state.changes[id];
     require(dispute.createdAt != 0, 'Change does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
 
@@ -159,7 +144,7 @@ contract DreamEther is
 
   function qaDisputeUpheld(uint id) external {
     require(isQa(id));
-    Change storage dispute = changes[id];
+    Change storage dispute = state.changes[id];
     require(dispute.createdAt != 0, 'Change does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
 
@@ -173,96 +158,15 @@ contract DreamEther is
   }
 
   function enact(uint id) external {
-    Change storage c = changes[id];
-    require(c.disputeWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - c.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
-    require(c.changeType != ChangeType.DISPUTE, 'Cannot enact disputes');
-    require(c.changeType != ChangeType.PACKET, 'Cannot enact packets');
-    // TODO check no other disputes are open too
-
-    if (c.rejectionReason != 0) {
-      if (c.changeType == ChangeType.SOLUTION) {
-        enactPacket(c.uplink);
-      }
-      return;
-    }
-
-    upsertNftId(id, CONTENT_ASSET_ID);
-
-    if (c.changeType == ChangeType.HEADER) {
-      require(c.uplink == 0, 'Header already enacted');
-      changeCounter.increment();
-      uint packetId = changeCounter.current();
-      Change storage packet = changes[packetId];
-      require(packet.createdAt == 0, 'Packet already exists');
-      packet.changeType = ChangeType.PACKET;
-      packet.createdAt = block.timestamp;
-      packet.uplink = id;
-      c.uplink = packetId;
-
-      emit PacketCreated(packetId);
-    } else if (c.changeType == ChangeType.SOLUTION) {
-      emit SolutionAccepted(id);
-      Change storage packet = changes[c.uplink];
-      require(packet.createdAt != 0, 'Packet does not exist');
-      require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-
-      enactPacket(c.uplink);
-    } else if (c.changeType == ChangeType.EDIT) {
-      // TODO
-    } else if (c.changeType == ChangeType.MERGE) {
-      // TODO
-    } else {
-      revert('Invalid transition type');
-    }
-  }
-
-  function enactPacket(uint packetId) internal {
-    Change storage packet = changes[packetId];
-    require(packet.createdAt != 0, 'Packet does not exist');
-    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-    require(packet.contentShares.holders.length() == 0, 'Already enacted');
-
-    for (uint i = 0; i < packet.downlinks.length; i++) {
-      uint solutionId = packet.downlinks[i];
-      if (isPossible(solutionId)) {
-        return; // this is not the final solution
-      }
-    }
-    mergeShares(packet);
-    upsertNftId(packetId, CONTENT_ASSET_ID);
-    emit PacketResolved(packetId);
-  }
-
-  function isPossible(uint id) internal view returns (bool) {
-    Change storage solution = changes[id];
-    require(solution.createdAt != 0, 'Change does not exist');
-    require(solution.changeType == ChangeType.SOLUTION, 'Not a solution');
-
-    if (solution.disputeWindowStart == 0) {
-      Change storage packet = changes[solution.uplink];
-      IQA qa = IQA(qaMap[packet.uplink]);
-      return qa.isJudgeable(id);
-    }
-    uint elapsedTime = block.timestamp - solution.disputeWindowStart;
-    return elapsedTime < DISPUTE_WINDOW;
-    // TODO handle disputes being outstanding after the window closed
+    LibraryChanges.enact(id, state);
   }
 
   function solve(uint packetId, bytes32 contents) external {
-    Change storage packet = changes[packetId];
-    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-    require(packet.createdAt != 0, 'Packet does not exist');
-
-    changeCounter.increment();
-    uint solutionId = changeCounter.current();
-    Change storage solution = changes[solutionId];
-    require(solution.createdAt == 0, 'Solution exists');
-
-    solution.changeType = ChangeType.SOLUTION;
-    solution.createdAt = block.timestamp;
-    solution.contents = contents;
+    Change storage packet = state.changes[packetId];
+    state.changeCounter.increment();
+    uint solutionId = state.changeCounter.current();
+    Change storage solution = state.changes[solutionId];
+    packet.solve(solution, contents);
     solution.uplink = packetId;
     packet.downlinks.push(solutionId);
     emit SolutionProposed(solutionId);
@@ -271,8 +175,8 @@ contract DreamEther is
   function merge(uint fromId, uint toId, bytes32 reasons) external {
     // merge the change of fromId to the change of toId for the given reasons
     require(LibraryUtils.isIpfs(reasons), 'Invalid reason hash');
-    Change storage from = changes[fromId];
-    Change storage to = changes[toId];
+    Change storage from = state.changes[fromId];
+    Change storage to = state.changes[toId];
     require(from.createdAt != 0, 'From change does not exist');
     require(to.createdAt != 0, 'To change does not exist');
     require(from.changeType == to.changeType, 'Change types must match');
@@ -283,71 +187,15 @@ contract DreamEther is
     // edit the given id with the new contents for the given reasons
   }
 
-  function isTransferrable(
-    Change storage c,
-    address holder
-  ) internal view returns (bool) {
-    if (c.changeType != ChangeType.PACKET) {
-      return true;
-    }
-    if (c.fundingShares.holders.length() == 0) {
-      return true;
-    }
-    uint shares = c.contentShares.balances[holder];
-    uint claimed = c.contentShares.claims[holder];
-    return shares == claimed;
-  }
-
   function claim(uint id) public {
-    Change storage c = changes[id];
-    require(c.isPacketSolved());
-    require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
-    require(c.fundingShares.holders.length() != 0, 'No funds to claim');
-
-    uint shares = c.contentShares.balances[msg.sender];
-    uint claimed = c.contentShares.claims[msg.sender];
-    uint unclaimed = shares - claimed;
-    if (unclaimed == 0) {
-      revert('Already claimed');
-    }
-    c.contentShares.totalClaims += unclaimed;
-    c.contentShares.claims[msg.sender] = shares;
-
-    uint[] memory nftIds = c.funds.keys();
-    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
-
-    for (uint i = 0; i < nftIds.length; i++) {
-      uint nftId = nftIds[i];
-      TaskNft memory nft = taskNfts[nftId];
-      require(nft.changeId == id, 'NFT is not for this transition');
-
-      uint initialFunds = c.funds.get(nftId);
-      uint withdrawn = c.contentShares.withdrawn[nftId];
-      uint remainingFunds = initialFunds - withdrawn;
-      uint withdrawable = 0;
-      if (c.contentShares.totalClaims == SHARES_TOTAL) {
-        // final claim gets all residues
-        withdrawable = remainingFunds;
-      } else {
-        withdrawable = (remainingFunds * unclaimed) / SHARES_TOTAL;
-      }
-      if (withdrawable == 0) {
-        continue;
-      }
-      c.contentShares.withdrawn[nftId] += withdrawable;
-
-      uint debt = 0;
-      if (debts.contains(nft.assetId)) {
-        debt = debts.get(nft.assetId);
-      }
-      debts.set(nft.assetId, debt + withdrawable);
-    }
-    emit Claimed(id, msg.sender, unclaimed);
+    Change storage c = state.changes[id];
+    c.claim(id, state.exits[msg.sender], state.taskNfts);
+    emit Claimed(id, msg.sender);
   }
 
   function claimQa(uint id) external {
     require(isQa(id), 'Must be transition QA');
-    Change storage change = changes[id];
+    Change storage change = state.changes[id];
     require(change.changeType != ChangeType.PACKET);
     require(change.createdAt != 0, 'Change does not exist');
     require(change.disputeWindowStart > 0, 'Not passed by QA');
@@ -355,12 +203,12 @@ contract DreamEther is
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
 
     uint[] memory nftIds = change.funds.keys();
-    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
       uint totalFunds = change.funds.get(nftId);
-      TaskNft memory nft = taskNfts[nftId];
+      TaskNft memory nft = state.taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
 
       uint debt = 0;
@@ -374,14 +222,14 @@ contract DreamEther is
 
   function exitBurn(uint assetId) external {
     // used when the exit is problematic
-    require(exits[msg.sender].contains(assetId), 'No exit for asset');
-    exits[msg.sender].remove(assetId);
+    require(state.exits[msg.sender].contains(assetId), 'No exit for asset');
+    state.exits[msg.sender].remove(assetId);
   }
 
   function exit() external {
-    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     uint[] memory assetIds = debts.keys();
-    delete exits[msg.sender];
+    delete state.exits[msg.sender];
 
     for (uint i = 0; i < assetIds.length; i++) {
       uint assetId = assetIds[i];
@@ -390,12 +238,12 @@ contract DreamEther is
   }
 
   function exitList() public view returns (Payment[] memory) {
-    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     uint[] memory assetIds = debts.keys();
     Payment[] memory payments = new Payment[](assetIds.length);
     for (uint i = 0; i < assetIds.length; i++) {
       uint assetId = assetIds[i];
-      Asset memory asset = assets[assetId];
+      Asset memory asset = state.assets[assetId];
       payments[i] = Payment(
         asset.tokenContract,
         asset.tokenId,
@@ -406,8 +254,8 @@ contract DreamEther is
   }
 
   function exitSingle(uint assetId) public {
-    Asset memory asset = assets[assetId];
-    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    Asset memory asset = state.assets[assetId];
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     require(debts.contains(assetId), 'No exit for asset');
 
     Payment memory payment = Payment(
@@ -436,102 +284,35 @@ contract DreamEther is
   }
 
   function upsertAssetId(Payment memory payment) internal returns (uint) {
-    uint assetId = assetsLut.lut[payment.token][payment.tokenId];
+    uint assetId = state.assetsLut.lut[payment.token][payment.tokenId];
     if (assetId == 0) {
-      assetCounter.increment();
-      assetId = assetCounter.current();
-      Asset storage asset = assets[assetId];
+      state.assetCounter.increment();
+      assetId = state.assetCounter.current();
+      Asset storage asset = state.assets[assetId];
       asset.tokenContract = payment.token;
       asset.tokenId = payment.tokenId;
-      assetsLut.lut[payment.token][payment.tokenId] = assetId;
+      state.assetsLut.lut[payment.token][payment.tokenId] = assetId;
     }
     return assetId;
   }
 
-  function mergeShares(Change storage packet) internal {
-    ContentShares storage contentShares = packet.contentShares;
-    require(contentShares.holders.length() == 0);
-
-    uint solutionCount = 0;
-    for (uint i = 0; i < packet.downlinks.length; i++) {
-      uint solutionId = packet.downlinks[i];
-      Change storage solution = changes[solutionId];
-      require(solution.changeType == ChangeType.SOLUTION);
-
-      if (solution.rejectionReason != 0) {
-        continue;
-      }
-      if (solution.disputeWindowStart == 0) {
-        // dispute window has passed, else isPossible() would have failed.
-        continue;
-      }
-      uint holdersCount = solution.contentShares.holders.length();
-      require(holdersCount > 0);
-      for (uint j = 0; j < holdersCount; j++) {
-        address holder = solution.contentShares.holders.at(j);
-        uint balance = solution.contentShares.balances[holder];
-        if (!contentShares.holders.contains(holder)) {
-          contentShares.holders.add(holder);
-        }
-        contentShares.balances[holder] += balance;
-      }
-      solutionCount++;
-    }
-    require(solutionCount > 0, 'Must have downlinks');
-    if (solutionCount == 1) {
-      return;
-    }
-
-    uint biggestBalance = 0;
-    address biggestHolder = address(0);
-    address[] memory toDelete;
-    uint toDeleteIndex = 0;
-    uint sum = 0;
-
-    uint packetHoldersCount = contentShares.holders.length();
-    for (uint i = 0; i < packetHoldersCount; i++) {
-      address holder = contentShares.holders.at(i);
-      uint balance = contentShares.balances[holder];
-      if (balance > biggestBalance) {
-        biggestBalance = balance;
-        biggestHolder = holder;
-      }
-      uint newBalance = balance / solutionCount;
-      if (newBalance == 0) {
-        toDelete[toDeleteIndex++] = holder;
-        continue;
-      }
-      contentShares.balances[holder] = newBalance;
-      sum += newBalance;
-    }
-    require(biggestHolder != address(0), 'Must have biggest holder');
-    uint remainder = SHARES_TOTAL - sum;
-    contentShares.balances[biggestHolder] += remainder;
-
-    for (uint i = 0; i < toDelete.length; i++) {
-      address holder = toDelete[i];
-      delete contentShares.balances[holder];
-      contentShares.holders.remove(holder);
-    }
-  }
-
   function upsertNftId(uint changeId, uint assetId) internal returns (uint) {
-    uint nftId = taskNftsLut.lut[changeId][assetId];
+    uint nftId = state.taskNftsLut.lut[changeId][assetId];
     if (nftId == 0) {
-      nftCounter.increment();
-      nftId = nftCounter.current();
-      TaskNft storage nft = taskNfts[nftId];
+      state.nftCounter.increment();
+      nftId = state.nftCounter.current();
+      TaskNft storage nft = state.taskNfts[nftId];
       nft.changeId = changeId;
       nft.assetId = assetId;
-      taskNftsLut.lut[changeId][assetId] = nftId;
+      state.taskNftsLut.lut[changeId][assetId] = nftId;
     }
     return nftId;
   }
 
   function isQa(uint id) internal view returns (bool) {
-    Change storage change = changes[id];
+    Change storage change = state.changes[id];
     if (change.changeType == ChangeType.HEADER) {
-      return qaMap[id] == msg.sender;
+      return state.qaMap[id] == msg.sender;
     }
     if (change.changeType == ChangeType.SOLUTION) {
       return isQa(change.uplink);
@@ -545,30 +326,10 @@ contract DreamEther is
     revert('Invalid change');
   }
 
-  event ProposedPacket(uint headerId);
-  event FundedTransition(uint transitionHash, address owner);
-  event QAResolved(uint transitionHash);
-  event QARejected(uint transitionHash);
-  event SolutionAccepted(uint transitionHash);
-  event PacketCreated(uint packetId);
-  event SolutionProposed(uint solutionId);
-  event PacketResolved(uint packetId);
-  event ChangeDisputed(uint disputeId);
-  event DisputeDismissed(uint disputeId);
-  event DisputeUpheld(uint disputeId);
-  event Claimed(uint packetId, address holder, uint sharesClaimed);
-
-  // to notify opensea to halt trading
-  event Locked(uint256 tokenId);
-  event Unlocked(uint256 tokenId);
-  // or, if the number of events is high
-  event Staked(address indexed user, uint256[] tokenIds, uint256 stakeTime);
-  event Unstaked(address indexed user, uint256[] tokenIds);
-
   function balanceOf(address account, uint256 id) public view returns (uint) {
-    TaskNft memory nft = taskNfts[id];
+    TaskNft memory nft = state.taskNfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
-    Change storage change = changes[nft.changeId];
+    Change storage change = state.changes[nft.changeId];
     if (nft.assetId == CONTENT_ASSET_ID) {
       if (change.contentShares.holders.contains(account)) {
         // TODO handle id being part of an open share dispute
@@ -606,7 +367,7 @@ contract DreamEther is
       : Approval.NONE;
 
     Approval approval = approved ? positive : negative;
-    approvals[msg.sender][operator] = approval;
+    state.approvals[msg.sender][operator] = approval;
     emit ApprovalForAll(msg.sender, operator, approved);
   }
 
@@ -617,7 +378,7 @@ contract DreamEther is
     if (account == operator) {
       return true;
     }
-    Approval approval = approvals[account][operator];
+    Approval approval = state.approvals[account][operator];
     if (operator == OPEN_SEA) {
       return approval == Approval.NONE;
     } else {
@@ -636,11 +397,11 @@ contract DreamEther is
     require(isApprovedForAll(from, msg.sender), 'Not approved');
     require(balanceOf(from, nftId) >= amount, 'Insufficient funds');
 
-    TaskNft memory nft = taskNfts[nftId];
-    Change storage change = changes[nft.changeId];
+    TaskNft memory nft = state.taskNfts[nftId];
+    Change storage change = state.changes[nft.changeId];
 
     if (nft.assetId == CONTENT_ASSET_ID) {
-      require(isTransferrable(change, from), 'Not transferrable');
+      require(change.isTransferrable(from), 'Not transferrable');
       // TODO handle id being part of an open share dispute
       uint fromBalance = change.contentShares.balances[from];
       uint fromRemaining = fromBalance - amount;
@@ -702,12 +463,12 @@ contract DreamEther is
 
   // ERC1155Supply extension
   function totalSupply(uint id) public view returns (uint) {
-    TaskNft memory nft = taskNfts[id];
+    TaskNft memory nft = state.taskNfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
     if (nft.assetId == CONTENT_ASSET_ID) {
       return SHARES_TOTAL;
     }
-    Change storage change = changes[nft.changeId];
+    Change storage change = state.changes[nft.changeId];
     require(change.funds.contains(id), 'NFT not found');
     return change.funds.get(id);
   }
@@ -730,30 +491,10 @@ contract DreamEther is
   ) external returns (bytes4) {}
 
   // IERC1155MetadataURI
-  function uri(uint256 id) external view returns (string memory) {
-    TaskNft memory nft = taskNfts[id];
+  function uri(uint id) external view returns (string memory) {
+    TaskNft memory nft = state.taskNfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
-    Change storage c = changes[nft.changeId];
-    string memory suffix = '';
-    if (nft.assetId == CONTENT_ASSET_ID) {
-      if (c.changeType == ChangeType.PACKET) {
-        suffix = 'PACKET';
-      } else if (c.changeType == ChangeType.DISPUTE) {
-        suffix = 'DISPUTE';
-      } else {
-        suffix = 'META';
-      }
-    } else {
-      if (c.changeType == ChangeType.PACKET) {
-        suffix = 'PACKET_FUNDING';
-      } else if (c.changeType == ChangeType.DISPUTE) {
-        suffix = 'DISPUTE_FUNDING';
-      } else {
-        suffix = 'META_FUNDING';
-      }
-    }
-
-    // TODO figure out how to know if it was QA
-    return LibraryUtils.toCIDv0(c.contents, suffix);
+    Change storage change = state.changes[nft.changeId];
+    return LibraryUtils.uri(change, nft.assetId);
   }
 }
