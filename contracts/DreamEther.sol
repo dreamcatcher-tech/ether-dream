@@ -11,14 +11,6 @@ import './LibraryUtils.sol';
 import './LibraryQA.sol';
 import './LibraryChanges.sol';
 
-interface IERC20 {
-  function transferFrom(
-    address from,
-    address to,
-    uint256 value
-  ) external returns (bool);
-}
-
 /**
  * Convert assets into task completion, with quality oversight
  */
@@ -53,16 +45,11 @@ contract DreamEther is
   mapping(address => mapping(address => Approval)) private approvals;
 
   function proposePacket(bytes32 contents, address qa) external {
-    require(LibraryUtils.isIpfs(contents), 'Invalid header');
     require(qa.code.length > 0, 'QA must be a contract');
     changeCounter.increment();
     uint headerId = changeCounter.current();
     Change storage header = changes[headerId];
-    require(header.createdAt == 0, 'Header already exists');
-
-    header.changeType = ChangeType.HEADER;
-    header.createdAt = block.timestamp;
-    header.contents = contents;
+    header.createHeader(contents);
 
     require(qaMap[headerId] == address(0), 'QA exists');
     qaMap[headerId] = qa;
@@ -70,48 +57,15 @@ contract DreamEther is
     emit ProposedPacket(headerId);
   }
 
-  function fund(uint id, Payment[] calldata payments) external payable {
-    require(msg.value > 0 || payments.length > 0, 'Must send funds');
-    Change storage change = changes[id];
-    require(change.createdAt != 0, 'Change does not exist');
-    require(change.disputeWindowStart == 0, 'Dispute period started');
-    // TODO consume exits balance first
-
-    if (!change.fundingShares.holders.contains(msg.sender)) {
-      change.fundingShares.holders.add(msg.sender);
+  function fund(uint changeId, Payment[] calldata payments) external payable {
+    Change storage change = changes[changeId];
+    Payment[] memory allPayments = change.fund(payments);
+    for (uint i = 0; i < allPayments.length; i++) {
+      uint assetId = upsertAssetId(allPayments[i]);
+      uint nftId = upsertNftId(changeId, assetId);
+      change.updateHoldings(nftId, allPayments[i]);
     }
-    if (msg.value > 0) {
-      Payment memory eth = Payment(ETH_ADDRESS, ETH_TOKEN_ID, msg.value);
-      updateNftHoldings(id, change.funds, eth);
-      updateNftHoldings(id, change.fundingShares.balances[msg.sender], eth);
-    }
-    for (uint i = 0; i < payments.length; i++) {
-      Payment memory p = payments[i];
-      require(p.amount > 0, 'Amount cannot be 0');
-      require(p.token != address(0), 'Token address invalid');
-      if (p.tokenId == 0) {
-        // TODO handle erc1155 with a tokenId of zero
-        IERC20 token = IERC20(p.token);
-        require(token.transferFrom(msg.sender, address(this), p.amount));
-      } else {
-        IERC1155 token = IERC1155(p.token);
-        try
-          token.safeTransferFrom(
-            msg.sender,
-            address(this),
-            p.tokenId,
-            p.amount,
-            ''
-          )
-        {} catch {
-          revert('Transfer failed');
-        }
-      }
-      updateNftHoldings(id, change.funds, p);
-      updateNftHoldings(id, change.fundingShares.balances[msg.sender], p);
-    }
-    delete change.fundingShares.defundWindows[msg.sender];
-    emit FundedTransition(id, msg.sender);
+    emit FundedTransition(changeId, msg.sender);
   }
 
   function defundStart(uint id) external {
@@ -124,10 +78,7 @@ contract DreamEther is
 
   function defundStop(uint id) external {
     Change storage change = changes[id];
-    require(change.createdAt != 0, 'Change does not exist');
-    require(change.fundingShares.defundWindows[msg.sender] != 0);
-
-    delete change.fundingShares.defundWindows[msg.sender];
+    change.defundStop();
   }
 
   function defund(uint id) public {
@@ -359,6 +310,13 @@ contract DreamEther is
 
   function merge(uint fromId, uint toId, bytes32 reasons) external {
     // merge the change of fromId to the change of toId for the given reasons
+    require(LibraryUtils.isIpfs(reasons), 'Invalid reason hash');
+    Change storage from = changes[fromId];
+    Change storage to = changes[toId];
+    require(from.createdAt != 0, 'From change does not exist');
+    require(to.createdAt != 0, 'To change does not exist');
+    require(from.changeType == to.changeType, 'Change types must match');
+    require(from.changeType != ChangeType.MERGE, 'Cannot merge merges');
   }
 
   function edit(uint id, bytes32 contents, bytes32 reasons) external {
@@ -461,12 +419,13 @@ contract DreamEther is
   }
 
   function exit() external {
-    Payment[] memory payments = exitList();
+    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    uint[] memory assetIds = debts.keys();
     delete exits[msg.sender];
 
-    for (uint i = 0; i < payments.length; i++) {
-      Payment memory p = payments[i];
-      exitSingle(p);
+    for (uint i = 0; i < assetIds.length; i++) {
+      uint assetId = assetIds[i];
+      exitSingle(assetId);
     }
   }
 
@@ -486,57 +445,33 @@ contract DreamEther is
     return payments;
   }
 
-  function exitSingle(Payment memory payment) public returns (bool) {
-    // TODO handle ERC20
-    if (LibraryUtils.isEther(payment)) {
+  function exitSingle(uint assetId) public {
+    Asset memory asset = assets[assetId];
+    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
+    require(debts.contains(assetId), 'No exit for asset');
+
+    Payment memory payment = Payment(
+      asset.tokenContract,
+      asset.tokenId,
+      debts.get(assetId)
+    );
+    debts.remove(assetId);
+
+    if (LibraryUtils.isEther(asset)) {
       payable(msg.sender).transfer(payment.amount);
+    } else if (payment.tokenId == 0) {
+      // TODO handle erc1155 with a tokenId of zero
+      IERC20 token = IERC20(payment.token);
+      require(token.transferFrom(address(this), msg.sender, payment.amount));
     } else {
       IERC1155 token = IERC1155(payment.token);
-      try
-        token.safeTransferFrom(
-          address(this),
-          msg.sender,
-          payment.tokenId,
-          payment.amount,
-          ''
-        )
-      {} catch {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function enter(Payment[] calldata payments) external {
-    for (uint i = 0; i < payments.length; i++) {
-      Payment memory payment = payments[i];
-      require(payment.amount > 0, 'Amount cannot be 0');
-      require(payment.token != address(0), 'Token address invalid');
-      if (payment.tokenId == 0) {
-        // TODO handle erc1155 with a tokenId of zero
-        IERC20 token = IERC20(payment.token);
-        require(token.transferFrom(msg.sender, address(this), payment.amount));
-      } else {
-        IERC1155 token = IERC1155(payment.token);
-        try
-          token.safeTransferFrom(
-            msg.sender,
-            address(this),
-            payment.tokenId,
-            payment.amount,
-            ''
-          )
-        {} catch {
-          revert('Transfer failed');
-        }
-      }
-      uint assetId = upsertAssetId(payment);
-      EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
-      uint debt = 0;
-      if (debts.contains(assetId)) {
-        debt = debts.get(assetId);
-      }
-      debts.set(assetId, debt + payment.amount);
+      token.safeTransferFrom(
+        address(this),
+        msg.sender,
+        payment.tokenId,
+        payment.amount,
+        ''
+      );
     }
   }
 
@@ -551,22 +486,6 @@ contract DreamEther is
       assetsLut.lut[payment.token][payment.tokenId] = assetId;
     }
     return assetId;
-  }
-
-  function updateNftHoldings(
-    uint changeId,
-    EnumerableMap.UintToUintMap storage holdings,
-    Payment memory payment
-  ) internal {
-    require(payment.amount > 0, 'Amount cannot be 0');
-
-    uint assetId = upsertAssetId(payment);
-    uint nftId = upsertNftId(changeId, assetId);
-    uint balance = 0;
-    if (holdings.contains(nftId)) {
-      balance = holdings.get(nftId);
-    }
-    holdings.set(nftId, balance + payment.amount);
   }
 
   function mergeShares(Change storage packet) internal {

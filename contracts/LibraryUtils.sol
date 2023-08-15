@@ -4,12 +4,12 @@ import './Types.sol';
 import 'base58-solidity/contracts/Base58.sol';
 
 library LibraryUtils {
-  function isEther(Payment memory p) internal pure returns (bool) {
-    return p.token == ETH_ADDRESS && p.tokenId == ETH_TOKEN_ID;
+  function isEther(Asset memory asset) internal pure returns (bool) {
+    return asset.tokenContract == ETH_ADDRESS && asset.tokenId == ETH_TOKEN_ID;
   }
 
   function isIpfs(bytes32 ipfsHash) internal pure returns (bool) {
-    return true;
+    return ipfsHash != 0;
   }
 
   function toCIDv0(
