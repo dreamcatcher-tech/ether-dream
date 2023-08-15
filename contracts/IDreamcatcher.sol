@@ -48,12 +48,9 @@ interface IDreamcatcher {
 
   function exitBurn(uint assetId) external;
 
-  event ProposedPacket(uint headerId);
-  event FundedTransition(uint transitionHash, address owner);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
   event SolutionProposed(uint solutionId);
-  event ChangeDisputed(uint disputeId);
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
   event Claimed(uint packetId, address holder);
@@ -69,4 +66,9 @@ interface IDreamcatcher {
   event PacketCreated(uint packetId);
   event SolutionAccepted(uint transitionHash);
   event PacketResolved(uint packetId);
+  event ProposedPacket(uint headerId);
+  event FundedTransition(uint transitionHash, address owner);
+
+  // from LibraryQA.sol
+  event ChangeDisputed(uint disputeId);
 }

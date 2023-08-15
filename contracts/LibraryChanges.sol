@@ -25,6 +25,8 @@ library LibraryChanges {
   event PacketCreated(uint packetId);
   event SolutionAccepted(uint transitionHash);
   event PacketResolved(uint packetId);
+  event ProposedPacket(uint headerId);
+  event FundedTransition(uint transitionHash, address owner);
 
   function isPacketSolved(Change storage packet) internal view returns (bool) {
     require(packet.createdAt != 0, 'Packet does not exist');
@@ -46,10 +48,42 @@ library LibraryChanges {
     return change.createdAt != 0 && change.disputeWindowStart == 0;
   }
 
+  function proposePacket(
+    State storage state,
+    bytes32 contents,
+    address qa
+  ) public {
+    require(qa.code.length > 0, 'QA must be a contract');
+    state.changeCounter.increment();
+    uint headerId = state.changeCounter.current();
+    Change storage header = state.changes[headerId];
+    createHeader(header, contents);
+
+    require(state.qaMap[headerId] == address(0), 'QA exists');
+    state.qaMap[headerId] = qa;
+    upsertNftId(state, headerId, CONTENT_ASSET_ID);
+    emit ProposedPacket(headerId);
+  }
+
+  function fund(
+    State storage state,
+    uint changeId,
+    Payment[] calldata payments
+  ) public {
+    Change storage change = state.changes[changeId];
+    Payment[] memory allPayments = change.fund(payments);
+    for (uint i = 0; i < allPayments.length; i++) {
+      uint assetId = upsertAssetId(state, allPayments[i]);
+      uint nftId = upsertNftId(state, changeId, assetId);
+      change.updateHoldings(nftId, allPayments[i]);
+    }
+    emit FundedTransition(changeId, msg.sender);
+  }
+
   function fund(
     Change storage change,
     Payment[] calldata payments
-  ) public returns (Payment[] memory) {
+  ) internal returns (Payment[] memory) {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
     require(change.isOpen(), 'Change is not open for funding');
 
@@ -408,6 +442,20 @@ library LibraryChanges {
     return elapsedTime < DISPUTE_WINDOW;
     // TODO handle disputes being outstanding after the window closed
   }
-}
 
-// TODO dedupe: upsertNftId,
+  function upsertAssetId(
+    State storage state,
+    Payment memory payment
+  ) internal returns (uint) {
+    uint assetId = state.assetsLut.lut[payment.token][payment.tokenId];
+    if (assetId == 0) {
+      state.assetCounter.increment();
+      assetId = state.assetCounter.current();
+      Asset storage asset = state.assets[assetId];
+      asset.tokenContract = payment.token;
+      asset.tokenId = payment.tokenId;
+      state.assetsLut.lut[payment.token][payment.tokenId] = assetId;
+    }
+    return assetId;
+  }
+}

@@ -14,11 +14,11 @@ module.exports = {
     // gasPriceApi:
     //   'https://api.polygonscan.com/api?module=proxy&action=eth_gasPrice',
   },
-  networks: {
-    hardhat: {
-      allowUnlimitedContractSize: true,
-    },
-  },
+  // networks: {
+  //   hardhat: {
+  //     allowUnlimitedContractSize: true,
+  //   },
+  // },
   contractSizer: {
     // runOnCompile: true,
   },
