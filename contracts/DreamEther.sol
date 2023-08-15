@@ -70,10 +70,7 @@ contract DreamEther is
 
   function defundStart(uint id) external {
     Change storage change = changes[id];
-    require(change.createdAt != 0, 'Change does not exist');
-    require(change.fundingShares.defundWindows[msg.sender] == 0);
-
-    change.fundingShares.defundWindows[msg.sender] = block.timestamp;
+    change.defundStart();
   }
 
   function defundStop(uint id) external {
@@ -83,44 +80,7 @@ contract DreamEther is
 
   function defund(uint id) public {
     Change storage change = changes[id];
-    require(change.createdAt != 0, 'Change does not exist');
-    FundingShares storage shares = change.fundingShares;
-    require(shares.defundWindows[msg.sender] != 0);
-
-    uint lockedTime = shares.defundWindows[msg.sender];
-    uint elapsedTime = block.timestamp - lockedTime;
-    require(elapsedTime > DEFUND_WINDOW, 'Defund timeout not reached');
-
-    EnumerableMap.UintToUintMap storage holdings = shares.balances[msg.sender];
-    uint[] memory nftIds = holdings.keys(); // nftId => amount
-    EnumerableMap.UintToUintMap storage debts = exits[msg.sender];
-
-    for (uint i = 0; i < nftIds.length; i++) {
-      uint nftId = nftIds[i];
-      uint amount = holdings.get(nftId);
-      // TODO emit burn event
-      uint total = change.funds.get(nftId);
-      uint newTotal = total - amount;
-      if (newTotal == 0) {
-        change.funds.remove(nftId);
-      } else {
-        change.funds.set(nftId, newTotal);
-      }
-      TaskNft memory nft = taskNfts[nftId];
-      uint debt = 0;
-      if (debts.contains(nft.assetId)) {
-        debt = debts.get(nft.assetId);
-      }
-      debts.set(nft.assetId, debt + amount);
-    }
-
-    delete shares.defundWindows[msg.sender];
-    delete shares.balances[msg.sender];
-    shares.holders.remove(msg.sender);
-
-    // TODO make a token to allow spending of locked funds
-    // TODO check if any solutions have passed threshold and revert if so
-    // TODO ensure not in the dispute period, which means no defunding
+    change.defund(exits[msg.sender], taskNfts);
   }
 
   function qaResolve(uint id, Share[] calldata shares) external {

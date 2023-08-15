@@ -79,7 +79,7 @@ library LibraryChanges {
     Change storage change,
     uint nftId,
     Payment memory payment
-  ) public {
+  ) internal {
     uint funds = 0;
     if (change.funds.contains(nftId)) {
       funds = change.funds.get(nftId);
@@ -99,10 +99,59 @@ library LibraryChanges {
     );
   }
 
+  function defundStart(Change storage change) public {
+    require(change.isOpen(), 'Change is not open for defunding');
+    require(change.fundingShares.defundWindows[msg.sender] == 0);
+
+    change.fundingShares.defundWindows[msg.sender] = block.timestamp;
+  }
+
   function defundStop(Change storage change) public {
     require(change.createdAt != 0, 'Change does not exist');
     require(change.fundingShares.defundWindows[msg.sender] != 0);
 
     delete change.fundingShares.defundWindows[msg.sender];
+  }
+
+  function defund(
+    Change storage change,
+    EnumerableMap.UintToUintMap storage debts,
+    mapping(uint => TaskNft) storage taskNfts
+  ) public {
+    require(change.isOpen(), 'Change is not open for defunding');
+    FundingShares storage shares = change.fundingShares;
+    require(shares.defundWindows[msg.sender] != 0);
+
+    uint lockedTime = shares.defundWindows[msg.sender];
+    uint elapsedTime = block.timestamp - lockedTime;
+    require(elapsedTime > DEFUND_WINDOW, 'Defund timeout not reached');
+
+    EnumerableMap.UintToUintMap storage holdings = shares.balances[msg.sender];
+    uint[] memory nftIds = holdings.keys(); // nftId => amount
+
+    for (uint i = 0; i < nftIds.length; i++) {
+      uint nftId = nftIds[i];
+      uint amount = holdings.get(nftId);
+      // TODO emit burn event
+      uint total = change.funds.get(nftId);
+      uint newTotal = total - amount;
+      if (newTotal == 0) {
+        change.funds.remove(nftId);
+      } else {
+        change.funds.set(nftId, newTotal);
+      }
+      uint debt = 0;
+      if (debts.contains(taskNfts[nftId].assetId)) {
+        debt = debts.get(taskNfts[nftId].assetId);
+      }
+      debts.set(taskNfts[nftId].assetId, debt + amount);
+    }
+
+    delete shares.defundWindows[msg.sender];
+    delete shares.balances[msg.sender];
+    shares.holders.remove(msg.sender);
+
+    // TODO make a token to allow spending of locked funds
+    // TODO check if any solutions have passed threshold and revert if so
   }
 }
