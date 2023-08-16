@@ -4,7 +4,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types, guards } from './machine.js'
+import { types, tests } from './machine.js'
 import { hash } from '../utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
@@ -128,18 +128,25 @@ export const initializeSut = async () => {
       QA_CLAIM: async ({ state: { context } }) => {
         const { dreamEther, qa } = fixture
         const { cursorId } = context
-        if (guards.isQaClaimable(context)) {
-          await expect(qa.claimQa(cursorId))
-            .to.emit(dreamEther, 'QAClaimed')
-            .withArgs(cursorId)
-          await expect(qa.claimQa(cursorId)).to.be.revertedWith(
-            'Already claimed'
-          )
-        } else {
-          await expect(qa.claimQa(cursorId)).to.be.revertedWith(
-            'No funds to claim'
-          )
-        }
+        await expect(qa.claimQa(cursorId))
+          .to.emit(dreamEther, 'QAClaimed')
+          .withArgs(cursorId)
+        const msg = 'Already claimed'
+        await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+      },
+      QA_EMPTY: async ({ state: { context } }) => {
+        const { qa } = fixture
+        const { cursorId } = context
+        expect(tests.isQaClaimable(context)).to.be.false
+        const msg = 'No funds to claim'
+        await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+      },
+      QA_CLAIM_ERROR: async ({ state: { context } }) => {
+        const { qa } = fixture
+        const { cursorId } = context
+        expect(tests.isPacket(context)).to.be.true
+        const msg = 'Cannot claim packets'
+        await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
       },
       SOLVE: async ({ state: { context } }) => {
         const { dreamEther } = fixture
@@ -155,31 +162,21 @@ export const initializeSut = async () => {
       CLAIM: async ({ state: { context } }) => {
         const { dreamEther } = fixture
         const { cursorId } = context
-        const solution = context.transitions.get(cursorId)
-        expect(solution.type).to.equal(types.SOLUTION)
-        const packetId = solution.uplink
-        await expect(dreamEther.claim(packetId)).to.emit(dreamEther, 'Claimed')
-      },
-      CLAIM_EMPTY: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
-        const { cursorId } = context
-        const solution = context.transitions.get(cursorId)
-        expect(solution.type).to.equal(types.SOLUTION)
-        const packetId = solution.uplink
-        await expect(dreamEther.claim(packetId)).to.be.revertedWith(
-          'No funds to claim'
-        )
-      },
-      CLAIM_TWICE: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
-        const { cursorId } = context
-        const solution = context.transitions.get(cursorId)
-        expect(solution.type).to.equal(types.SOLUTION)
-        const packetId = solution.uplink
-        await expect(dreamEther.claim(packetId)).to.emit(dreamEther, 'Claimed')
-        await expect(dreamEther.claim(packetId)).to.be.revertedWith(
-          'Already claimed'
-        )
+        const packet = context.transitions.get(cursorId)
+        expect(packet.type).to.equal(types.PACKET)
+        if (tests.isPacketClaimable(context)) {
+          await expect(dreamEther.claim(cursorId)).to.emit(
+            dreamEther,
+            'Claimed'
+          )
+          await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
+            'Already claimed'
+          )
+        } else {
+          await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
+            'No funds to claim'
+          )
+        }
       },
 
       // OLD

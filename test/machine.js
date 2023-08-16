@@ -1,4 +1,5 @@
 import Immutable from 'immutable'
+import { expect } from 'chai'
 import { hash } from '../utils.js'
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
@@ -20,6 +21,7 @@ const Transition = Immutable.Record({
   traded: false,
   uplink: undefined,
 })
+
 export const guards = {
   isUnfunded: (ctx) => {
     const t = ctx.transitions.get(ctx.cursorId)
@@ -33,26 +35,8 @@ export const guards = {
     const transition = ctx.transitions.get(ctx.cursorId)
     return transition.type === types.HEADER
   },
-  isClaimable: (ctx) => {
-    const transition = ctx.transitions.get(ctx.cursorId)
-    if (transition.type !== types.SOLUTION) {
-      return false
-    }
-    if (!transition.enacted) {
-      return false
-    }
-    const packet = ctx.transitions.get(transition.uplink)
-    return packet.funded || packet.fundedDai
-  },
-  isNotClaimable: (ctx) => !guards.isClaimable(ctx),
-  isQaClaimable: (ctx) => {
-    const t = ctx.transitions.get(ctx.cursorId)
-    return t.type !== types.PACKET && (t.funded || t.fundedDai)
-  },
-  isNotPacket: (ctx) => {
-    const transition = ctx.transitions.get(ctx.cursorId)
-    return transition.type !== types.PACKET
-  },
+
+  isNotPacket: (ctx) => !guards.isPacket(ctx),
   isPacket: (ctx) => {
     const transition = ctx.transitions.get(ctx.cursorId)
     return transition.type === types.PACKET
@@ -67,6 +51,11 @@ export const guards = {
     debug('isTradeable', !packet.traded)
     return !packet.traded
   },
+  isQaClaimable: (ctx) => {
+    const t = ctx.transitions.get(ctx.cursorId)
+    return t.type !== types.PACKET && (t.funded || t.fundedDai)
+  },
+  isNotQaClaimable: (ctx) => !guards.isQaClaimable(ctx),
 }
 export const machine = createTestModel(
   createTestMachine(
@@ -114,7 +103,8 @@ export const machine = createTestModel(
         qaClaimable: {
           // QA might be able to claim from here
           on: {
-            QA_CLAIM: { target: 'enacted' },
+            QA_CLAIM: { target: 'enacted', cond: 'isQaClaimable' },
+            QA_EMPTY: { target: 'enacted', cond: 'isNotQaClaimable' },
           },
         },
         enacted: {
@@ -127,6 +117,7 @@ export const machine = createTestModel(
             },
             SOLVE_PACKET: {
               target: 'solved',
+              actions: 'focusPacket',
               cond: 'isSolution',
             },
           },
@@ -135,9 +126,8 @@ export const machine = createTestModel(
         solved: {
           on: {
             // TRADE: { actions: 'trade', cond: 'isTradeable' },
-            CLAIM: { target: 'claimed', cond: 'isClaimable' },
-            CLAIM_TWICE: { target: 'claimed', cond: 'isClaimable' },
-            CLAIM_EMPTY: { target: 'claimed', cond: 'isNotClaimable' },
+            CLAIM: 'claimed',
+            QA_CLAIM_ERROR: 'claimed', // tests QA cannot claim a packet
             // RE_SOLVE: solve it again
             // trade the solution and header NFTs
             // modify the header
@@ -225,6 +215,13 @@ export const machine = createTestModel(
             transitions: ctx.transitions.set(solutionId, solution),
           }
         }),
+        focusPacket: assign({
+          cursorId: (ctx) => {
+            const solution = ctx.transitions.get(ctx.cursorId)
+            expect(solution.type).to.equal(types.SOLUTION)
+            return solution.uplink
+          },
+        }),
       },
       guards,
     }
@@ -251,4 +248,12 @@ export const filters = {
     }
     return true
   },
+}
+export const tests = {
+  isPacketClaimable: (ctx) => {
+    const packet = ctx.transitions.get(ctx.cursorId)
+    return packet.funded || packet.fundedDai
+  },
+
+  ...guards,
 }

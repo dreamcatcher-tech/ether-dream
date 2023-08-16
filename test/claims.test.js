@@ -1,7 +1,7 @@
 import { description } from '../utils.js'
 import { expect } from 'chai'
 import { initializeSut } from './sut.js'
-import { types, machine, filters } from './machine.js'
+import { types, machine, filters, tests } from './machine.js'
 import Debug from 'debug'
 const debug = Debug('tests')
 
@@ -19,38 +19,41 @@ describe(`claims`, () => {
     })
   })
   describe('claim rejects when no funding present', () => {
-    const shortestPaths = machine.getShortestPaths({
-      toState: (state) => state.matches('claimed'),
-      filter: filters.skipFunding,
-    })
+    const shortestPaths = machine
+      .getShortestPaths({
+        toState: (state) => state.matches('claimed'),
+        filter: filters.skipFunding,
+      })
+      .filter((path) =>
+        path.steps.find((step) => {
+          if (step.event.type === 'CLAIM') {
+            return (
+              tests.isUnfunded(step.state.context) &&
+              tests.isUnfundedDai(step.state.context)
+            )
+          }
+        })
+      )
+
     shortestPaths.forEach((path, index) => {
       it(description(path, index), async () => {
-        const lastStep = path.steps[path.steps.length - 1]
-        expect(lastStep.event.type).to.equal('CLAIM_EMPTY')
         await path.test(await initializeSut())
       })
     })
   })
-  describe.only('QA can claim all the funds', () => {
+  describe('QA can claim all the funds', () => {
     const shortestPaths = machine.getShortestPaths({
       toState: (state) => state.matches('claimed'),
-      // check we test a meta with no funding
-      // check we try claim against a packet
-
-      // filter: (state, event) => {
-      //   if (!state.matches('solved')) {
-      //     return true
-      //   } else if (event.type === 'CLAIM_QA') {
-      //     return true
-      //   }
-      // },
+      filter: (state, event) => {
+        if (state.matches('claimed')) {
+          return event.type === 'QA_CLAIM_ERROR'
+        }
+        return true
+      },
     })
-    console.log('shortestPaths.length', shortestPaths.length)
-    // shortestPaths.length = 10
-    shortestPaths.forEach((path, index) => {
-      it(description(path, index), async () => {
-        await path.test(await initializeSut())
-      })
+    const path = shortestPaths.shift()
+    it(description(path), async () => {
+      await path.test(await initializeSut())
     })
   })
 
