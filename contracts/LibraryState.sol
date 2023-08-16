@@ -17,7 +17,7 @@ interface IERC20 {
   ) external returns (bool);
 }
 
-library LibraryChanges {
+library LibraryState {
   using EnumerableSet for EnumerableSet.AddressSet;
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using Counters for Counters.Counter;
@@ -271,7 +271,7 @@ library LibraryChanges {
     return shares == claimed;
   }
 
-  function enact(uint id, State storage state) public {
+  function enact(State storage state, uint id) public {
     Change storage c = state.changes[id];
     require(c.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - c.disputeWindowStart;

@@ -25,14 +25,14 @@ async function deploy() {
   })
   const libraryUtils = await LibraryUtils.deploy()
 
-  const LibraryChanges = await ethers.getContractFactory('LibraryChanges')
-  const libraryChanges = await LibraryChanges.deploy()
+  const LibraryState = await ethers.getContractFactory('LibraryState')
+  const libraryState = await LibraryState.deploy()
 
   const DreamEther = await ethers.getContractFactory('DreamEther', {
     libraries: {
       LibraryQA: libraryQA.target,
       LibraryUtils: libraryUtils.target,
-      LibraryChanges: libraryChanges.target,
+      LibraryState: libraryState.target,
     },
   })
   const dreamEther = await DreamEther.deploy()

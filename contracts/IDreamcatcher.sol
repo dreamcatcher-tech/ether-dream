@@ -48,11 +48,6 @@ interface IDreamcatcher {
 
   function exitBurn(uint assetId) external;
 
-  event QAResolved(uint transitionHash);
-  event QARejected(uint transitionHash);
-  event DisputeDismissed(uint disputeId);
-  event DisputeUpheld(uint disputeId);
-
   // to notify opensea to halt trading
   event Locked(uint256 tokenId);
   event Unlocked(uint256 tokenId);
@@ -71,4 +66,8 @@ interface IDreamcatcher {
 
   // from LibraryQA.sol
   event ChangeDisputed(uint disputeId);
+  event QAResolved(uint transitionHash);
+  event QARejected(uint transitionHash);
+  event DisputeDismissed(uint disputeId);
+  event DisputeUpheld(uint disputeId);
 }

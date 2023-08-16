@@ -10,7 +10,7 @@ import './IQA.sol';
 import './IDreamcatcher.sol';
 import './LibraryUtils.sol';
 import './LibraryQA.sol';
-import './LibraryChanges.sol';
+import './LibraryState.sol';
 
 /**
  * Convert assets into task completion, with quality oversight
@@ -26,16 +26,16 @@ contract DreamEther is
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using EnumerableSet for EnumerableSet.AddressSet;
   using LibraryQA for State;
-  using LibraryChanges for State;
+  using LibraryState for State;
 
   State state;
 
   function proposePacket(bytes32 contents, address qa) external {
-    LibraryChanges.proposePacket(state, contents, qa);
+    state.proposePacket(contents, qa);
   }
 
   function fund(uint changeId, Payment[] calldata payments) external payable {
-    LibraryChanges.fund(state, changeId, payments);
+    state.fund(changeId, payments);
   }
 
   function defundStart(uint id) external {
@@ -51,17 +51,11 @@ contract DreamEther is
   }
 
   function qaResolve(uint id, Share[] calldata shares) external {
-    require(isQa(id), 'Must be transition QA');
-    Change storage change = state.changes[id];
-    LibraryQA.qaResolve(change, shares);
-    emit QAResolved(id);
+    state.qaResolve(id, shares);
   }
 
   function qaReject(uint id, bytes32 reason) public {
-    require(isQa(id), 'Must be transition QA');
-    Change storage change = state.changes[id];
-    LibraryQA.qaReject(change, reason);
-    emit QARejected(id);
+    state.qaReject(id, reason);
   }
 
   function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
@@ -77,33 +71,15 @@ contract DreamEther is
   }
 
   function qaDisputeDismissed(uint id, bytes32 reason) external {
-    require(isQa(id));
-    require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
-    Change storage dispute = state.changes[id];
-    require(dispute.createdAt != 0, 'Change does not exist');
-    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
-
-    dispute.rejectionReason = reason;
-    emit DisputeDismissed(id);
+    state.qaDisputeDismissed(id, reason);
   }
 
   function qaDisputeUpheld(uint id) external {
-    require(isQa(id));
-    Change storage dispute = state.changes[id];
-    require(dispute.createdAt != 0, 'Change does not exist');
-    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
-
-    // TODO if shares, change the share allocations
-    // TODO if resolve, then undo the resolve, change back to open
-    // TODO if reject, then undo the reject, change back to open
-    // TODO handle concurrent disputes
-
-    // mint dispute nfts
-    emit DisputeUpheld(id);
+    state.qaDisputeUpheld(id);
   }
 
   function enact(uint id) external {
-    LibraryChanges.enact(id, state);
+    state.enact(id);
   }
 
   function solve(uint packetId, bytes32 contents) external {
@@ -130,7 +106,7 @@ contract DreamEther is
   }
 
   function claimQa(uint id) external {
-    require(isQa(id), 'Must be transition QA');
+    require(state.isQa(id), 'Must be transition QA');
     Change storage change = state.changes[id];
     require(change.changeType != ChangeType.PACKET);
     require(change.createdAt != 0, 'Change does not exist');
@@ -219,23 +195,6 @@ contract DreamEther is
     }
   }
 
-  function isQa(uint id) internal view returns (bool) {
-    Change storage change = state.changes[id];
-    if (change.changeType == ChangeType.HEADER) {
-      return state.qaMap[id] == msg.sender;
-    }
-    if (change.changeType == ChangeType.SOLUTION) {
-      return isQa(change.uplink);
-    }
-    if (change.changeType == ChangeType.PACKET) {
-      return isQa(change.uplink);
-    }
-    if (change.changeType == ChangeType.DISPUTE) {
-      return isQa(change.uplink);
-    }
-    revert('Invalid change');
-  }
-
   function balanceOf(address account, uint256 id) public view returns (uint) {
     TaskNft memory nft = state.taskNfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
@@ -311,7 +270,7 @@ contract DreamEther is
     Change storage change = state.changes[nft.changeId];
 
     if (nft.assetId == CONTENT_ASSET_ID) {
-      require(LibraryChanges.isTransferrable(change, from), 'Untransferrable');
+      require(LibraryState.isTransferrable(change, from), 'Untransferrable');
       // TODO handle id being part of an open share dispute
       uint fromBalance = change.contentShares.balances[from];
       uint fromRemaining = fromBalance - amount;

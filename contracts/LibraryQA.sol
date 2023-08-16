@@ -8,18 +8,32 @@ library LibraryQA {
   using EnumerableSet for EnumerableSet.AddressSet;
   using Counters for Counters.Counter;
   event ChangeDisputed(uint disputeId);
+  event QAResolved(uint transitionHash);
+  event QARejected(uint transitionHash);
+  event DisputeDismissed(uint disputeId);
+  event DisputeUpheld(uint disputeId);
 
-  function qaResolve(Change storage c, Share[] calldata shares) public {
+  function qaResolve(
+    State storage state,
+    uint id,
+    Share[] calldata shares
+  ) external {
+    require(isQa(state, id), 'Must be transition QA');
+    Change storage change = state.changes[id];
     require(shares.length > 0, 'Must provide shares');
-    require(c.contentShares.holders.length() == 0);
-    qaStart(c);
-    allocateShares(c, shares);
+    require(change.contentShares.holders.length() == 0);
+    qaStart(change);
+    allocateShares(change, shares);
+    emit QAResolved(id);
   }
 
-  function qaReject(Change storage change, bytes32 reason) public {
+  function qaReject(State storage state, uint id, bytes32 reason) public {
+    require(isQa(state, id), 'Must be transition QA');
+    Change storage change = state.changes[id];
     require(LibraryUtils.isIpfs(reason), 'Invalid rejection hash');
     qaStart(change);
     change.rejectionReason = reason;
+    emit QARejected(id);
   }
 
   function qaStart(Change storage change) internal {
@@ -105,5 +119,52 @@ library LibraryQA {
 
     emit ChangeDisputed(disputeId);
     return disputeId;
+  }
+
+  function qaDisputeDismissed(
+    State storage state,
+    uint id,
+    bytes32 reason
+  ) external {
+    require(isQa(state, id));
+    require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
+    Change storage dispute = state.changes[id];
+    require(dispute.createdAt != 0, 'Change does not exist');
+    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
+
+    dispute.rejectionReason = reason;
+    emit DisputeDismissed(id);
+  }
+
+  function qaDisputeUpheld(State storage state, uint id) external {
+    require(isQa(state, id));
+    Change storage dispute = state.changes[id];
+    require(dispute.createdAt != 0, 'Change does not exist');
+    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
+
+    // TODO if shares, change the share allocations
+    // TODO if resolve, then undo the resolve, change back to open
+    // TODO if reject, then undo the reject, change back to open
+    // TODO handle concurrent disputes
+
+    // mint dispute nfts
+    emit DisputeUpheld(id);
+  }
+
+  function isQa(State storage state, uint id) public view returns (bool) {
+    Change storage change = state.changes[id];
+    if (change.changeType == ChangeType.HEADER) {
+      return state.qaMap[id] == msg.sender;
+    }
+    if (change.changeType == ChangeType.SOLUTION) {
+      return isQa(state, change.uplink);
+    }
+    if (change.changeType == ChangeType.PACKET) {
+      return isQa(state, change.uplink);
+    }
+    if (change.changeType == ChangeType.DISPUTE) {
+      return isQa(state, change.uplink);
+    }
+    revert('Invalid change');
   }
 }
