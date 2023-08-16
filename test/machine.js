@@ -95,6 +95,8 @@ export const machine = createTestModel(
           // transition is open for funding, trading
           // if packet, open for solving
         },
+        // make a state for solved, and check can't defund
+        // also check qa thresholds
         pending: {
           on: {
             ENACT: { target: 'qaClaimable', actions: 'enactCursor' },

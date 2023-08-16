@@ -204,4 +204,21 @@ library LibraryQA {
     }
     revert('Invalid change');
   }
+
+  function getQa(State storage state, uint id) public view returns (address) {
+    Change storage change = state.changes[id];
+    if (change.changeType == ChangeType.HEADER) {
+      return state.qaMap[id];
+    }
+    if (change.changeType == ChangeType.SOLUTION) {
+      return getQa(state, change.uplink);
+    }
+    if (change.changeType == ChangeType.PACKET) {
+      return getQa(state, change.uplink);
+    }
+    if (change.changeType == ChangeType.DISPUTE) {
+      return getQa(state, change.uplink);
+    }
+    revert('Invalid change');
+  }
 }

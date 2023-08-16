@@ -95,6 +95,9 @@ contract DreamEther is
     require(to.createdAt != 0, 'To change does not exist');
     require(from.changeType == to.changeType, 'Change types must match');
     require(from.changeType != ChangeType.MERGE, 'Cannot merge merges');
+    address fromQa = state.getQa(fromId);
+    address toQa = state.getQa(toId);
+    require(fromQa == toQa, 'QA must match');
   }
 
   function edit(uint id, bytes32 contents, bytes32 reasons) external {
