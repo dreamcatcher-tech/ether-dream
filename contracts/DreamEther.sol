@@ -106,30 +106,7 @@ contract DreamEther is
   }
 
   function claimQa(uint id) external {
-    require(state.isQa(id), 'Must be transition QA');
-    Change storage change = state.changes[id];
-    require(change.changeType != ChangeType.PACKET);
-    require(change.createdAt != 0, 'Change does not exist');
-    require(change.disputeWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - change.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
-
-    uint[] memory nftIds = change.funds.keys();
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
-
-    for (uint i = 0; i < nftIds.length; i++) {
-      uint nftId = nftIds[i];
-      uint totalFunds = change.funds.get(nftId);
-      TaskNft memory nft = state.taskNfts[nftId];
-      require(nft.changeId == id, 'NFT not for this transition');
-
-      uint debt = 0;
-      if (debts.contains(nft.assetId)) {
-        debt = debts.get(nft.assetId);
-      }
-      debts.set(nft.assetId, debt + totalFunds);
-      change.funds.remove(nftId);
-    }
+    state.claimQa(id);
   }
 
   function exitBurn(uint assetId) external {

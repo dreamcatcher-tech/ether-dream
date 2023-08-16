@@ -2,9 +2,19 @@
 pragma solidity ^0.8.9;
 
 import './Types.sol';
+import './LibraryUtils.sol';
 
 library LibraryChange {
   using EnumerableSet for EnumerableSet.AddressSet;
+
+  function createHeader(Change storage header, bytes32 contents) internal {
+    require(LibraryUtils.isIpfs(contents), 'Invalid contents');
+    require(header.createdAt == 0, 'Header already exists');
+
+    header.changeType = ChangeType.HEADER;
+    header.createdAt = block.timestamp;
+    header.contents = contents;
+  }
 
   function isOpen(Change storage change) internal view returns (bool) {
     return change.createdAt != 0 && change.disputeWindowStart == 0;

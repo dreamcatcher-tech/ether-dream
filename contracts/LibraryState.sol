@@ -31,19 +31,6 @@ library LibraryState {
   event SolutionProposed(uint solutionId);
   event Claimed(uint packetId, address holder);
 
-  function createHeader(Change storage header, bytes32 contents) public {
-    require(LibraryUtils.isIpfs(contents), 'Invalid contents');
-    require(header.createdAt == 0, 'Header already exists');
-
-    header.changeType = ChangeType.HEADER;
-    header.createdAt = block.timestamp;
-    header.contents = contents;
-  }
-
-  function isOpen(Change storage change) internal view returns (bool) {
-    return change.createdAt != 0 && change.disputeWindowStart == 0;
-  }
-
   function proposePacket(
     State storage state,
     bytes32 contents,
@@ -53,7 +40,7 @@ library LibraryState {
     state.changeCounter.increment();
     uint headerId = state.changeCounter.current();
     Change storage header = state.changes[headerId];
-    createHeader(header, contents);
+    header.createHeader(contents);
 
     require(state.qaMap[headerId] == address(0), 'QA exists');
     state.qaMap[headerId] = qa;
@@ -68,7 +55,7 @@ library LibraryState {
   ) public {
     require(msg.value > 0 || payments.length > 0, 'Must send funds');
     Change storage change = state.changes[changeId];
-    require(isOpen(change), 'Change is not open for funding');
+    require(change.isOpen(), 'Change is not open for funding');
 
     if (msg.value > 0) {
       Payment memory eth = Payment(ETH_ADDRESS, ETH_TOKEN_ID, msg.value);

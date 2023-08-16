@@ -6,6 +6,7 @@ import './LibraryUtils.sol';
 
 library LibraryQA {
   using EnumerableSet for EnumerableSet.AddressSet;
+  using EnumerableMap for EnumerableMap.UintToUintMap;
   using Counters for Counters.Counter;
   event ChangeDisputed(uint disputeId);
   event QAResolved(uint transitionHash);
@@ -149,6 +150,33 @@ library LibraryQA {
 
     // mint dispute nfts
     emit DisputeUpheld(id);
+  }
+
+  function claimQa(State storage state, uint id) public {
+    require(isQa(state, id), 'Must be transition QA');
+    Change storage change = state.changes[id];
+    require(change.changeType != ChangeType.PACKET);
+    require(change.createdAt != 0, 'Change does not exist');
+    require(change.disputeWindowStart > 0, 'Not passed by QA');
+    uint elapsedTime = block.timestamp - change.disputeWindowStart;
+    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+
+    uint[] memory nftIds = change.funds.keys();
+    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
+
+    for (uint i = 0; i < nftIds.length; i++) {
+      uint nftId = nftIds[i];
+      uint totalFunds = change.funds.get(nftId);
+      TaskNft memory nft = state.taskNfts[nftId];
+      require(nft.changeId == id, 'NFT not for this transition');
+
+      uint debt = 0;
+      if (debts.contains(nft.assetId)) {
+        debt = debts.get(nft.assetId);
+      }
+      debts.set(nft.assetId, debt + totalFunds);
+      change.funds.remove(nftId);
+    }
   }
 
   function isQa(State storage state, uint id) public view returns (bool) {
