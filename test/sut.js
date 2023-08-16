@@ -4,7 +4,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types } from './machine.js'
+import { types, guards } from './machine.js'
 import { hash } from '../utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
@@ -123,6 +123,22 @@ export const initializeSut = async () => {
           await expect(tx)
             .to.emit(dreamEther, 'PacketResolved')
             .withArgs(uplink)
+        }
+      },
+      QA_CLAIM: async ({ state: { context } }) => {
+        const { dreamEther, qa } = fixture
+        const { cursorId } = context
+        if (guards.isQaClaimable(context)) {
+          await expect(qa.claimQa(cursorId))
+            .to.emit(dreamEther, 'QAClaimed')
+            .withArgs(cursorId)
+          await expect(qa.claimQa(cursorId)).to.be.revertedWith(
+            'Already claimed'
+          )
+        } else {
+          await expect(qa.claimQa(cursorId)).to.be.revertedWith(
+            'No funds to claim'
+          )
         }
       },
       SOLVE: async ({ state: { context } }) => {

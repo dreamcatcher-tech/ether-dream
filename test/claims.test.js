@@ -31,7 +31,28 @@ describe(`claims`, () => {
       })
     })
   })
+  describe.only('QA can claim all the funds', () => {
+    const shortestPaths = machine.getShortestPaths({
+      toState: (state) => state.matches('claimed'),
+      // check we test a meta with no funding
+      // check we try claim against a packet
+
+      // filter: (state, event) => {
+      //   if (!state.matches('solved')) {
+      //     return true
+      //   } else if (event.type === 'CLAIM_QA') {
+      //     return true
+      //   }
+      // },
+    })
+    console.log('shortestPaths.length', shortestPaths.length)
+    // shortestPaths.length = 10
+    shortestPaths.forEach((path, index) => {
+      it(description(path, index), async () => {
+        await path.test(await initializeSut())
+      })
+    })
+  })
 
   it.skip('a single NFT can be claimed between two content share holders')
-  it.skip('QA can claim all the funds')
 })

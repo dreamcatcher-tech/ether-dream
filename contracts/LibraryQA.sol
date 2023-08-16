@@ -11,6 +11,7 @@ library LibraryQA {
   event ChangeDisputed(uint disputeId);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
+  event QAClaimed(uint metaId);
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
 
@@ -155,18 +156,25 @@ library LibraryQA {
   function claimQa(State storage state, uint id) public {
     require(isQa(state, id), 'Must be transition QA');
     Change storage change = state.changes[id];
-    require(change.changeType != ChangeType.PACKET);
+    require(change.changeType != ChangeType.PACKET, 'Cannot claim packets');
     require(change.createdAt != 0, 'Change does not exist');
     require(change.disputeWindowStart > 0, 'Not passed by QA');
     uint elapsedTime = block.timestamp - change.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
 
+    if (change.funds.length() == 0) {
+      revert('No funds to claim');
+    }
     uint[] memory nftIds = change.funds.keys();
     EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
-      uint totalFunds = change.funds.get(nftId);
+      uint funds = change.funds.get(nftId);
+      require(funds > 0, 'No funds');
+      if (change.contentShares.withdrawn[nftId] != 0) {
+        revert('Already claimed');
+      }
       TaskNft memory nft = state.taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
 
@@ -174,9 +182,10 @@ library LibraryQA {
       if (debts.contains(nft.assetId)) {
         debt = debts.get(nft.assetId);
       }
-      debts.set(nft.assetId, debt + totalFunds);
-      change.funds.remove(nftId);
+      debts.set(nft.assetId, debt + funds);
+      change.contentShares.withdrawn[nftId] = funds;
     }
+    emit QAClaimed(id);
   }
 
   function isQa(State storage state, uint id) public view returns (bool) {

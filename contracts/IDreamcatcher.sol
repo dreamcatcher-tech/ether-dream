@@ -68,6 +68,7 @@ interface IDreamcatcher {
   event ChangeDisputed(uint disputeId);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
+  event QAClaimed(uint metaId);
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
 }

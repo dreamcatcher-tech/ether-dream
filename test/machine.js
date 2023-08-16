@@ -20,7 +20,7 @@ const Transition = Immutable.Record({
   traded: false,
   uplink: undefined,
 })
-const guards = {
+export const guards = {
   isUnfunded: (ctx) => {
     const t = ctx.transitions.get(ctx.cursorId)
     return !t.funded
@@ -45,6 +45,10 @@ const guards = {
     return packet.funded || packet.fundedDai
   },
   isNotClaimable: (ctx) => !guards.isClaimable(ctx),
+  isQaClaimable: (ctx) => {
+    const t = ctx.transitions.get(ctx.cursorId)
+    return t.type !== types.PACKET && (t.funded || t.fundedDai)
+  },
   isNotPacket: (ctx) => {
     const transition = ctx.transitions.get(ctx.cursorId)
     return transition.type !== types.PACKET
@@ -94,7 +98,6 @@ export const machine = createTestModel(
               cond: 'isNotPacket',
             },
             SOLVE: { actions: 'proposeSolution', cond: 'isPacket' },
-            // LIST on opensea
             // TRADE: { actions: 'trade', cond: 'isTradeable' },
             // DEFUND
             // SECOND_SOLVE // handle a competiting solution
@@ -105,16 +108,27 @@ export const machine = createTestModel(
         },
         pending: {
           on: {
-            ENACT: [
-              { target: 'open', actions: 'enactHeader', cond: 'isHeader' },
-              {
-                target: 'solved',
-                actions: 'enactSolution',
-                cond: 'isSolution',
-              },
-            ],
-            // APPEAL_RESOLVE: { target: 'appeal', actions: 'appealResolve' },
-            // APPEAL_SHARES
+            ENACT: { target: 'qaClaimable', actions: 'enactCursor' },
+          },
+        },
+        qaClaimable: {
+          // QA might be able to claim from here
+          on: {
+            QA_CLAIM: { target: 'enacted' },
+          },
+        },
+        enacted: {
+          // the meta change is incapable of financially changing any further
+          on: {
+            OPEN_HEADER: {
+              target: 'open',
+              actions: 'createPacket',
+              cond: 'isHeader',
+            },
+            SOLVE_PACKET: {
+              target: 'solved',
+              cond: 'isSolution',
+            },
           },
         },
         dispute: {},
@@ -173,9 +187,7 @@ export const machine = createTestModel(
             return ctx.transitions.set(cursorId, next)
           },
         }),
-        enactHeader: assign((ctx) => {
-          const transition = ctx.transitions.get(ctx.cursorId)
-          const next = transition.set('enacted', true)
+        createPacket: assign((ctx) => {
           const packetId = ctx.transitionsCount
           const transitionsCount = ctx.transitionsCount + 1
           const packet = Transition({
@@ -185,12 +197,10 @@ export const machine = createTestModel(
           return {
             transitionsCount,
             cursorId: packetId,
-            transitions: ctx.transitions
-              .set(ctx.cursorId, next)
-              .set(packetId, packet),
+            transitions: ctx.transitions.set(packetId, packet),
           }
         }),
-        enactSolution: assign({
+        enactCursor: assign({
           transitions: (ctx) => {
             // make the NFTs tradeable
             // store the shares from the QA

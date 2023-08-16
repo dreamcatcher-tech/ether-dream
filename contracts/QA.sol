@@ -45,4 +45,8 @@ contract QA is IQA {
   function disputeUpheld(uint id) external {
     dreamcatcher.qaDisputeUpheld(id);
   }
+
+  function claimQa(uint id) external {
+    dreamcatcher.claimQa(id);
+  }
 }
