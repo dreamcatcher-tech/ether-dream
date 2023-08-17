@@ -1,6 +1,6 @@
 import Immutable from 'immutable'
 import { expect } from 'chai'
-import { hash } from '../utils.js'
+import { hash } from './utils.js'
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
 export const types = {
@@ -20,43 +20,50 @@ const Transition = Immutable.Record({
   enacted: false,
   traded: false,
   uplink: undefined,
+  tradedOnce: false,
+  tradedTwice: false,
 })
 
-export const guards = {
-  isUnfunded: (ctx) => {
-    const t = ctx.transitions.get(ctx.cursorId)
-    return !t.funded
-  },
-  isUnfundedDai: (ctx) => {
-    const t = ctx.transitions.get(ctx.cursorId)
-    return !t.fundedDai
-  },
-  isHeader: (ctx) => {
-    const transition = ctx.transitions.get(ctx.cursorId)
-    return transition.type === types.HEADER
-  },
-
-  isNotPacket: (ctx) => !guards.isPacket(ctx),
-  isPacket: (ctx) => {
-    const transition = ctx.transitions.get(ctx.cursorId)
-    return transition.type === types.PACKET
-  },
-  isSolution: (ctx) => {
-    const transition = ctx.transitions.get(ctx.cursorId)
-    return transition.type === types.SOLUTION
-  },
-  isDispute: (ctx) => {},
-  isTradeable: (ctx) => {
-    const packet = ctx.packets.get(ctx.cursorId)
-    debug('isTradeable', !packet.traded)
-    return !packet.traded
-  },
-  isQaClaimable: (ctx) => {
-    const t = ctx.transitions.get(ctx.cursorId)
-    return t.type !== types.PACKET && (t.funded || t.fundedDai)
-  },
-  isNotQaClaimable: (ctx) => !guards.isQaClaimable(ctx),
+export const guards = {}
+export const not = (conditions) => (ctx) => {
+  const t = ctx.transitions.get(ctx.cursorId)
+  for (const key in conditions) {
+    if (t[key] === conditions[key]) {
+      return false
+    }
+  }
+  return true
 }
+
+export const is = (conditions) => (ctx) => {
+  const t = ctx.transitions.get(ctx.cursorId)
+  for (const key in conditions) {
+    if (t[key] !== conditions[key]) {
+      return false
+    }
+  }
+  return true
+}
+
+export const isAny = (conditions) => (ctx) => {
+  const t = ctx.transitions.get(ctx.cursorId)
+  for (const key in conditions) {
+    if (t[key] === conditions[key]) {
+      return true
+    }
+  }
+  return false
+}
+
+export const patch = (patch) =>
+  assign({
+    transitions: (ctx) => {
+      const transition = ctx.transitions.get(ctx.cursorId)
+      const next = transition.merge(patch)
+      return ctx.transitions.set(ctx.cursorId, next)
+    },
+  })
+
 export const machine = createTestModel(
   createTestMachine(
     {
@@ -79,34 +86,44 @@ export const machine = createTestModel(
         },
         open: {
           on: {
-            FUND_DAI: { actions: 'fundDai', cond: 'isUnfundedDai' },
-            FUND: { actions: 'fund', cond: 'isUnfunded' },
+            FUND: {
+              actions: patch({ funded: true }),
+              cond: is({ funded: false }),
+            },
+            FUND_DAI: {
+              actions: patch({ fundedDai: true }),
+              cond: is({ fundedDai: false }),
+            },
             QA_RESOLVE: {
               target: 'pending',
-              actions: 'qaResolve',
-              cond: 'isNotPacket',
+              actions: patch({ qaResolved: true }),
+              cond: not({ type: types.PACKET }),
             },
-            SOLVE: { actions: 'proposeSolution', cond: 'isPacket' },
+            SOLVE: {
+              actions: 'proposeSolution',
+              cond: is({ type: types.PACKET }),
+            },
             TRADE_FUNDING: 'trading',
-            // DEFUND
-            // SECOND_SOLVE // handle a competiting solution
-            // ? how to do two solves concurrently ?
           },
-          // transition is open for funding, trading
-          // if packet, open for solving
         },
         // make a state for solved, and check can't defund
         // also check qa thresholds
         pending: {
           on: {
-            ENACT: { target: 'qaClaimable', actions: 'enactCursor' },
+            ENACT: { target: 'qaClaimable', actions: patch({ enacted: true }) },
           },
         },
         qaClaimable: {
           // QA might be able to claim from here
           on: {
-            QA_CLAIM: { target: 'enacted', cond: 'isQaClaimable' },
-            QA_EMPTY: { target: 'enacted', cond: 'isNotQaClaimable' },
+            QA_CLAIM: {
+              target: 'enacted',
+              cond: isAny({ funded: true, fundedDai: true }),
+            },
+            QA_EMPTY: {
+              target: 'enacted',
+              cond: is({ funded: false, fundedDai: false }),
+            },
           },
         },
         enacted: {
@@ -115,12 +132,12 @@ export const machine = createTestModel(
             OPEN_HEADER: {
               target: 'open',
               actions: 'createPacket',
-              cond: 'isHeader',
+              cond: is({ type: types.HEADER }),
             },
             SOLVE_PACKET: {
               target: 'solved',
               actions: 'focusPacket',
-              cond: 'isSolution',
+              cond: is({ type: types.SOLUTION }),
             },
           },
         },
@@ -161,30 +178,6 @@ export const machine = createTestModel(
               })
             ),
         }),
-        fund: assign({
-          transitions: (ctx) => {
-            const { cursorId, transitions } = ctx
-            const transition = transitions.get(cursorId)
-            const next = transition.set('funded', true)
-            return transitions.set(cursorId, next)
-          },
-        }),
-        fundDai: assign({
-          transitions: (ctx) => {
-            const { cursorId, transitions } = ctx
-            const transition = transitions.get(cursorId)
-            const next = transition.set('fundedDai', true)
-            return transitions.set(cursorId, next)
-          },
-        }),
-        qaResolve: assign({
-          transitions: (ctx) => {
-            const { cursorId } = ctx
-            const transition = ctx.transitions.get(cursorId)
-            const next = transition.set('qaResolved', true)
-            return ctx.transitions.set(cursorId, next)
-          },
-        }),
         createPacket: assign((ctx) => {
           const packetId = ctx.transitionsCount
           const transitionsCount = ctx.transitionsCount + 1
@@ -197,17 +190,6 @@ export const machine = createTestModel(
             cursorId: packetId,
             transitions: ctx.transitions.set(packetId, packet),
           }
-        }),
-        enactCursor: assign({
-          transitions: (ctx) => {
-            // make the NFTs tradeable
-            // store the shares from the QA
-            // make the packet as finalized as well as the solution
-            //
-            const transition = ctx.transitions.get(ctx.cursorId)
-            const next = transition.set('enacted', true)
-            return ctx.transitions.set(ctx.cursorId, next)
-          },
         }),
         proposeSolution: assign((ctx) => {
           const solutionId = ctx.transitionsCount
@@ -256,12 +238,4 @@ export const filters = {
     }
     return true
   },
-}
-export const tests = {
-  isPacketClaimable: (ctx) => {
-    const packet = ctx.transitions.get(ctx.cursorId)
-    return packet.funded || packet.fundedDai
-  },
-
-  ...guards,
 }

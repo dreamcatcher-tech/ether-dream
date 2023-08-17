@@ -1,9 +1,7 @@
-import { description } from '../utils.js'
-import { expect } from 'chai'
+import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { types, machine, filters, tests } from './machine.js'
+import { machine } from './machine.js'
 import Debug from 'debug'
-const debug = Debug('tests')
 
 describe(`trading`, () => {
   describe('header funding shares can trade', () => {
@@ -31,6 +29,4 @@ describe(`trading`, () => {
   it.skip('can deny opensea operator access')
   it.skip('no trading before claimin')
   it.skip('unfunded packets are tradeable without claim')
-
-  // Debug.enable('test:sut')
 })

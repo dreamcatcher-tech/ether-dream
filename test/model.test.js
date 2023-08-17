@@ -1,9 +1,6 @@
-import { description } from '../utils.js'
-
+import { description } from './utils.js'
 import { initializeSut } from './sut.js'
 import { machine } from './machine.js'
-import Debug from 'debug'
-const debug = Debug('test:consequences')
 
 describe('model based tests', () => {
   const shortestPaths = machine.getShortestPaths({
@@ -12,16 +9,8 @@ describe('model based tests', () => {
     toState: (state) => state.matches('solved'),
   })
   describe(`shortest ${shortestPaths.length} paths`, () => {
-    // Debug.enable('test:consequences')
-
-    // shortestPaths.length = 1
-    let i = 0
-    shortestPaths.forEach((path) => {
-      const index = `[${i}] `
-      if (i++ !== 8) {
-        // return
-      }
-      it(index + description(path), async () => {
+    shortestPaths.forEach((path, index) => {
+      it(description(path, index), async () => {
         await path.test(await initializeSut())
       })
     })

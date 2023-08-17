@@ -1,9 +1,6 @@
-import { description } from '../utils.js'
-import { expect } from 'chai'
+import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { types, machine, filters, tests } from './machine.js'
-import Debug from 'debug'
-const debug = Debug('tests')
+import { machine, filters, is } from './machine.js'
 
 describe(`claims`, () => {
   // Debug.enable('test:sut')
@@ -27,10 +24,7 @@ describe(`claims`, () => {
       .filter((path) =>
         path.steps.find((step) => {
           if (step.event.type === 'CLAIM') {
-            return (
-              tests.isUnfunded(step.state.context) &&
-              tests.isUnfundedDai(step.state.context)
-            )
+            return is({ funded: false, fundedDai: false })(step.state.context)
           }
         })
       )

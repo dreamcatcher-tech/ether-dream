@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import { initializeSut } from './sut.js'
-import { hash } from '../utils.js'
+import { hash } from './utils.js'
 import { CID } from 'multiformats/cid'
 import { equals } from 'uint8arrays/equals'
 import Debug from 'debug'
@@ -8,12 +8,13 @@ import Debug from 'debug'
 const debug = Debug('tests')
 
 describe('uri', () => {
-  Debug.enable('tests')
   it('returns a uri', async () => {
     const sut = await initializeSut()
     const { dreamEther, qa } = sut.fixture
     const header = hash('test data')
-    const digest = Uint8Array.from(Buffer.from(header.substring(2), 'hex'))
+    const digest = Uint8Array.from(
+      globalThis.Buffer.from(header.substring(2), 'hex')
+    )
     debug('header', header)
     await expect(dreamEther.proposePacket(header, qa.target))
       .to.emit(dreamEther, 'ProposedPacket')

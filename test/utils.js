@@ -1,4 +1,3 @@
-import { CID } from 'multiformats/cid'
 import { sha256 } from 'multiformats/hashes/sha2'
 import * as dagPB from '@ipld/dag-pb'
 

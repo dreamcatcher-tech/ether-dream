@@ -16,9 +16,17 @@ jobs:
       with:
         node-version: 18.x
 
-    - name: npm install
+    - name: Install
       run: |
         npm install
+        
+    - name: Lint
+      run: |
+        npm run lint
+
+    - name: Gas Report
+      run: |
+        npm run gas
 
     - name: Test
       run: |

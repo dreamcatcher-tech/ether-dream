@@ -1,11 +1,10 @@
-import equals from 'fast-deep-equal'
 import { expect } from 'chai'
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types, tests } from './machine.js'
-import { hash } from '../utils.js'
+import { types, is, isAny } from './machine.js'
+import { hash } from './utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -137,14 +136,14 @@ export const initializeSut = async () => {
       QA_EMPTY: async ({ state: { context } }) => {
         const { qa } = fixture
         const { cursorId } = context
-        expect(tests.isQaClaimable(context)).to.be.false
+        expect(isAny({ funded: true, fundedDai: true })(context)).to.be.false
         const msg = 'No funds to claim'
         await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
       },
       QA_CLAIM_ERROR: async ({ state: { context } }) => {
         const { qa } = fixture
         const { cursorId } = context
-        expect(tests.isPacket(context)).to.be.true
+        expect(is({ type: types.PACKET })(context)).to.be.true
         const msg = 'Cannot claim packets'
         await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
       },
@@ -164,7 +163,7 @@ export const initializeSut = async () => {
         const { cursorId } = context
         const packet = context.transitions.get(cursorId)
         expect(packet.type).to.equal(types.PACKET)
-        if (tests.isPacketClaimable(context)) {
+        if (isAny({ funded: true, fundedDai: true })(context)) {
           await expect(dreamEther.claim(cursorId)).to.emit(
             dreamEther,
             'Claimed'
@@ -179,7 +178,7 @@ export const initializeSut = async () => {
         }
       },
       TRADE_ONCE: async ({ state: { context } }) => {
-        const { dreamEther, owner, funder1, funder2 } = fixture
+        const { dreamEther, owner } = fixture
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
         debug('trading funding', type, cursorId)
@@ -203,14 +202,14 @@ export const initializeSut = async () => {
         // trade them all over to another account
         // do a conditional check if we can actually trade or not
       },
-      TRADE_TWICE: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
-        const { cursorId } = context
-        const { type } = context.transitions.get(cursorId)
-        debug('trading funding', type, cursorId)
+      // TRADE_TWICE: async ({ state: { context } }) => {
+      //   const { dreamEther } = fixture
+      //   const { cursorId } = context
+      //   const { type } = context.transitions.get(cursorId)
+      //   debug('trading funding', type, cursorId)
 
-        // if
-      },
+      //   // if
+      // },
     },
   }
 }
