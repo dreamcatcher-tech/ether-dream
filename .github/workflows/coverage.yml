@@ -17,20 +17,18 @@ jobs:
         node-version: 18.x
 
     - name: Install
-      run: |
-        npm install
+      run: npm install
         
     - name: Lint
-      run: |
-        npm run lint
+      run: npm run lint
 
     - name: Gas Report
-      run: |
-        npm run gas
+      env:
+        CMC: ${{ secrets.CMC }}
+      run: npm run gas
 
     - name: Test
-      run: |
-        npm run coverage
+      run: npm run coverage
 
     - name: Coveralls
       uses: coverallsapp/github-action@v2
