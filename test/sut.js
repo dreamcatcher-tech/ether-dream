@@ -184,7 +184,7 @@ export const initializeSut = async () => {
         )
       },
       TRADE_ONCE: async ({ state: { context } }) => {
-        const { dreamEther, owner } = fixture
+        const { dreamEther, owner, funder1 } = fixture
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
         debug('trading funding', type, cursorId)
@@ -202,8 +202,10 @@ export const initializeSut = async () => {
         const balances = await dreamEther.balanceOfBatch(addresses, nfts)
         debug('balances', balances)
 
-        const balance = await dreamEther.balanceOf(owner, cursorId)
-        console.log(balance)
+        await expect(
+          dreamEther.safeTransferFrom(owner, funder1, nfts[0], 1, '0x')
+        ).to.emit(dreamEther, 'TransferSingle')
+
         // list the funding nfts for this change
         // trade them all over to another account
         // do a conditional check if we can actually trade or not

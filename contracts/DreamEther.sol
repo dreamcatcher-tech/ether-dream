@@ -286,6 +286,7 @@ contract DreamEther is IDreamcatcher {
       }
       change.fundingShares.balances[to].set(nftId, toBalance + amount);
     }
+    emit TransferSingle(msg.sender, from, to, nftId, amount);
   }
 
   function safeBatchTransferFrom(

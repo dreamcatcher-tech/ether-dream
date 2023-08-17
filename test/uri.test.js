@@ -28,5 +28,10 @@ describe('uri', () => {
     debug('cid', cid)
 
     expect(equals(digest, cid.multihash.digest)).to.be.true
+
+    const notAnNft = 999
+    await expect(dreamEther.uri(notAnNft)).to.be.revertedWith(
+      'NFT does not exist'
+    )
   })
 })
