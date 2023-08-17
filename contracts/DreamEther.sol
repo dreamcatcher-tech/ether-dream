@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 
-import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
-import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
-import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
 
 import './IQA.sol';
@@ -16,12 +13,7 @@ import './LibraryState.sol';
  * Convert assets into task completion, with quality oversight
  */
 
-contract DreamEther is
-  IERC1155,
-  IERC1155Receiver,
-  IERC1155MetadataURI,
-  IDreamcatcher
-{
+contract DreamEther is IDreamcatcher {
   using Counters for Counters.Counter;
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using EnumerableSet for EnumerableSet.AddressSet;
@@ -345,5 +337,48 @@ contract DreamEther is
     require(nft.changeId != 0, 'NFT does not exist');
     Change storage change = state.changes[nft.changeId];
     return LibraryUtils.uri(change, nft.assetId);
+  }
+
+  function isNftHeld(
+    uint changeId,
+    address holder
+  ) external view returns (bool) {
+    if (holder == address(0)) {
+      holder = msg.sender;
+    }
+    Change storage change = state.changes[changeId];
+    if (change.fundingShares.holders.contains(msg.sender)) {
+      return true;
+    }
+    if (change.contentShares.holders.contains(msg.sender)) {
+      return true;
+    }
+    return false;
+  }
+
+  function fundingNftIds(uint changeId) external view returns (uint[] memory) {
+    Change storage change = state.changes[changeId];
+    return change.funds.keys();
+  }
+
+  function fundingNftIdsFor(
+    uint changeId
+  ) external view returns (uint[] memory) {
+    return fundingNftIdsFor(changeId, msg.sender);
+  }
+
+  function fundingNftIdsFor(
+    uint changeId,
+    address holder
+  ) public view returns (uint[] memory) {
+    require(holder != address(0), 'Invalid holder');
+    Change storage change = state.changes[changeId];
+    return change.fundingShares.balances[holder].keys();
+  }
+
+  function contentNftId(uint changeId) external view returns (uint) {
+    Change storage change = state.changes[changeId];
+    require(change.createdAt != 0, 'Change does not exist');
+    return state.taskNftsLut.lut[changeId][CONTENT_ASSET_ID];
   }
 }

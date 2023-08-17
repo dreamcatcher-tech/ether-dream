@@ -2,8 +2,8 @@
   "scripts": {
     "test": "hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
-    "watch": "nodemon --exec \"hardhat --emoji test --grep claims\"",
-    "watch:coverage": "nodemon --exec \"hardhat --emoji coverage --testfiles test/claims.test.js\"",
+    "watch": "nodemon --exec \"hardhat --emoji test --grep trading\"",
+    "watch:coverage": "nodemon --exec \"hardhat --emoji coverage --testfiles test/trading.test.js\"",
     "watch:size": "nodemon --exec \"hardhat size-contracts\"",
     "coverage": "hardhat --emoji coverage",
     "size": "hardhat size-contracts"

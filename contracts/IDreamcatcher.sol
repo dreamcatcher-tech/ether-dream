@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 
+import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
+import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
+import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
+
 import './Types.sol';
 
-interface IDreamcatcher {
+interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   function proposePacket(bytes32 contents, address qa) external;
 
   function fund(uint id, Payment[] calldata payments) external payable;
@@ -71,4 +75,21 @@ interface IDreamcatcher {
   event QAClaimed(uint metaId);
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
+
+  // views
+  function isNftHeld(
+    uint changeId,
+    address holder
+  ) external view returns (bool);
+
+  function fundingNftIds(uint id) external view returns (uint[] memory);
+
+  function fundingNftIdsFor(uint id) external view returns (uint[] memory);
+
+  function fundingNftIdsFor(
+    uint id,
+    address holder
+  ) external view returns (uint[] memory);
+
+  function contentNftId(uint id) external view returns (uint);
 }

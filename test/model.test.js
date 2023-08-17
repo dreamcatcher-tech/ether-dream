@@ -48,10 +48,4 @@ describe('model based tests', () => {
     it.skip('disputes cannot be disputed')
     it.skip('cannot dispute a packet')
   })
-
-  describe('trading', () => {
-    it.skip('content shares can be traded')
-    it.skip('funding shares can be traded')
-    it.skip('can deny opensea operator access')
-  })
 })

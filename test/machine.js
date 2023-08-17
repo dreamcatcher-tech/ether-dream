@@ -87,7 +87,7 @@ export const machine = createTestModel(
               cond: 'isNotPacket',
             },
             SOLVE: { actions: 'proposeSolution', cond: 'isPacket' },
-            // TRADE: { actions: 'trade', cond: 'isTradeable' },
+            TRADE_FUNDING: 'trading',
             // DEFUND
             // SECOND_SOLVE // handle a competiting solution
             // ? how to do two solves concurrently ?
@@ -138,6 +138,12 @@ export const machine = createTestModel(
           },
         },
         claimed: {},
+        trading: {
+          on: {
+            TRADE_ONCE: 'open',
+            TRADE_TWICE: 'open',
+          },
+        },
       },
       predictableActionArguments: true,
       preserveActionOrder: true,

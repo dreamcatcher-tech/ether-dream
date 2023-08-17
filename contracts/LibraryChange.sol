@@ -16,6 +16,10 @@ library LibraryChange {
     header.contents = contents;
   }
 
+  function exists(Change storage change) public view returns (bool) {
+    return change.createdAt != 0;
+  }
+
   function isOpen(Change storage change) internal view returns (bool) {
     return change.createdAt != 0 && change.disputeWindowStart == 0;
   }

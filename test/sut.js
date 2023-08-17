@@ -12,7 +12,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 async function deploy() {
   // Contracts are deployed using the first signer/account by default
-  const [owner, qaAddress] = await ethers.getSigners()
+  const [owner, qaAddress, funder1, funder2] = await ethers.getSigners()
 
   const LibraryQA = await ethers.getContractFactory('LibraryQA')
   const libraryQA = await LibraryQA.deploy()
@@ -43,7 +43,7 @@ async function deploy() {
   const Dai = await ethers.getContractFactory('MockDai')
   const dai = await Dai.deploy(dreamEther.target)
 
-  return { dreamEther, qa, dai, owner, qaAddress, ethers }
+  return { dreamEther, qa, dai, owner, qaAddress, ethers, funder1, funder2 }
 }
 
 export const initializeSut = async () => {
@@ -178,30 +178,39 @@ export const initializeSut = async () => {
           )
         }
       },
+      TRADE_ONCE: async ({ state: { context } }) => {
+        const { dreamEther, owner, funder1, funder2 } = fixture
+        const { cursorId } = context
+        const { type } = context.transitions.get(cursorId)
+        debug('trading funding', type, cursorId)
 
-      // OLD
-      // SOLUTION_FAIL_QA: async () => {
-      //   const { dreamEther, solutionId, qa } = fixture
-      //   const failHash = ipfs()
-      //   tx = qa.failQA(solutionId, failHash, dreamEther.target)
-      // },
-      // SOLUTION_APPEAL_REJECTION: async () => {
-      //   const { dreamEther, solutionId } = fixture
-      //   const reason = ipfs()
-      //   tx = dreamEther.appealRejection(solutionId, reason)
-      // },
-      // 'Solution Failed QA': async () => {
-      //   const { dreamEther, solutionId } = fixture
-      //   await expect(tx)
-      //     .to.emit(dreamEther, 'QARejected')
-      //     .withArgs(solutionId)
-      // },
-      // 'Solution Appealing Rejection': async () => {
-      //   const { dreamEther, solutionId } = fixture
-      //   await expect(tx)
-      //     .to.emit(dreamEther, 'SolutionAppealed')
-      //     .withArgs(solutionId)
-      // },
+        const result = await dreamEther.fundingNftIdsFor(cursorId)
+        const nfts = result.toArray()
+        expect(nfts.length).to.be.greaterThan(0)
+        const addresses = nfts.map(() => owner.address)
+        for (const nft of nfts) {
+          const balance = await dreamEther.balanceOf(owner.address, nft)
+          debug('balance', nft, balance)
+          expect(balance).to.be.greaterThan(0)
+        }
+        debug('addresses', addresses, nfts)
+        const balances = await dreamEther.balanceOfBatch(addresses, nfts)
+        debug('balances', balances)
+
+        const balance = await dreamEther.balanceOf(owner, cursorId)
+        console.log(balance)
+        // list the funding nfts for this change
+        // trade them all over to another account
+        // do a conditional check if we can actually trade or not
+      },
+      TRADE_TWICE: async ({ state: { context } }) => {
+        const { dreamEther } = fixture
+        const { cursorId } = context
+        const { type } = context.transitions.get(cursorId)
+        debug('trading funding', type, cursorId)
+
+        // if
+      },
     },
   }
 }
