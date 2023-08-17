@@ -7,13 +7,14 @@ describe(`trading`, () => {
   describe('header funding shares can trade', () => {
     const shortestPaths = machine.getShortestPaths({
       toState: (state) =>
-        state.event.type === 'TRADE_ONCE' || state.event.type === 'TRADE_TWICE',
+        state.matches('open') &&
+        (state.event.type === 'TRADE_ONCE' ||
+          state.event.type === 'TRADE_AGAIN'),
       filter: (state) =>
         state.matches('trading') ||
         state.matches('open') ||
         state.matches('idle'),
     })
-    shortestPaths.length = 1
     shortestPaths.forEach((path, index) => {
       it(description(path, index), async () => {
         Debug.enable('test:sut')

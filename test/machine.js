@@ -20,10 +20,10 @@ const Transition = Immutable.Record({
   funded: false,
   fundedDai: false,
   enacted: false,
-  traded: false,
   uplink: undefined,
+  traded: false,
   tradedOnce: false,
-  tradedTwice: false,
+  tradedAgain: false,
 })
 
 export const guards = {}
@@ -56,6 +56,7 @@ export const isAny = (conditions) => (ctx) => {
   }
   return false
 }
+export const and = (fn1, fn2) => (ctx) => fn1(ctx) && fn2(ctx)
 
 export const patch = (patch) =>
   assign({
@@ -105,7 +106,14 @@ export const machine = createTestModel(
               actions: 'proposeSolution',
               cond: is({ type: types.PACKET }),
             },
-            TRADE_FUNDING: 'trading',
+            TRADE_FUNDING: {
+              target: 'trading',
+              actions: patch({ traded: true }),
+              cond: and(
+                is({ traded: false }),
+                isAny({ funded: true, fundedDai: true })
+              ),
+            },
           },
         },
         // make a state for solved, and check can't defund
@@ -175,8 +183,16 @@ export const machine = createTestModel(
         claimed: {},
         trading: {
           on: {
-            TRADE_ONCE: 'open',
-            TRADE_TWICE: 'open',
+            TRADE_ONCE: {
+              target: 'open',
+              actions: patch({ tradedOnce: true }),
+              cond: is({ tradedOnce: false }),
+            },
+            TRADE_AGAIN: {
+              target: 'open',
+              actions: patch({ tradedAgain: true }),
+              cond: is({ tradedAgain: false }),
+            },
           },
         },
       },
@@ -195,6 +211,7 @@ export const machine = createTestModel(
                 contents: hash(transitionsCount),
               })
             ),
+          cursorId: (ctx) => ctx.transitionsCount,
         }),
         createPacket: assign((ctx) => {
           const packetId = ctx.transitionsCount

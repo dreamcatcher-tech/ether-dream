@@ -47,7 +47,7 @@ async function deploy() {
 
 export const initializeSut = async () => {
   const fixture = await loadFixture(deploy)
-  return {
+  const sut = {
     fixture,
     states: {
       idle: () => {
@@ -192,7 +192,7 @@ export const initializeSut = async () => {
         const result = await dreamEther.fundingNftIdsFor(cursorId)
         const nfts = result.toArray()
         expect(nfts.length).to.be.greaterThan(0)
-        const addresses = nfts.map(() => owner.address)
+        const addresses = nfts.map(() => owner)
         for (const nft of nfts) {
           const balance = await dreamEther.balanceOf(owner.address, nft)
           debug('balance', nft, balance)
@@ -201,23 +201,19 @@ export const initializeSut = async () => {
         debug('addresses', addresses, nfts)
         const balances = await dreamEther.balanceOfBatch(addresses, nfts)
         debug('balances', balances)
-
-        await expect(
-          dreamEther.safeTransferFrom(owner, funder1, nfts[0], 1, '0x')
-        ).to.emit(dreamEther, 'TransferSingle')
-
-        // list the funding nfts for this change
-        // trade them all over to another account
-        // do a conditional check if we can actually trade or not
+        const operator = owner.address
+        const from = owner.address
+        const to = funder1.address
+        const id = nfts[0]
+        const amount = 1
+        await expect(dreamEther.safeTransferFrom(from, to, id, amount, '0x'))
+          .to.emit(dreamEther, 'TransferSingle')
+          .withArgs(operator, from, to, id, amount)
       },
-      // TRADE_TWICE: async ({ state: { context } }) => {
-      //   const { dreamEther } = fixture
-      //   const { cursorId } = context
-      //   const { type } = context.transitions.get(cursorId)
-      //   debug('trading funding', type, cursorId)
-
-      //   // if
-      // },
+      TRADE_AGAIN: async ({ state: { context } }) => {
+        await sut.events.TRADE_ONCE({ state: { context } })
+      },
     },
   }
+  return sut
 }
