@@ -7,7 +7,9 @@ export const types = {
   HEADER: 'HEADER',
   PACKET: 'PACKET',
   SOLUTION: 'SOLUTION',
-  APPEAL: 'APPEAL',
+  DISPUTE: 'DISPUTE',
+  EDIT: 'EDIT',
+  MERGE: 'MERGE',
 }
 
 // TODO event this, so we can know when something changed
@@ -110,7 +112,16 @@ export const machine = createTestModel(
         // also check qa thresholds
         pending: {
           on: {
-            ENACT: { target: 'qaClaimable', actions: patch({ enacted: true }) },
+            ENACT_HEADER: {
+              target: 'qaClaimable',
+              actions: patch({ enacted: true }),
+              cond: is({ type: types.HEADER }),
+            },
+            ENACT_SOLUTION: {
+              target: 'qaClaimable',
+              actions: patch({ enacted: true }),
+              cond: is({ type: types.SOLUTION }),
+            },
           },
         },
         qaClaimable: {
@@ -129,7 +140,7 @@ export const machine = createTestModel(
         enacted: {
           // the meta change is incapable of financially changing any further
           on: {
-            OPEN_HEADER: {
+            OPEN_PACKET: {
               target: 'open',
               actions: 'createPacket',
               cond: is({ type: types.HEADER }),
@@ -145,7 +156,14 @@ export const machine = createTestModel(
         solved: {
           on: {
             // TRADE: { actions: 'trade', cond: 'isTradeable' },
-            CLAIM: 'claimed',
+            CLAIM: {
+              target: 'claimed',
+              cond: isAny({ funded: true, fundedDai: true }),
+            },
+            CLAIM_EMPTY: {
+              target: 'claimed',
+              cond: is({ funded: false, fundedDai: false }),
+            },
             QA_CLAIM_ERROR: 'claimed', // tests QA cannot claim a packet
             // RE_SOLVE: solve it again
             // trade the solution and header NFTs

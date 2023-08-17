@@ -100,29 +100,34 @@ export const initializeSut = async () => {
           .to.emit(dreamEther, 'QAResolved')
           .withArgs(cursorId)
       },
-      ENACT: async ({ state: { context } }) => {
+      ENACT_HEADER: async ({ state: { context } }) => {
         const { transitionsCount, cursorId } = context
         const { dreamEther } = fixture
-        const { type, uplink } = context.transitions.get(cursorId)
+        const { type } = context.transitions.get(cursorId)
+        expect(type).to.equal(types.HEADER)
+
         const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
         await time.increase(THREE_DAYS_IN_SECONDS)
+        debug('enact', type, cursorId)
+        await expect(dreamEther.enact(cursorId))
+          .to.emit(dreamEther, 'PacketCreated')
+          .withArgs(transitionsCount)
+      },
+      ENACT_SOLUTION: async ({ state: { context } }) => {
+        const { cursorId } = context
+        const { dreamEther } = fixture
+        const { type, uplink } = context.transitions.get(cursorId)
+        expect(type).to.equal(types.SOLUTION)
+
+        const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
+        await time.increase(THREE_DAYS_IN_SECONDS)
+        debug('enact', type, cursorId)
         const tx = dreamEther.enact(cursorId)
-        expect(type).to.not.equal(types.PACKET)
-        debug('finalizing', type, cursorId)
-        if (type === types.PACKET) {
-          await expect(tx)
-            .to.emit(dreamEther, 'PacketCreated')
-            .withArgs(transitionsCount)
-        }
-        if (type === types.SOLUTION) {
-          await expect(tx)
-            .to.emit(dreamEther, 'SolutionAccepted')
-            .withArgs(cursorId)
-          debug('packet resolved', uplink)
-          await expect(tx)
-            .to.emit(dreamEther, 'PacketResolved')
-            .withArgs(uplink)
-        }
+        await expect(tx)
+          .to.emit(dreamEther, 'SolutionAccepted')
+          .withArgs(cursorId)
+        debug('packet resolved', uplink)
+        await expect(tx).to.emit(dreamEther, 'PacketResolved').withArgs(uplink)
       },
       QA_CLAIM: async ({ state: { context } }) => {
         const { dreamEther, qa } = fixture
@@ -163,19 +168,20 @@ export const initializeSut = async () => {
         const { cursorId } = context
         const packet = context.transitions.get(cursorId)
         expect(packet.type).to.equal(types.PACKET)
-        if (isAny({ funded: true, fundedDai: true })(context)) {
-          await expect(dreamEther.claim(cursorId)).to.emit(
-            dreamEther,
-            'Claimed'
-          )
-          await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
-            'Already claimed'
-          )
-        } else {
-          await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
-            'No funds to claim'
-          )
-        }
+        await expect(dreamEther.claim(cursorId)).to.emit(dreamEther, 'Claimed')
+        await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
+          'Already claimed'
+        )
+        // TODO also check the QA address cannot claim or fund anything
+      },
+      CLAIM_EMPTY: async ({ state: { context } }) => {
+        const { dreamEther } = fixture
+        const { cursorId } = context
+        const packet = context.transitions.get(cursorId)
+        expect(packet.type).to.equal(types.PACKET)
+        await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
+          'No funds to claim'
+        )
       },
       TRADE_ONCE: async ({ state: { context } }) => {
         const { dreamEther, owner } = fixture

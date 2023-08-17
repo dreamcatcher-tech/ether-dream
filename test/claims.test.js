@@ -1,3 +1,4 @@
+import { expect } from 'chai'
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
 import { machine, filters, is } from './machine.js'
@@ -35,7 +36,7 @@ describe(`claims`, () => {
       })
     })
   })
-  describe('QA can claim all the funds', () => {
+  describe('QA cannot claim packets', () => {
     const shortestPaths = machine.getShortestPaths({
       toState: (state) => state.matches('claimed'),
       filter: (state, event) => {
@@ -46,6 +47,7 @@ describe(`claims`, () => {
       },
     })
     const path = shortestPaths.shift()
+    expect(path).to.be.ok
     it(description(path), async () => {
       await path.test(await initializeSut())
     })
