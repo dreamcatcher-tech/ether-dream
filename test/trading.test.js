@@ -1,8 +1,17 @@
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
 import { machine, is, filters, isAny, and } from './machine.js'
+import { expect } from 'chai'
 
 describe(`trading`, () => {
+  it('errors on totalSupply for invalid nft id', async () => {
+    const sut = await initializeSut()
+    const { dreamEther } = sut.fixture
+    const msg = 'NFT does not exist'
+    await expect(dreamEther.totalSupply(0)).to.be.revertedWith(msg)
+    await expect(dreamEther.totalSupply(1)).to.be.revertedWith(msg)
+    await expect(dreamEther.totalSupply(100)).to.be.revertedWith(msg)
+  })
   describe('header funding shares can trade', () => {
     const shortestPaths = machine.getShortestPaths({
       toState: (state) =>

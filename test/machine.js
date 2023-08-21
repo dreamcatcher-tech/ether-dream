@@ -144,7 +144,7 @@ export const machine = createTestModel(
               target: 'open',
               cond: isAny({ funded: true, fundedDai: true }),
             },
-            // TRADE_FUNDS_AGAIN
+            // TRADE_FUNDS_AGAIN to test updating existing balance
           },
         },
         enacted: {

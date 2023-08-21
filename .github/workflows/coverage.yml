@@ -25,6 +25,8 @@ jobs:
     - name: Model Check
       run: npm run check
       timeout-minutes: 2
+      env:
+        CHECK_MODEL: true
 
     - name: Gas Report
       env:

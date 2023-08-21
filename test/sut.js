@@ -11,7 +11,7 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 async function deploy() {
   // Contracts are deployed using the first signer/account by default
-  const [owner, qaAddress, funder1, funder2, solver1, solver2] =
+  const [owner, qaAddress, funder1, funder2, solver1, solver2, noone] =
     await ethers.getSigners()
 
   const LibraryQA = await ethers.getContractFactory('LibraryQA')
@@ -54,6 +54,7 @@ async function deploy() {
     funder2,
     solver1,
     solver2,
+    noone,
   }
 }
 
@@ -209,6 +210,10 @@ export const initializeSut = async () => {
         const { type } = context.transitions.get(cursorId)
         debug('trading funding', type, cursorId)
 
+        const allFundingNftIds = await dreamEther.fundingNftIds(cursorId)
+        expect(allFundingNftIds.length).to.be.greaterThan(0)
+
+        expect(await dreamEther.isNftHeld(cursorId, owner.address)).to.be.true
         const result = await dreamEther.fundingNftIdsFor(cursorId)
         const nfts = result.toArray()
         expect(nfts.length).to.be.greaterThan(0)
@@ -217,6 +222,7 @@ export const initializeSut = async () => {
           const balance = await dreamEther.balanceOf(owner.address, nft)
           debug('balance', nft, balance)
           expect(balance).to.be.greaterThan(0)
+          expect(await dreamEther.totalSupply(nft)).to.equal(balance)
         }
         debug('addresses', addresses, nfts)
         const balances = await dreamEther.balanceOfBatch(addresses, nfts)
@@ -244,13 +250,17 @@ export const initializeSut = async () => {
 }
 
 const tradeContent = async (fixture, context) => {
-  const { dreamEther, owner, solver1 } = fixture
+  const { dreamEther, owner, noone, solver1 } = fixture
   const { cursorId } = context
   const { type } = context.transitions.get(cursorId)
   debug('trading content', type, cursorId)
 
+  expect(await dreamEther.isNftHeld(cursorId, owner.address)).to.be.true
+  expect(await dreamEther.isNftHeld(cursorId, noone.address)).to.be.false
   const nftId = await dreamEther.contentNftId(cursorId)
   expect(nftId).to.be.greaterThan(0)
+
+  expect(await dreamEther.totalSupply(nftId)).to.equal(1000)
 
   const balance = await dreamEther.balanceOf(owner.address, nftId)
   debug('balance', nftId, balance)

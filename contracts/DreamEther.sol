@@ -344,22 +344,15 @@ contract DreamEther is IDreamcatcher {
     uint changeId,
     address holder
   ) external view returns (bool) {
-    if (holder == address(0)) {
-      holder = msg.sender;
-    }
+    require(holder != address(0), 'Invalid holder');
     Change storage change = state.changes[changeId];
-    if (change.fundingShares.holders.contains(msg.sender)) {
+    if (change.fundingShares.holders.contains(holder)) {
       return true;
     }
-    if (change.contentShares.holders.contains(msg.sender)) {
+    if (change.contentShares.holders.contains(holder)) {
       return true;
     }
     return false;
-  }
-
-  function fundingNftIds(uint changeId) external view returns (uint[] memory) {
-    Change storage change = state.changes[changeId];
-    return change.funds.keys();
   }
 
   function fundingNftIdsFor(
@@ -375,6 +368,11 @@ contract DreamEther is IDreamcatcher {
     require(holder != address(0), 'Invalid holder');
     Change storage change = state.changes[changeId];
     return change.fundingShares.balances[holder].keys();
+  }
+
+  function fundingNftIds(uint changeId) external view returns (uint[] memory) {
+    Change storage change = state.changes[changeId];
+    return change.funds.keys();
   }
 
   function contentNftId(uint changeId) external view returns (uint) {

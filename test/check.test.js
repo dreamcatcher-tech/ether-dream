@@ -4,7 +4,7 @@ import { machine } from './machine.js'
 import { expect } from 'chai'
 
 describe('check', () => {
-  if (globalThis.process.env.FULL_TEST) {
+  if (!globalThis.process.env.CHECK_MODEL) {
     return
   }
 
