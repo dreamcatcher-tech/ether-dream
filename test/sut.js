@@ -3,7 +3,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types, is } from './machine.js'
+import { types, isAny, is } from './machine.js'
 import { hash } from './utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
@@ -89,6 +89,15 @@ export const initializeSut = async () => {
           await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
             'No funds to claim'
           )
+        }
+      },
+      tradePacketContent: async ({ context }) => {
+        expect(is({ type: types.PACKET })(context)).to.be.true
+        const isUnclaimed = is({ isClaimed: false })(context)
+        const isFunded = isAny({ funded: true, fundedDai: true })(context)
+        if (isUnclaimed && isFunded) {
+          const [tx] = await tradeContent(fixture, context)
+          await expect(tx).to.be.revertedWith('Untransferrable')
         }
       },
     },
@@ -222,27 +231,36 @@ export const initializeSut = async () => {
           .withArgs(operator, from, to, id, amount)
       },
       TRADE_CONTENT: async ({ state: { context } }) => {
-        const { dreamEther, owner, solver1 } = fixture
-        const { cursorId } = context
-        const { type } = context.transitions.get(cursorId)
-        debug('trading content', type, cursorId)
-
-        const nftId = await dreamEther.contentNftId(cursorId)
-        expect(nftId).to.be.greaterThan(0)
-
-        const balance = await dreamEther.balanceOf(owner.address, nftId)
-        debug('balance', nftId, balance)
-        expect(balance).to.be.greaterThan(0)
-
-        const operator = owner.address
-        const from = owner.address
-        const to = solver1.address
-        const amount = 1
-        await expect(dreamEther.safeTransferFrom(from, to, nftId, amount, '0x'))
+        const { dreamEther } = fixture
+        const [tx, args] = await tradeContent(fixture, context)
+        const { operator, from, to, id, amount } = args
+        await expect(tx)
           .to.emit(dreamEther, 'TransferSingle')
-          .withArgs(operator, from, to, nftId, amount)
+          .withArgs(operator, from, to, id, amount)
       },
     },
   }
   return sut
+}
+
+const tradeContent = async (fixture, context) => {
+  const { dreamEther, owner, solver1 } = fixture
+  const { cursorId } = context
+  const { type } = context.transitions.get(cursorId)
+  debug('trading content', type, cursorId)
+
+  const nftId = await dreamEther.contentNftId(cursorId)
+  expect(nftId).to.be.greaterThan(0)
+
+  const balance = await dreamEther.balanceOf(owner.address, nftId)
+  debug('balance', nftId, balance)
+  expect(balance).to.be.greaterThan(0)
+
+  const from = owner.address
+  const to = solver1.address
+  const amount = 1
+
+  const tx = dreamEther.safeTransferFrom(from, to, nftId, amount, '0x')
+  const args = { operator: owner.address, from, to, id: nftId, amount }
+  return [tx, args]
 }

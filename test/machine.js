@@ -43,9 +43,9 @@ export const isAny = (conditions) => (ctx) => {
   return false
 }
 export const and =
-  (fn1, fn2) =>
+  (fn1, fn2, fn3 = () => true) =>
   (...args) =>
-    fn1(...args) && fn2(...args)
+    fn1(...args) && fn2(...args) && fn3(...args)
 
 export const patch = (patch) =>
   assign({
@@ -306,6 +306,26 @@ export const filters = {
     return true
   },
   skipTrading: (state, event) => {
+    if (event.type === 'TRADE') {
+      return false
+    }
+    return true
+  },
+  skipFundTrading: (state, event) => {
+    if (event.type === 'TRADE_FUNDS') {
+      return false
+    }
+    return true
+  },
+  skipMetaTrading: (state, event) => {
+    if (event.type !== 'TRADE') {
+      return true
+    }
+    const { context } = state
+    const change = context.transitions.get(context.cursorId)
+    if (change.type === types.PACKET) {
+      return true
+    }
     if (event.type === 'TRADE') {
       return false
     }

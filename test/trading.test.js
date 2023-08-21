@@ -1,6 +1,6 @@
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { machine, is, filters } from './machine.js'
+import { machine, is, filters, isAny, and } from './machine.js'
 
 describe(`trading`, () => {
   describe('header funding shares can trade', () => {
@@ -35,6 +35,24 @@ describe(`trading`, () => {
       toState: (state) =>
         state.matches('solved') && is({ contentTraded: true })(state.context),
       filter: filters.skipFunding,
+    })
+    shortestPaths.forEach((path, index) => {
+      it(description(path, index), async () => {
+        await path.test(await initializeSut())
+      })
+    })
+  })
+  describe.only('unclaimed packet content shares error', () => {
+    const shortestPaths = machine.getShortestPaths({
+      toState: (state) =>
+        state.matches('tradePacketContent') &&
+        is({ isClaimed: false })(state.context) &&
+        isAny({ funded: true, fundedDai: true })(state.context),
+      filter: and(
+        filters.skipMetaFunding,
+        filters.skipMetaTrading,
+        filters.skipFundTrading
+      ),
     })
     shortestPaths.forEach((path, index) => {
       it(description(path, index), async () => {

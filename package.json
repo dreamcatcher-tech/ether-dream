@@ -1,12 +1,12 @@
 {
   "scripts": {
     "lint": "eslint .",
-    "test": "eslint . && FULL_TEST=1 hardhat test",
+    "test": "eslint . && hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
     "check": "hardhat --emoji test --grep check",
     "coverage": "hardhat --emoji coverage",
     "size": "hardhat size-contracts",
-    "watch": "nodemon --exec \"hardhat --emoji test --grep claims\"",
+    "watch": "nodemon --exec \"hardhat --emoji test --grep trading\"",
     "watch:check": "nodemon --exec \"npm run check\"",
     "watch:coverage": "nodemon --exec \"npm run coverage\""
   },
