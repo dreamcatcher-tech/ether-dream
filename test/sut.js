@@ -11,7 +11,8 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 async function deploy() {
   // Contracts are deployed using the first signer/account by default
-  const [owner, qaAddress, funder1, funder2] = await ethers.getSigners()
+  const [owner, qaAddress, funder1, funder2, solver1, solver2] =
+    await ethers.getSigners()
 
   const LibraryQA = await ethers.getContractFactory('LibraryQA')
   const libraryQA = await LibraryQA.deploy()
@@ -42,7 +43,18 @@ async function deploy() {
   const Dai = await ethers.getContractFactory('MockDai')
   const dai = await Dai.deploy(dreamEther.target)
 
-  return { dreamEther, qa, dai, owner, qaAddress, ethers, funder1, funder2 }
+  return {
+    dreamEther,
+    qa,
+    dai,
+    owner,
+    qaAddress,
+    ethers,
+    funder1,
+    funder2,
+    solver1,
+    solver2,
+  }
 }
 
 export const initializeSut = async () => {
@@ -182,7 +194,7 @@ export const initializeSut = async () => {
         )
         // TODO also check the QA address cannot claim or fund anything
       },
-      TRADE: async ({ state: { context } }) => {
+      TRADE_FUNDS: async ({ state: { context } }) => {
         const { dreamEther, owner, funder1 } = fixture
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
@@ -208,6 +220,27 @@ export const initializeSut = async () => {
         await expect(dreamEther.safeTransferFrom(from, to, id, amount, '0x'))
           .to.emit(dreamEther, 'TransferSingle')
           .withArgs(operator, from, to, id, amount)
+      },
+      TRADE_CONTENT: async ({ state: { context } }) => {
+        const { dreamEther, owner, solver1 } = fixture
+        const { cursorId } = context
+        const { type } = context.transitions.get(cursorId)
+        debug('trading content', type, cursorId)
+
+        const nftId = await dreamEther.contentNftId(cursorId)
+        expect(nftId).to.be.greaterThan(0)
+
+        const balance = await dreamEther.balanceOf(owner.address, nftId)
+        debug('balance', nftId, balance)
+        expect(balance).to.be.greaterThan(0)
+
+        const operator = owner.address
+        const from = owner.address
+        const to = solver1.address
+        const amount = 1
+        await expect(dreamEther.safeTransferFrom(from, to, nftId, amount, '0x'))
+          .to.emit(dreamEther, 'TransferSingle')
+          .withArgs(operator, from, to, nftId, amount)
       },
     },
   }

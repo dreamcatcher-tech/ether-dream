@@ -9,6 +9,7 @@ globals:
   ethers: true
   describe: true
   it: true
+  before: true
 rules: {}
 ignorePatterns:
   - hardhat.config.cjs

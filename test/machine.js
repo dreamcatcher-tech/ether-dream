@@ -42,7 +42,10 @@ export const isAny = (conditions) => (ctx) => {
   }
   return false
 }
-export const and = (fn1, fn2) => (ctx) => fn1(ctx) && fn2(ctx)
+export const and =
+  (fn1, fn2) =>
+  (...args) =>
+    fn1(...args) && fn2(...args)
 
 export const patch = (patch) =>
   assign({
@@ -186,10 +189,22 @@ export const machine = createTestModel(
             },
           },
         },
+        tradePacketContent: {
+          on: {
+            TRADE_CONTENT: {
+              target: 'solved',
+              cond: is({ isClaimed: true }),
+            },
+          },
+        },
         dispute: {},
         solved: {
           on: {
-            // TRADE: { actions: 'trade', cond: 'isTradeable' },
+            TRADE: {
+              target: 'tradePacketContent',
+              actions: patch({ contentTraded: true }),
+              cond: is({ contentTraded: false }),
+            },
             CLAIM: {
               target: 'claimed',
               actions: patch({ isClaimed: true }),
@@ -286,6 +301,12 @@ export const filters = {
   },
   skipFunding: (state, event) => {
     if (event.type === 'FUND' || event.type === 'FUND_DAI') {
+      return false
+    }
+    return true
+  },
+  skipTrading: (state, event) => {
+    if (event.type === 'TRADE') {
       return false
     }
     return true
