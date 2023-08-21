@@ -36,3 +36,8 @@ jobs:
 
     - name: Coveralls
       uses: coverallsapp/github-action@v2
+
+    - name: Full Model
+      run: npm test
+      env:
+        FULL_TEST: true
