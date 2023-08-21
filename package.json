@@ -3,11 +3,12 @@
     "lint": "eslint .",
     "test": "eslint . && hardhat test",
     "gas": "REPORT_GAS=1 hardhat test",
-    "watch": "nodemon --exec \"hardhat --emoji test --grep trading\"",
-    "watch:coverage": "nodemon --exec \"hardhat --emoji coverage --testfiles test/trading.test.js\"",
-    "watch:size": "nodemon --exec \"hardhat size-contracts\"",
+    "check": "hardhat --emoji test --grep check",
     "coverage": "hardhat --emoji coverage",
-    "size": "hardhat size-contracts"
+    "size": "hardhat size-contracts",
+    "watch": "nodemon --exec \"hardhat --emoji test --grep model\"",
+    "watch:check": "nodemon --exec \"npm run check\"",
+    "watch:coverage": "nodemon --exec \"npm run coverage\""
   },
   "devDependencies": {
     "@ipld/dag-pb": "^4.0.5",

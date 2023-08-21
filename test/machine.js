@@ -3,6 +3,7 @@ import { expect } from 'chai'
 import { hash } from './utils.js'
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
+
 export const types = {
   HEADER: 'HEADER',
   PACKET: 'PACKET',
@@ -12,21 +13,6 @@ export const types = {
   MERGE: 'MERGE',
 }
 
-// TODO event this, so we can know when something changed
-const Transition = Immutable.Record({
-  type: types.HEADER,
-  contents: undefined,
-  qaResolved: false,
-  funded: false,
-  fundedDai: false,
-  enacted: false,
-  uplink: undefined,
-  traded: false,
-  tradedOnce: false,
-  tradedAgain: false,
-})
-
-export const guards = {}
 export const not = (conditions) => (ctx) => {
   const t = ctx.transitions.get(ctx.cursorId)
   for (const key in conditions) {
@@ -66,7 +52,19 @@ export const patch = (patch) =>
       return ctx.transitions.set(ctx.cursorId, next)
     },
   })
-
+const Transition = Immutable.Record({
+  type: types.HEADER,
+  contents: undefined,
+  qaResolved: false,
+  funded: false,
+  fundedDai: false,
+  enacted: false,
+  uplink: undefined,
+  tradedFunds: false,
+  contentTraded: false,
+  isQaClaimed: false,
+  isClaimed: false,
+})
 export const machine = createTestModel(
   createTestMachine(
     {
@@ -74,7 +72,6 @@ export const machine = createTestModel(
       initial: 'idle',
       context: {
         transitionsCount: 1,
-        // TODO event this, so we can know when something changed
         transitions: Immutable.Map(),
         cursorId: 1,
       },
@@ -103,51 +100,58 @@ export const machine = createTestModel(
               cond: not({ type: types.PACKET }),
             },
             SOLVE: {
-              actions: 'proposeSolution',
+              target: 'proposeSolution',
               cond: is({ type: types.PACKET }),
             },
-            TRADE_FUNDING: {
-              target: 'trading',
-              actions: patch({ traded: true }),
-              cond: and(
-                is({ traded: false }),
-                isAny({ funded: true, fundedDai: true })
-              ),
+            TRADE: {
+              target: 'tradeFunds',
+              actions: patch({ tradedFunds: true }),
+              cond: is({ tradedFunds: false }),
             },
           },
         },
-        // make a state for solved, and check can't defund
-        // also check qa thresholds
+        proposeSolution: {
+          //TODO check can't defund
+          // TODO also check qa thresholds
+          on: {
+            PROPOSE_SOLUTION: {
+              actions: 'proposeSolution',
+              target: 'open',
+            },
+          },
+        },
         pending: {
           on: {
             ENACT_HEADER: {
-              target: 'qaClaimable',
+              target: 'enacted',
               actions: patch({ enacted: true }),
               cond: is({ type: types.HEADER }),
             },
             ENACT_SOLUTION: {
-              target: 'qaClaimable',
+              target: 'enacted',
               actions: patch({ enacted: true }),
               cond: is({ type: types.SOLUTION }),
             },
+            // try trade contents here while pending
           },
         },
-        qaClaimable: {
-          // QA might be able to claim from here
+        tradeFunds: {
           on: {
-            QA_CLAIM: {
-              target: 'enacted',
+            TRADE_FUNDS: {
+              target: 'open',
               cond: isAny({ funded: true, fundedDai: true }),
             },
-            QA_EMPTY: {
-              target: 'enacted',
-              cond: is({ funded: false, fundedDai: false }),
-            },
+            // TRADE_FUNDS_AGAIN
           },
         },
         enacted: {
           // the meta change is incapable of financially changing any further
           on: {
+            QA: {
+              target: 'qaClaim',
+              actions: patch({ isQaClaimed: true }),
+              cond: is({ isQaClaimed: false }),
+            },
             OPEN_PACKET: {
               target: 'open',
               actions: 'createPacket',
@@ -158,6 +162,28 @@ export const machine = createTestModel(
               actions: 'focusPacket',
               cond: is({ type: types.SOLUTION }),
             },
+            TRADE: {
+              target: 'tradeContent',
+              actions: patch({ contentTraded: true }),
+              cond: is({ contentTraded: false }),
+            },
+          },
+        },
+        qaClaim: {
+          on: {
+            QA_CLAIM: {
+              target: 'enacted',
+              cond: isAny({ funded: true, fundedDai: true }),
+            },
+          },
+        },
+        tradeContent: {
+          on: {
+            TRADE_CONTENT: {
+              target: 'enacted',
+              // how to do a trade, then do a claim on something remaining
+              // that was indivisible ?
+            },
           },
         },
         dispute: {},
@@ -166,13 +192,15 @@ export const machine = createTestModel(
             // TRADE: { actions: 'trade', cond: 'isTradeable' },
             CLAIM: {
               target: 'claimed',
-              cond: isAny({ funded: true, fundedDai: true }),
+              actions: patch({ isClaimed: true }),
+              cond: and(
+                is({ isClaimed: false }),
+                isAny({ funded: true, fundedDai: true })
+              ),
             },
-            CLAIM_EMPTY: {
-              target: 'claimed',
-              cond: is({ funded: false, fundedDai: false }),
-            },
-            QA_CLAIM_ERROR: 'claimed', // tests QA cannot claim a packet
+
+            // trade content here, with tests for before claim
+
             // RE_SOLVE: solve it again
             // trade the solution and header NFTs
             // modify the header
@@ -180,20 +208,10 @@ export const machine = createTestModel(
             // MERGE_PACKETS once have two packets, try merge them
           },
         },
-        claimed: {},
-        trading: {
-          on: {
-            TRADE_ONCE: {
-              target: 'open',
-              actions: patch({ tradedOnce: true }),
-              cond: is({ tradedOnce: false }),
-            },
-            TRADE_AGAIN: {
-              target: 'open',
-              actions: patch({ tradedAgain: true }),
-              cond: is({ tradedAgain: false }),
-            },
-          },
+        claimed: {
+          // trade content here
+          // and trade funds afterwards too
+          // ?? can we reuse an action with a different condition ?
         },
       },
       predictableActionArguments: true,
@@ -248,7 +266,6 @@ export const machine = createTestModel(
           },
         }),
       },
-      guards,
     }
   )
 )

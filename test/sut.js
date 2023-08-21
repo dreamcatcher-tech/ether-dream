@@ -3,7 +3,7 @@ import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types, is, isAny } from './machine.js'
+import { types, is } from './machine.js'
 import { hash } from './utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
@@ -56,6 +56,28 @@ export const initializeSut = async () => {
       },
       '*': async (state) => {
         debug('state:', state.toStrings().join(' > '))
+      },
+      qaClaim: async ({ context }) => {
+        if (is({ funded: false, fundedDai: false })(context)) {
+          const { qa } = fixture
+          const { cursorId } = context
+          const msg = 'No funds to claim'
+          await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+        }
+      },
+      solved: async ({ context }) => {
+        const { dreamEther, qa } = fixture
+        const { cursorId } = context
+        expect(is({ type: types.PACKET })(context)).to.be.true
+
+        await expect(qa.claimQa(cursorId)).to.be.revertedWith(
+          'Cannot claim packets'
+        )
+        if (is({ funded: false, fundedDai: false })(context)) {
+          await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
+            'No funds to claim'
+          )
+        }
       },
     },
     events: {
@@ -138,20 +160,6 @@ export const initializeSut = async () => {
         const msg = 'Already claimed'
         await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
       },
-      QA_EMPTY: async ({ state: { context } }) => {
-        const { qa } = fixture
-        const { cursorId } = context
-        expect(isAny({ funded: true, fundedDai: true })(context)).to.be.false
-        const msg = 'No funds to claim'
-        await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
-      },
-      QA_CLAIM_ERROR: async ({ state: { context } }) => {
-        const { qa } = fixture
-        const { cursorId } = context
-        expect(is({ type: types.PACKET })(context)).to.be.true
-        const msg = 'Cannot claim packets'
-        await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
-      },
       SOLVE: async ({ state: { context } }) => {
         const { dreamEther } = fixture
         const { cursorId } = context
@@ -174,16 +182,7 @@ export const initializeSut = async () => {
         )
         // TODO also check the QA address cannot claim or fund anything
       },
-      CLAIM_EMPTY: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
-        const { cursorId } = context
-        const packet = context.transitions.get(cursorId)
-        expect(packet.type).to.equal(types.PACKET)
-        await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
-          'No funds to claim'
-        )
-      },
-      TRADE_ONCE: async ({ state: { context } }) => {
+      TRADE: async ({ state: { context } }) => {
         const { dreamEther, owner, funder1 } = fixture
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
@@ -209,9 +208,6 @@ export const initializeSut = async () => {
         await expect(dreamEther.safeTransferFrom(from, to, id, amount, '0x'))
           .to.emit(dreamEther, 'TransferSingle')
           .withArgs(operator, from, to, id, amount)
-      },
-      TRADE_AGAIN: async ({ state: { context } }) => {
-        await sut.events.TRADE_ONCE({ state: { context } })
       },
     },
   }

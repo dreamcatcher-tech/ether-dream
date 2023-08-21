@@ -22,6 +22,10 @@ jobs:
     - name: Lint
       run: npm run lint
 
+    - name: Model Check
+      run: npm run model-check
+      timeout-minutes: 2
+
     - name: Gas Report
       env:
         CMC: ${{ secrets.CMC }}
