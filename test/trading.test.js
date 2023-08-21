@@ -42,7 +42,7 @@ describe(`trading`, () => {
       })
     })
   })
-  describe.only('unclaimed packet content shares error', () => {
+  describe('unclaimed packet content shares error', () => {
     const shortestPaths = machine.getShortestPaths({
       toState: (state) =>
         state.matches('tradePacketContent') &&
