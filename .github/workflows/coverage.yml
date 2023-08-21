@@ -31,13 +31,13 @@ jobs:
         CMC: ${{ secrets.CMC }}
       run: npm run gas
 
-    - name: Test
+    - name: Test Coverage
       run: npm run coverage
 
-    - name: Coveralls
+    - name: Upload to Coveralls
       uses: coverallsapp/github-action@v2
 
-    - name: Full Model
+    - name: Full Model Test
       run: npm test
       env:
         FULL_TEST: true
