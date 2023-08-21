@@ -23,7 +23,7 @@ jobs:
       run: npm run lint
 
     - name: Model Check
-      run: npm run model-check
+      run: npm run check
       timeout-minutes: 2
 
     - name: Gas Report
