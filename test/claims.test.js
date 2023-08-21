@@ -1,13 +1,25 @@
 import { expect } from 'chai'
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { machine, filters, and } from './machine.js'
+import { machine, filters, is, and } from './machine.js'
 
 describe(`claims`, () => {
   describe(`solver can claim funds`, () => {
     const shortestPaths = machine.getShortestPaths({
       toState: (state) => state.matches('claimed'),
       filter: and(filters.skipMetaFunding, filters.skipTrading),
+    })
+    shortestPaths.forEach((path, index) => {
+      it(description(path, index), async () => {
+        await path.test(await initializeSut())
+      })
+    })
+  })
+  describe('only QA can claim meta funding', () => {
+    const shortestPaths = machine.getShortestPaths({
+      toState: (state) =>
+        state.matches('enacted') && is({ isQaClaimed: true })(state.context),
+      filter: and(filters.skipPacketFunding, filters.skipTrading),
     })
     shortestPaths.forEach((path, index) => {
       it(description(path, index), async () => {

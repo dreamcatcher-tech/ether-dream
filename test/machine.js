@@ -305,6 +305,14 @@ export const filters = {
     }
     return true
   },
+  skipPacketFunding: (state, event) => {
+    if (is({ type: types.PACKET })(state.context)) {
+      if (event.type === 'FUND' || event.type === 'FUND_DAI') {
+        return false
+      }
+    }
+    return true
+  },
   skipTrading: (state, event) => {
     if (event.type === 'TRADE') {
       return false
