@@ -60,6 +60,7 @@ const Transition = Immutable.Record({
   contents: undefined,
   qaResolved: false,
   funded: false,
+  fundedEth: false,
   fundedDai: false,
   enacted: false,
   uplink: undefined,
@@ -90,11 +91,11 @@ export const machine = createTestModel(
         open: {
           on: {
             FUND: {
-              actions: patch({ funded: true }),
-              cond: is({ funded: false }),
+              actions: patch({ fundedEth: true, funded: true }),
+              cond: is({ fundedEth: false }),
             },
             FUND_DAI: {
-              actions: patch({ fundedDai: true }),
+              actions: patch({ fundedDai: true, funded: true }),
               cond: is({ fundedDai: false }),
             },
             QA_RESOLVE: {
@@ -142,7 +143,7 @@ export const machine = createTestModel(
           on: {
             TRADE_FUNDS: {
               target: 'open',
-              cond: isAny({ funded: true, fundedDai: true }),
+              cond: is({ funded: true }),
             },
             // TRADE_FUNDS_AGAIN to test updating existing balance
           },
@@ -176,7 +177,7 @@ export const machine = createTestModel(
           on: {
             QA_CLAIM: {
               target: 'enacted',
-              cond: isAny({ funded: true, fundedDai: true }),
+              cond: is({ funded: true }),
             },
           },
         },
@@ -193,7 +194,7 @@ export const machine = createTestModel(
           on: {
             TRADE_CONTENT: {
               target: 'solved',
-              cond: is({ isClaimed: true }),
+              cond: isAny({ isClaimed: true, funded: false }),
             },
           },
         },
@@ -206,12 +207,11 @@ export const machine = createTestModel(
               cond: is({ contentTraded: false }),
             },
             CLAIM: {
-              target: 'claimed',
               actions: patch({ isClaimed: true }),
-              cond: and(
-                is({ isClaimed: false }),
-                isAny({ funded: true, fundedDai: true })
-              ),
+              cond: is({ isClaimed: false, funded: true }),
+            },
+            EXIT: {
+              // UP TO HERE
             },
 
             // trade content here, with tests for before claim
@@ -222,11 +222,6 @@ export const machine = createTestModel(
             // REPEAT: make another header and start all over again
             // MERGE_PACKETS once have two packets, try merge them
           },
-        },
-        claimed: {
-          // trade content here
-          // and trade funds afterwards too
-          // ?? can we reuse an action with a different condition ?
         },
       },
       predictableActionArguments: true,
@@ -335,6 +330,12 @@ export const filters = {
       return true
     }
     if (event.type === 'TRADE') {
+      return false
+    }
+    return true
+  },
+  onlyDai: (state, event) => {
+    if (event.type === 'FUND') {
       return false
     }
     return true

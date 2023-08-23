@@ -1,13 +1,17 @@
-import { expect } from 'chai'
+import chai, { expect } from 'chai'
+import sinonChai from 'sinon-chai'
+import sinon from 'sinon'
+
 import {
   time,
   loadFixture,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types, isAny, is } from './machine.js'
+import { types, is } from './machine.js'
 import { hash } from './utils.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+chai.use(sinonChai)
 
 async function deploy() {
   // Contracts are deployed using the first signer/account by default
@@ -60,52 +64,68 @@ async function deploy() {
 
 export const initializeSut = async () => {
   const fixture = await loadFixture(deploy)
+  const { dreamEther, qa, dai, owner, ethers, funder1 } = fixture
+  const tests = {
+    packetContentUntransferrable: async (context) => {
+      const [tx] = await tradeContent(fixture, context)
+      await expect(tx).to.be.revertedWith('Untransferrable')
+    },
+    noFundsToClaim: async (cursorId) => {
+      await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
+        'No funds to claim'
+      )
+    },
+    noQaFundsToClaim: async (cursorId) => {
+      const msg = 'No funds to claim'
+      await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+    },
+    noQaClaimPackets: async (cursorId) => {
+      const msg = 'Cannot claim packets'
+      await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+    },
+    qaReClaim: async (cursorId) => {
+      const msg = 'Already claimed'
+      await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+    },
+    qaInvalidClaim: async (cursorId) => {
+      const notQa = 'Must be transition QA'
+      await expect(dreamEther.claimQa(cursorId)).to.be.revertedWith(notQa)
+    },
+  }
   const sut = {
     fixture,
+    tests,
     states: {
       idle: () => {
-        const { dreamEther } = fixture
         expect(dreamEther.target).to.not.equal(0)
       },
       '*': async (state) => {
         debug('state:', state.toStrings().join(' > '))
       },
       qaClaim: async ({ context }) => {
-        if (is({ funded: false, fundedDai: false })(context)) {
-          const { qa } = fixture
-          const { cursorId } = context
-          const msg = 'No funds to claim'
-          await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+        if (is({ funded: false })(context)) {
+          await tests.noQaFundsToClaim(context.cursorId)
         }
       },
       solved: async ({ context }) => {
-        const { dreamEther, qa } = fixture
         const { cursorId } = context
         expect(is({ type: types.PACKET })(context)).to.be.true
 
-        await expect(qa.claimQa(cursorId)).to.be.revertedWith(
-          'Cannot claim packets'
-        )
-        if (is({ funded: false, fundedDai: false })(context)) {
-          await expect(dreamEther.claim(cursorId)).to.be.revertedWith(
-            'No funds to claim'
-          )
+        tests.noQaClaimPackets(cursorId)
+        if (is({ funded: false })(context)) {
+          await tests.noFundsToClaim(cursorId)
         }
       },
       tradePacketContent: async ({ context }) => {
         expect(is({ type: types.PACKET })(context)).to.be.true
-        const isUnclaimed = is({ isClaimed: false })(context)
-        const isFunded = isAny({ funded: true, fundedDai: true })(context)
-        if (isUnclaimed && isFunded) {
-          const [tx] = await tradeContent(fixture, context)
-          await expect(tx).to.be.revertedWith('Untransferrable')
+        if (is({ isClaimed: false, funded: true })(context)) {
+          await tests.packetContentUntransferrable(context)
         }
       },
     },
     events: {
       HEADER: async ({ state: { context } }) => {
         const { cursorId } = context
-        const { dreamEther, qa } = fixture
         const header = hash('header' + cursorId)
         debug('header', cursorId)
         await expect(dreamEther.proposePacket(header, qa.target))
@@ -114,7 +134,6 @@ export const initializeSut = async () => {
       },
       FUND: async ({ state: { context } }) => {
         const { cursorId } = context
-        const { dreamEther } = fixture
         const payments = []
         const value = ethers.parseEther('5')
         const { type } = context.transitions.get(cursorId)
@@ -125,7 +144,6 @@ export const initializeSut = async () => {
       },
       FUND_DAI: async ({ state: { context } }) => {
         const { cursorId } = context
-        const { dreamEther, dai } = fixture
         const payments = [{ token: dai.target, tokenId: 0, amount: 13 }]
         const { type } = context.transitions.get(cursorId)
         debug('funding', type, cursorId)
@@ -137,7 +155,6 @@ export const initializeSut = async () => {
       },
       QA_RESOLVE: async ({ state: { context } }) => {
         const { cursorId } = context
-        const { dreamEther, qa } = fixture
         const { type } = context.transitions.get(cursorId)
         debug('qa resolving', type, cursorId)
         await expect(qa.passQA(cursorId))
@@ -146,9 +163,10 @@ export const initializeSut = async () => {
       },
       ENACT_HEADER: async ({ state: { context } }) => {
         const { transitionsCount, cursorId } = context
-        const { dreamEther } = fixture
         const { type } = context.transitions.get(cursorId)
         expect(type).to.equal(types.HEADER)
+
+        // TODO confirm error if not enough time has passed
 
         const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
         await time.increase(THREE_DAYS_IN_SECONDS)
@@ -159,9 +177,10 @@ export const initializeSut = async () => {
       },
       ENACT_SOLUTION: async ({ state: { context } }) => {
         const { cursorId } = context
-        const { dreamEther } = fixture
         const { type, uplink } = context.transitions.get(cursorId)
         expect(type).to.equal(types.SOLUTION)
+
+        // TODO confirm error if not enough time has passed
 
         const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
         await time.increase(THREE_DAYS_IN_SECONDS)
@@ -174,16 +193,16 @@ export const initializeSut = async () => {
         await expect(tx).to.emit(dreamEther, 'PacketResolved').withArgs(uplink)
       },
       QA_CLAIM: async ({ state: { context } }) => {
-        const { dreamEther, qa } = fixture
         const { cursorId } = context
+
+        await tests.qaInvalidClaim(cursorId)
+
         await expect(qa.claimQa(cursorId))
           .to.emit(dreamEther, 'QAClaimed')
           .withArgs(cursorId)
-        const msg = 'Already claimed'
-        await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
+        await tests.qaReClaim(cursorId)
       },
       SOLVE: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
         const { cursorId } = context
         const contents = hash('solving ' + cursorId)
         const { type } = context.transitions.get(cursorId)
@@ -194,7 +213,6 @@ export const initializeSut = async () => {
         )
       },
       CLAIM: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
         const { cursorId } = context
         const packet = context.transitions.get(cursorId)
         expect(packet.type).to.equal(types.PACKET)
@@ -205,13 +223,14 @@ export const initializeSut = async () => {
         // TODO also check the QA address cannot claim or fund anything
       },
       TRADE_FUNDS: async ({ state: { context } }) => {
-        const { dreamEther, owner, funder1 } = fixture
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
         debug('trading funding', type, cursorId)
 
         const allFundingNftIds = await dreamEther.fundingNftIds(cursorId)
         expect(allFundingNftIds.length).to.be.greaterThan(0)
+
+        // TODO add balace of checks pre and post trade
 
         expect(await dreamEther.isNftHeld(cursorId, owner.address)).to.be.true
         const result = await dreamEther.fundingNftIdsFor(cursorId)
@@ -237,7 +256,6 @@ export const initializeSut = async () => {
           .withArgs(operator, from, to, id, amount)
       },
       TRADE_CONTENT: async ({ state: { context } }) => {
-        const { dreamEther } = fixture
         const [tx, args] = await tradeContent(fixture, context)
         const { operator, from, to, id, amount } = args
         await expect(tx)
@@ -246,6 +264,9 @@ export const initializeSut = async () => {
       },
     },
   }
+  sinon.spy(sut.tests)
+  sinon.spy(sut.states)
+  sinon.spy(sut.events)
   return sut
 }
 
@@ -254,6 +275,7 @@ const tradeContent = async (fixture, context) => {
   const { cursorId } = context
   const { type } = context.transitions.get(cursorId)
   debug('trading content', type, cursorId)
+  // TODO add balace of checks pre and post trade
 
   expect(await dreamEther.isNftHeld(cursorId, owner.address)).to.be.true
   expect(await dreamEther.isNftHeld(cursorId, noone.address)).to.be.false

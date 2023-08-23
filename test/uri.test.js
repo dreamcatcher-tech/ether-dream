@@ -34,4 +34,18 @@ describe('uri', () => {
       'NFT does not exist'
     )
   })
+  it('returns a version', async () => {
+    const sut = await initializeSut()
+    const { dreamEther } = sut.fixture
+    const version = await dreamEther.version()
+    expect(version).to.equal('0.0.1')
+  })
+  it('returns an issues url', async () => {
+    const sut = await initializeSut()
+    const { dreamEther } = sut.fixture
+    const issues = await dreamEther.issues()
+    expect(issues).to.equal(
+      'https://github.com/dreamcatcher-tech/ether-dream/issues'
+    )
+  })
 })

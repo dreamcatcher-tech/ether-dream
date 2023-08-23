@@ -54,6 +54,8 @@ library LibraryQA {
       require(share.amount > 0, 'Amount cannot be 0');
       require(!c.contentShares.holders.contains(share.holder), 'Owner exists');
 
+      // TODO call onERC1155Received
+
       c.contentShares.holders.add(share.holder);
       c.contentShares.balances[share.holder] = share.amount;
       total += share.amount;

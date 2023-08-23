@@ -7,17 +7,13 @@ describe('check', () => {
   if (!globalThis.process.env.CHECK_MODEL) {
     return
   }
-
   const sampleSize = 10
-  let shortestPaths, elapsed
-  before(() => {
-    const start = Date.now()
-    shortestPaths = machine.getShortestPaths({
-      toState: (state) => state.matches('claimed'),
-      traversalLimit: 10000000,
-    })
-    elapsed = Date.now() - start
+  const start = Date.now()
+  const shortestPaths = machine.getShortestPaths({
+    toState: (state) => state.matches('solved'),
+    traversalLimit: 10000000,
   })
+  const elapsed = Date.now() - start
 
   it('model generation', async () => {
     expect(shortestPaths.length).to.be.greaterThan(sampleSize + 1)
@@ -29,9 +25,8 @@ describe('check', () => {
     expect(elapsed).to.be.lessThan(1000 * 60 * 2)
   })
 
-  it('first path', async () => {
-    const firstPath = shortestPaths.shift()
-    console.log(description(firstPath))
+  const firstPath = shortestPaths.shift()
+  it('first path: ' + description(firstPath), async () => {
     await firstPath.test(await initializeSut())
   })
 })

@@ -17,11 +17,6 @@ contract QA is IQA {
     return true;
   }
 
-  function publishTransition(uint id) external override returns (bool) {
-    // TODO
-    return true;
-  }
-
   function passQA(uint id) external {
     IDreamcatcher dc = IDreamcatcher(dreamcatcher);
     Share[] memory shares = new Share[](1);

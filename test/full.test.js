@@ -1,17 +1,42 @@
-import { description } from './utils.js'
-import { initializeSut } from './sut.js'
-import { machine } from './machine.js'
+import test from './tester.js'
+import { expect } from 'chai'
 
+const tally = (map, obj) => {
+  if (map.size === 0) {
+    for (const key in obj) {
+      map.set(key, false)
+    }
+  }
+  for (const key in obj) {
+    if (key.called) {
+      map.set(key, true)
+    }
+  }
+}
+const allCalled = (map) => {
+  for (const [key, value] of map) {
+    expect(value, key.name).to.be.true
+  }
+}
 describe('full', () => {
   if (!globalThis.process.env.FULL_TEST) {
     return
   }
-  const shortestPaths = machine.getShortestPaths({
-    toState: (state) => state.matches('claimed'),
+  const tests = new Map()
+  const states = new Map()
+  const events = new Map()
+
+  test({
+    toState: (state) => state.matches('solved'),
+    filter: () => true,
+    verify: (sut) => {
+      // TODO tally up all spy calls and verify everything was called
+      tally(tests, sut.tests)
+      tally(states, sut.states)
+      tally(events, sut.events)
+    },
   })
-  shortestPaths.forEach((path, index) => {
-    it(description(path, index), async () => {
-      await path.test(await initializeSut())
-    })
-  })
+  allCalled(tests)
+  allCalled(states)
+  allCalled(events)
 })

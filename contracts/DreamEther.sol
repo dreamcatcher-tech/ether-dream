@@ -380,4 +380,12 @@ contract DreamEther is IDreamcatcher {
     require(change.createdAt != 0, 'Change does not exist');
     return state.taskNftsLut.lut[changeId][CONTENT_ASSET_ID];
   }
+
+  function version() external pure returns (string memory) {
+    return '0.0.1';
+  }
+
+  function issues() external pure returns (string memory) {
+    return 'https://github.com/dreamcatcher-tech/ether-dream/issues';
+  }
 }

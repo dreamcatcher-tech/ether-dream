@@ -7,7 +7,6 @@ export const hash = (value) => {
     Links: [],
   })
   const hash = sha256.digest(bytes)
-  // const cid = CID.createV0(hash)
   return ethers.hexlify(hash.digest)
 }
 
