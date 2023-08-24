@@ -2,6 +2,7 @@ import { description } from './utils.js'
 import { initializeSut } from './sut.js'
 import { machine } from './machine.js'
 import { expect } from 'chai'
+import Debug from 'debug'
 
 /**
  * Saves reptition when generating tests, and enforces tests such as
@@ -13,15 +14,47 @@ import { expect } from 'chai'
  * enforcing a repeated pattern.
  * @param {*} param0
  */
-export default function createSuite({ toState, filter, verify }) {
+export default function createSuite({ toState, filter, verify, ...options }) {
   expect(toState).to.be.a('function')
   expect(filter).to.be.a('function')
   expect(verify).to.be.a('function')
 
+  const { dry, debug, last, first } = options
+  if (dry) {
+    it('dry run', () => {
+      throw new Error('dry run')
+    })
+  }
+  if (first || last) {
+    const text = first ? 'first' : 'last'
+    const message = `${text} run only`
+    it(message, () => {
+      throw new Error(message)
+    })
+  }
+  if (dry) {
+    it('dry run', () => {
+      throw new Error('dry run')
+    })
+  }
+
   const shortestPaths = machine.getShortestPaths({ toState, filter })
   expect(shortestPaths.length, 'No paths generated').to.be.greaterThan(0)
+  if (last === true) {
+    shortestPaths.reverse()
+  }
+  if (first || last) {
+    shortestPaths.length = 1
+  }
+
   shortestPaths.forEach((path, index) => {
     it(description(path, index), async () => {
+      if (debug) {
+        Debug.enable('test:sut')
+      }
+      if (dry) {
+        return
+      }
       const sut = await initializeSut()
       await path.test(sut)
       await verify(sut)

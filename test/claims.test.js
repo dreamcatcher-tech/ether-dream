@@ -17,11 +17,7 @@ describe(`claims`, () => {
     test({
       toState: (state) =>
         state.matches('enacted') && is({ isQaClaimed: true })(state.context),
-      filter: and(
-        filters.skipPacketFunding,
-        filters.skipTrading,
-        filters.onlyDai
-      ),
+      filter: and(filters.skipPacketFunding, filters.skipTrading, filters.dai),
       verify: (sut) =>
         expect(sut.events.QA_CLAIM).to.have.been.calledOnce &&
         expect(sut.tests.qaReClaim).to.have.been.calledOnce &&

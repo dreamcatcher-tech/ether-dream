@@ -46,18 +46,21 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function exit() external;
 
-  function exitList() external view returns (Payment[] memory);
+  function exitList(address holder) external view returns (Payment[] memory);
 
   function exitSingle(uint assetId) external;
 
   function exitBurn(uint assetId) external;
 
+  event Exit(address indexed user);
+  event ExitBurn(address indexed user, uint assetId);
+
   // to notify opensea to halt trading
-  event Locked(uint256 tokenId);
-  event Unlocked(uint256 tokenId);
+  event Locked(uint tokenId);
+  event Unlocked(uint tokenId);
   // or, if the number of events is high
-  event Staked(address indexed user, uint256[] tokenIds, uint256 stakeTime);
-  event Unstaked(address indexed user, uint256[] tokenIds);
+  event Staked(address indexed user, uint[] tokenIds, uint stakeTime);
+  event Unstaked(address indexed user, uint[] tokenIds);
 
   // from LibraryChanges.sol
   event PacketCreated(uint packetId);

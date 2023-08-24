@@ -47,7 +47,7 @@ export const and =
   (...args) =>
     fn1(...args) && fn2(...args) && fn3(...args)
 
-export const patch = (patch) =>
+const change = (patch) =>
   assign({
     transitions: (ctx) => {
       const transition = ctx.transitions.get(ctx.cursorId)
@@ -55,7 +55,21 @@ export const patch = (patch) =>
       return ctx.transitions.set(ctx.cursorId, next)
     },
   })
-const Transition = Immutable.Record({
+const global = (patch) =>
+  assign({
+    global: (ctx) => ctx.global.merge(patch),
+  })
+export const globalIs =
+  (conditions) =>
+  ({ global }) => {
+    for (const key in conditions) {
+      if (global[key] !== conditions[key]) {
+        return false
+      }
+    }
+    return true
+  }
+const Change = Immutable.Record({
   type: types.HEADER,
   contents: undefined,
   qaResolved: false,
@@ -68,7 +82,13 @@ const Transition = Immutable.Record({
   contentTraded: false,
   isQaClaimed: false,
   isClaimed: false,
+  exited: false,
 })
+const Global = Immutable.Record({
+  qaExitable: false,
+  qaExited: false,
+})
+
 export const machine = createTestModel(
   createTestMachine(
     {
@@ -78,6 +98,7 @@ export const machine = createTestModel(
         transitionsCount: 1,
         transitions: Immutable.Map(),
         cursorId: 1,
+        global: Global(),
       },
       states: {
         idle: {
@@ -91,16 +112,16 @@ export const machine = createTestModel(
         open: {
           on: {
             FUND: {
-              actions: patch({ fundedEth: true, funded: true }),
+              actions: change({ fundedEth: true, funded: true }),
               cond: is({ fundedEth: false }),
             },
             FUND_DAI: {
-              actions: patch({ fundedDai: true, funded: true }),
+              actions: change({ fundedDai: true, funded: true }),
               cond: is({ fundedDai: false }),
             },
             QA_RESOLVE: {
               target: 'pending',
-              actions: patch({ qaResolved: true }),
+              actions: change({ qaResolved: true }),
               cond: not({ type: types.PACKET }),
             },
             SOLVE: {
@@ -109,7 +130,7 @@ export const machine = createTestModel(
             },
             TRADE: {
               target: 'tradeFunds',
-              actions: patch({ tradedFunds: true }),
+              actions: change({ tradedFunds: true }),
               cond: is({ tradedFunds: false }),
             },
           },
@@ -128,12 +149,12 @@ export const machine = createTestModel(
           on: {
             ENACT_HEADER: {
               target: 'enacted',
-              actions: patch({ enacted: true }),
+              actions: change({ enacted: true }),
               cond: is({ type: types.HEADER }),
             },
             ENACT_SOLUTION: {
               target: 'enacted',
-              actions: patch({ enacted: true }),
+              actions: change({ enacted: true }),
               cond: is({ type: types.SOLUTION }),
             },
             // try trade contents here while pending
@@ -153,8 +174,12 @@ export const machine = createTestModel(
           on: {
             QA: {
               target: 'qaClaim',
-              actions: patch({ isQaClaimed: true }),
+              actions: change({ isQaClaimed: true }),
               cond: is({ isQaClaimed: false }),
+            },
+            QA_EXIT: {
+              actions: global({ qaExitable: false, qaExited: true }),
+              cond: globalIs({ qaExitable: true }),
             },
             OPEN_PACKET: {
               target: 'open',
@@ -168,7 +193,7 @@ export const machine = createTestModel(
             },
             TRADE: {
               target: 'tradeContent',
-              actions: patch({ contentTraded: true }),
+              actions: change({ contentTraded: true }),
               cond: is({ contentTraded: false }),
             },
           },
@@ -177,6 +202,7 @@ export const machine = createTestModel(
           on: {
             QA_CLAIM: {
               target: 'enacted',
+              actions: global({ qaExitable: true }),
               cond: is({ funded: true }),
             },
           },
@@ -203,21 +229,19 @@ export const machine = createTestModel(
           on: {
             TRADE: {
               target: 'tradePacketContent',
-              actions: patch({ contentTraded: true }),
+              actions: change({ contentTraded: true }),
               cond: is({ contentTraded: false }),
             },
             CLAIM: {
-              actions: patch({ isClaimed: true }),
+              actions: change({ isClaimed: true }),
               cond: is({ isClaimed: false, funded: true }),
             },
             EXIT: {
-              // UP TO HERE
+              actions: change({ exited: true }),
+              cond: is({ isClaimed: true, exited: false }),
             },
 
-            // trade content here, with tests for before claim
-
             // RE_SOLVE: solve it again
-            // trade the solution and header NFTs
             // modify the header
             // REPEAT: make another header and start all over again
             // MERGE_PACKETS once have two packets, try merge them
@@ -234,7 +258,7 @@ export const machine = createTestModel(
           transitions: ({ transitions, transitionsCount }) =>
             transitions.set(
               transitionsCount,
-              Transition({
+              Change({
                 type: types.HEADER,
                 contents: hash(transitionsCount),
               })
@@ -244,7 +268,7 @@ export const machine = createTestModel(
         createPacket: assign((ctx) => {
           const packetId = ctx.transitionsCount
           const transitionsCount = ctx.transitionsCount + 1
-          const packet = Transition({
+          const packet = Change({
             type: types.PACKET,
             uplink: ctx.cursorId,
           })
@@ -257,7 +281,7 @@ export const machine = createTestModel(
         proposeSolution: assign((ctx) => {
           const solutionId = ctx.transitionsCount
           const packetId = ctx.cursorId
-          const solution = Transition({
+          const solution = Change({
             type: types.SOLUTION,
             uplink: packetId,
           })
@@ -334,7 +358,7 @@ export const filters = {
     }
     return true
   },
-  onlyDai: (state, event) => {
+  dai: (state, event) => {
     if (event.type === 'FUND') {
       return false
     }

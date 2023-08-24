@@ -17,10 +17,19 @@ contract QA is IQA {
     return true;
   }
 
-  function passQA(uint id) external {
+  function passQA(
+    uint id,
+    address[] calldata solvers,
+    uint[] calldata amounts
+  ) external {
     IDreamcatcher dc = IDreamcatcher(dreamcatcher);
-    Share[] memory shares = new Share[](1);
-    shares[0] = Share(msg.sender, 1000);
+    Share[] memory shares = new Share[](solvers.length);
+    require(solvers.length == amounts.length);
+    require(solvers.length > 0);
+
+    for (uint i = 0; i < solvers.length; i++) {
+      shares[i] = Share(solvers[i], amounts[i]);
+    }
     dc.qaResolve(id, shares);
   }
 
@@ -44,4 +53,10 @@ contract QA is IQA {
   function claimQa(uint id) external {
     dreamcatcher.claimQa(id);
   }
+
+  function exit() external {
+    dreamcatcher.exit();
+  }
+
+  receive() external payable {}
 }

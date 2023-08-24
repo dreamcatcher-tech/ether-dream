@@ -5,17 +5,10 @@ import './Types.sol';
 import './LibraryUtils.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import './IDreamcatcher.sol';
 import './IQA.sol';
 import './LibraryChange.sol';
-
-interface IERC20 {
-  function transferFrom(
-    address from,
-    address to,
-    uint256 value
-  ) external returns (bool);
-}
 
 library LibraryState {
   using EnumerableSet for EnumerableSet.AddressSet;

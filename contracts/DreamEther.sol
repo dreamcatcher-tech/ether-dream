@@ -2,6 +2,7 @@
 pragma solidity ^0.8.9;
 
 import '@openzeppelin/contracts/utils/Counters.sol';
+import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 
 import './IQA.sol';
 import './IDreamcatcher.sol';
@@ -108,21 +109,25 @@ contract DreamEther is IDreamcatcher {
     // used when the exit is problematic
     require(state.exits[msg.sender].contains(assetId), 'No exit for asset');
     state.exits[msg.sender].remove(assetId);
+    emit ExitBurn(msg.sender, assetId);
   }
 
   function exit() external {
     EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
+    require(debts.length() > 0, 'No exits available');
     uint[] memory assetIds = debts.keys();
-    delete state.exits[msg.sender];
 
     for (uint i = 0; i < assetIds.length; i++) {
       uint assetId = assetIds[i];
-      exitSingle(assetId);
+      exitSingleInternal(assetId);
     }
+    delete state.exits[msg.sender];
+    emit Exit(msg.sender);
   }
 
-  function exitList() public view returns (Payment[] memory) {
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
+  function exitList(address holder) public view returns (Payment[] memory) {
+    require(holder != address(0), 'Invalid holder');
+    EnumerableMap.UintToUintMap storage debts = state.exits[holder];
     uint[] memory assetIds = debts.keys();
     Payment[] memory payments = new Payment[](assetIds.length);
     for (uint i = 0; i < assetIds.length; i++) {
@@ -138,6 +143,11 @@ contract DreamEther is IDreamcatcher {
   }
 
   function exitSingle(uint assetId) public {
+    exitSingleInternal(assetId);
+    emit Exit(msg.sender);
+  }
+
+  function exitSingleInternal(uint assetId) internal {
     Asset memory asset = state.assets[assetId];
     EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     require(debts.contains(assetId), 'No exit for asset');
@@ -150,11 +160,14 @@ contract DreamEther is IDreamcatcher {
     debts.remove(assetId);
 
     if (LibraryUtils.isEther(asset)) {
-      payable(msg.sender).transfer(payment.amount);
+      uint amount = payment.amount;
+      (bool sent, bytes memory data) = msg.sender.call{value: amount}('');
+      require(sent && (data.length == 0), 'Failed to send Ether');
     } else if (payment.tokenId == 0) {
       // TODO handle erc1155 with a tokenId of zero
       IERC20 token = IERC20(payment.token);
-      require(token.transferFrom(address(this), msg.sender, payment.amount));
+
+      require(token.transfer(msg.sender, payment.amount));
     } else {
       IERC1155 token = IERC1155(payment.token);
       token.safeTransferFrom(
@@ -379,6 +392,15 @@ contract DreamEther is IDreamcatcher {
     Change storage change = state.changes[changeId];
     require(change.createdAt != 0, 'Change does not exist');
     return state.taskNftsLut.lut[changeId][CONTENT_ASSET_ID];
+  }
+
+  function getAssetId(
+    address tokenAddress,
+    uint tokenId
+  ) external view returns (uint) {
+    uint assetId = state.assetsLut.lut[tokenAddress][tokenId];
+    require(assetId != 0, 'Asset does not exist');
+    return assetId;
   }
 
   function version() external pure returns (string memory) {

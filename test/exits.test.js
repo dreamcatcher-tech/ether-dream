@@ -1,12 +1,13 @@
-import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { machine, is, filters, and } from './machine.js'
+import { is, filters, and, globalIs } from './machine.js'
 import { expect } from 'chai'
+import test from './tester.js'
 
 describe(`exits`, () => {
   it('reverts on no exit balance', async () => {
     const sut = await initializeSut()
     const { dreamEther } = sut.fixture
+    await expect(dreamEther.exit()).to.be.revertedWith('No exits available')
     const msg = 'No exit for asset'
     const notAssets = [0, 1, 100]
     for (const assetId of notAssets) {
@@ -14,69 +15,66 @@ describe(`exits`, () => {
       await expect(dreamEther.exitSingle(assetId)).to.be.revertedWith(msg)
     }
   })
+  it('reverts on invalid tokens', async () => {
+    const sut = await initializeSut()
+    const { dreamEther, dai } = sut.fixture
+    const notYetValidTokenId = 0
+    await expect(
+      dreamEther.getAssetId(dai.target, notYetValidTokenId)
+    ).to.be.revertedWith('Asset does not exist')
+  })
+  it('reverts on invalid burn', async () => {
+    const sut = await initializeSut()
+    const { dreamEther } = sut.fixture
+    const invalidAssetIds = [0, 1, 100]
+    for (const assetId of invalidAssetIds) {
+      await expect(dreamEther.exitBurn(assetId)).to.be.revertedWith(
+        'No exit for asset'
+      )
+    }
+  })
+  it('reverts on invalid holder', async () => {
+    const sut = await initializeSut()
+    const { dreamEther } = sut.fixture
+    const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+    await expect(dreamEther.exitList(ZERO_ADDRESS)).to.be.revertedWith(
+      'Invalid holder'
+    )
+  })
 
   describe('exit all assets', () => {
-    const shortestPaths = machine.getShortestPaths({
+    test({
       toState: (state) =>
-        state.matches('solved') && is({ isClaimed: true })(state.context),
+        state.matches('solved') &&
+        is({ exited: true, fundedDai: true, fundedEth: true })(state.context),
       filter: and(filters.skipMetaFunding, filters.skipTrading),
-    })
-    expect(shortestPaths.length).to.be.greaterThan(0)
-    // UP TO HERE
-    shortestPaths.forEach((path, index) => {
-      it(description(path, index), async () => {
-        const sut = await initializeSut()
-        await path.test(sut)
-      })
+      verify: (sut) => expect(sut.events.EXIT).to.have.been.calledOnce,
     })
   })
-  describe('exit a specific asset', () => {
-    // test claiming a funded header and a funded solution all at once
-    const shortestPaths = machine.getShortestPaths({
+  describe('exit specific assets', () => {
+    test({
       toState: (state) =>
-        state.matches('enacted') && is({ contentTraded: true })(state.context),
-      filter: filters.skipFunding,
-    })
-    shortestPaths.forEach((path, index) => {
-      it(description(path, index), async () => {
-        await path.test(await initializeSut())
-      })
+        state.matches('solved') &&
+        is({ exited: true, fundedDai: true, fundedEth: true })(state.context),
+      filter: and(filters.skipMetaFunding, filters.skipTrading),
+      verify: (sut) =>
+        expect(sut.events.EXIT).to.have.been.calledOnce &&
+        expect(sut.tests.exitSingle).to.have.been.calledOnce &&
+        expect(sut.tests.exitBurn).to.have.been.calledOnce,
     })
   })
-  describe('burn a single asset', () => {
-    const shortestPaths = machine.getShortestPaths({
+  describe('qa can exit', () => {
+    test({
       toState: (state) =>
-        state.matches('solved') && is({ contentTraded: true })(state.context),
-      filter: filters.skipFunding,
-    })
-    shortestPaths.forEach((path, index) => {
-      it(description(path, index), async () => {
-        await path.test(await initializeSut())
-      })
-    })
-  })
-  describe('unclaimed packet content shares error', () => {
-    const shortestPaths = machine.getShortestPaths({
-      toState: (state) =>
-        state.matches('tradePacketContent') &&
-        is({ isClaimed: false, funded: true })(state.context),
-      filter: and(
-        filters.skipMetaFunding,
-        filters.skipMetaTrading,
-        filters.skipFundTrading
-      ),
-    })
-    shortestPaths.forEach((path, index) => {
-      it(description(path, index), async () => {
-        await path.test(await initializeSut())
-      })
+        state.matches('enacted') &&
+        and(
+          globalIs({ qaExited: true }),
+          is({ isQaClaimed: true })
+        )(state.context),
+      filter: and(filters.skipTrading, filters.skipPacketFunding),
+      verify: (sut) =>
+        expect(sut.events.QA_EXIT).to.have.been.calledOnce &&
+        expect(sut.events.EXIT).to.not.have.been.called,
     })
   })
-  it.skip('header QA shares can be traded')
-
-  it.skip('content shares can be traded')
-  it.skip('funding shares can be traded')
-  it.skip('can deny opensea operator access')
-  it.skip('no trading before claimin')
-  it.skip('unfunded packets are tradeable without claim')
 })
