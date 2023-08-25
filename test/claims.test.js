@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import { filters, is, and } from './machine.js'
-import test from './tester.js'
+import test from './testFactory.js'
 
 describe(`claims`, () => {
   describe(`solver can claim funds`, () => {

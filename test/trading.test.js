@@ -1,7 +1,7 @@
 import { initializeSut } from './sut.js'
 import { is, filters, and } from './machine.js'
 import { expect } from 'chai'
-import test from './tester.js'
+import test from './testFactory.js'
 
 describe(`trading`, () => {
   it('errors on totalSupply for invalid nft id', async () => {
@@ -46,7 +46,8 @@ describe(`trading`, () => {
       filter: and(
         filters.skipMetaFunding,
         filters.skipMetaTrading,
-        filters.skipFundTrading
+        filters.skipFundTrading,
+        filters.skipDefunding
       ),
       verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
     })
@@ -66,11 +67,14 @@ describe(`trading`, () => {
     test({
       toState: (state) =>
         state.matches('tradePacketContent') &&
-        is({ isClaimed: false, funded: true })(state.context),
+        is({ isClaimed: false, funded: true, defundExited: false })(
+          state.context
+        ),
       filter: and(
         filters.skipMetaFunding,
         filters.skipMetaTrading,
-        filters.skipFundTrading
+        filters.skipFundTrading,
+        filters.skipDefunding
       ),
       verify: (sut) =>
         expect(sut.tests.packetContentUntransferrable).to.have.been.calledOnce,

@@ -1,4 +1,4 @@
-import test from './tester.js'
+import test from './testFactory.js'
 import { expect } from 'chai'
 
 const tally = (map, obj) => {

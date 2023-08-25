@@ -23,6 +23,9 @@ library LibraryState {
   event FundedTransition(uint transitionHash, address owner);
   event SolutionProposed(uint solutionId);
   event Claimed(uint packetId, address holder);
+  event DefundStarted(uint indexed id, address indexed holder);
+  event Defunded(uint indexed id, address indexed holder);
+  event DefundStopped(uint indexed id, address indexed holder);
 
   function proposePacket(
     State storage state,
@@ -110,17 +113,25 @@ library LibraryState {
   function defundStart(State storage state, uint id) public {
     Change storage change = state.changes[id];
     require(change.isOpen(), 'Change is not open for defunding');
-    require(change.fundingShares.defundWindows[msg.sender] == 0);
+    require(
+      change.fundingShares.defundWindows[msg.sender] == 0,
+      'Already started'
+    );
 
     change.fundingShares.defundWindows[msg.sender] = block.timestamp;
+    emit DefundStarted(id, msg.sender);
   }
 
   function defundStop(State storage state, uint id) external {
     Change storage change = state.changes[id];
-    require(change.createdAt != 0, 'Change does not exist');
-    require(change.fundingShares.defundWindows[msg.sender] != 0);
+    require(change.isOpen(), 'Change is not open for defunding');
+    require(
+      change.fundingShares.defundWindows[msg.sender] != 0,
+      'Defund not started'
+    );
 
     delete change.fundingShares.defundWindows[msg.sender];
+    emit DefundStopped(id, msg.sender);
   }
 
   function defund(State storage state, uint id) public {
@@ -128,7 +139,7 @@ library LibraryState {
     EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     require(change.isOpen(), 'Change is not open for defunding');
     FundingShares storage shares = change.fundingShares;
-    require(shares.defundWindows[msg.sender] != 0);
+    require(shares.defundWindows[msg.sender] != 0, 'Defund not started');
 
     uint lockedTime = shares.defundWindows[msg.sender];
     uint elapsedTime = block.timestamp - lockedTime;
@@ -136,6 +147,7 @@ library LibraryState {
 
     EnumerableMap.UintToUintMap storage holdings = shares.balances[msg.sender];
     uint[] memory nftIds = holdings.keys(); // nftId => amount
+    require(nftIds.length > 0, 'No funds to defund');
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
@@ -158,6 +170,7 @@ library LibraryState {
     delete shares.defundWindows[msg.sender];
     delete shares.balances[msg.sender];
     shares.holders.remove(msg.sender);
+    emit Defunded(id, msg.sender);
 
     // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so

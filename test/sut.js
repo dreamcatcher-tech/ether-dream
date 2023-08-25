@@ -8,9 +8,11 @@ import {
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
 import { types, is } from './machine.js'
 import { hash } from './utils.js'
+import sutTests, { tradeContent } from './sutTests.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const DEFUND_WINDOW_MS = 7 * ONE_DAY_MS
 chai.use(sinonChai)
 const SOLVER1_SHARES = 897
 const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
@@ -66,49 +68,10 @@ async function deploy() {
 
 export const initializeSut = async () => {
   const fixture = await loadFixture(deploy)
+  const tests = sutTests(fixture)
   const { dreamEther, qa, dai, owner, ethers, funder1, solver1, solver2 } =
     fixture
-  const tests = {
-    packetContentUntransferrable: async (context) => {
-      const [tx] = await tradeContent(fixture, context)
-      await expect(tx).to.be.revertedWith('Untransferrable')
-    },
-    noFundsToClaim: async (cursorId) => {
-      await expect(
-        dreamEther.connect(solver1).claim(cursorId)
-      ).to.be.revertedWith('No funds to claim')
-    },
-    noQaFundsToClaim: async (cursorId) => {
-      const msg = 'No funds to claim'
-      await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
-    },
-    noQaClaimPackets: async (cursorId) => {
-      const msg = 'Cannot claim packets'
-      await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
-    },
-    qaReClaim: async (cursorId) => {
-      const msg = 'Already claimed'
-      await expect(qa.claimQa(cursorId)).to.be.revertedWith(msg)
-    },
-    qaInvalidClaim: async (cursorId) => {
-      const notQa = 'Must be transition QA'
-      await expect(dreamEther.claimQa(cursorId)).to.be.revertedWith(notQa)
-    },
-    exitSingle: async (account, debt) => {
-      const [tokenAddress, tokenId] = debt
-      const assetId = await dreamEther.getAssetId(tokenAddress, tokenId)
-      await expect(dreamEther.connect(account).exitSingle(assetId))
-        .emit(dreamEther, 'Exit')
-        .withArgs(account.address)
-    },
-    exitBurn: async (account, debt) => {
-      const [tokenAddress, tokenId] = debt
-      const assetId = await dreamEther.getAssetId(tokenAddress, tokenId)
-      await expect(dreamEther.connect(account).exitBurn(assetId))
-        .emit(dreamEther, 'ExitBurn')
-        .withArgs(account.address, assetId)
-    },
-  }
+
   const sut = {
     fixture,
     tests,
@@ -123,6 +86,16 @@ export const initializeSut = async () => {
         if (is({ funded: false })(context)) {
           await tests.noQaFundsToClaim(context.cursorId)
         }
+      },
+      pending: async ({ context }) => {
+        await tests.defundExitAfterQa(context.cursorId)
+        await tests.defundInvalidStart(context.cursorId)
+        await tests.defundInvalidStop(context.cursorId)
+      },
+      enacted: async ({ context }) => {
+        await tests.defundExitAfterQa(context.cursorId)
+        await tests.defundInvalidStart(context.cursorId)
+        await tests.defundInvalidStop(context.cursorId)
       },
       solved: async ({ context }) => {
         const { cursorId } = context
@@ -334,43 +307,35 @@ export const initializeSut = async () => {
         const updated = (await dreamEther.exitList(qa.target)).toArray()
         expect(updated.length).to.equal(0)
       },
+      DEFUND_START: async ({ state: { context } }) => {
+        const { cursorId } = context
+        await tests.defundExitBeforeStart(cursorId)
+        await tests.defundStopBeforeStart(cursorId)
+        await expect(dreamEther.defundStart(cursorId))
+          .to.emit(dreamEther, 'DefundStarted')
+          .withArgs(cursorId, owner.address)
+        await tests.defundDoubleStart(cursorId)
+      },
+      DEFUND_STOP: async ({ state: { context } }) => {
+        const { cursorId } = context
+        await expect(dreamEther.defundStop(cursorId))
+          .to.emit(dreamEther, 'DefundStopped')
+          .withArgs(cursorId, owner.address)
+        await tests.defundRestart(cursorId)
+      },
+      DEFUND_EXIT: async ({ state: { context } }) => {
+        await tests.defundEarly(context.cursorId)
+        await time.increase(DEFUND_WINDOW_MS)
+        const { cursorId } = context
+        await expect(dreamEther.defund(cursorId))
+          .to.emit(dreamEther, 'Defunded')
+          .withArgs(cursorId, owner.address)
+        await tests.defundDoubleExit(cursorId)
+      },
     },
   }
   sinon.spy(sut.tests)
   sinon.spy(sut.states)
   sinon.spy(sut.events)
   return sut
-}
-
-const tradeContent = async (fixture, context) => {
-  const { dreamEther, noone, solver1, solver2 } = fixture
-  const { cursorId } = context
-  const { type } = context.transitions.get(cursorId)
-  debug('trading content', type, cursorId)
-  // TODO add balace of checks pre and post trade
-
-  expect(await dreamEther.isNftHeld(cursorId, solver1.address)).to.be.true
-  expect(await dreamEther.isNftHeld(cursorId, solver2.address)).to.be.true
-  expect(await dreamEther.isNftHeld(cursorId, noone.address)).to.be.false
-  const nftId = await dreamEther.contentNftId(cursorId)
-  expect(nftId).to.be.greaterThan(0)
-
-  expect(await dreamEther.totalSupply(nftId)).to.equal(1000)
-
-  const balanceSolver1 = await dreamEther.balanceOf(solver1, nftId)
-  debug('balance solver1', nftId, balanceSolver1)
-  expect(balanceSolver1).to.equal(SOLVER1_SHARES)
-  const balanceSolver2 = await dreamEther.balanceOf(solver2, nftId)
-  debug('balance solver2', nftId, balanceSolver2)
-  expect(balanceSolver2).to.equal(SOLVER2_SHARES)
-
-  const from = solver1.address
-  const to = solver2.address
-  const amount = 1
-
-  const tx = dreamEther
-    .connect(solver1)
-    .safeTransferFrom(from, to, nftId, amount, '0x')
-  const args = { from, to, id: nftId, amount }
-  return [tx, args]
 }

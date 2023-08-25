@@ -1,7 +1,7 @@
 import { initializeSut } from './sut.js'
 import { is, filters, and, globalIs } from './machine.js'
 import { expect } from 'chai'
-import test from './tester.js'
+import test from './testFactory.js'
 
 describe(`exits`, () => {
   it('reverts on no exit balance', async () => {
@@ -71,7 +71,11 @@ describe(`exits`, () => {
           globalIs({ qaExited: true }),
           is({ isQaClaimed: true })
         )(state.context),
-      filter: and(filters.skipTrading, filters.skipPacketFunding),
+      filter: and(
+        filters.skipTrading,
+        filters.skipPacketFunding,
+        filters.skipDefunding
+      ),
       verify: (sut) =>
         expect(sut.events.QA_EXIT).to.have.been.calledOnce &&
         expect(sut.events.EXIT).to.not.have.been.called,

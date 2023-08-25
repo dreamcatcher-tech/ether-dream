@@ -79,6 +79,11 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   event DisputeDismissed(uint disputeId);
   event DisputeUpheld(uint disputeId);
 
+  // from LibraryState.sol
+  event DefundStarted(uint indexed id, address indexed holder);
+  event Defunded(uint indexed id, address indexed holder);
+  event DefundStopped(uint indexed id, address indexed holder);
+
   // views
   function isNftHeld(
     uint changeId,

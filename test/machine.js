@@ -43,9 +43,9 @@ export const isAny = (conditions) => (ctx) => {
   return false
 }
 export const and =
-  (fn1, fn2, fn3 = () => true) =>
+  (...functions) =>
   (...args) =>
-    fn1(...args) && fn2(...args) && fn3(...args)
+    functions.every((fn) => fn(...args))
 
 const change = (patch) =>
   assign({
@@ -83,6 +83,9 @@ const Change = Immutable.Record({
   isQaClaimed: false,
   isClaimed: false,
   exited: false,
+  defundStarted: false,
+  defundEnded: false,
+  defundExited: false,
 })
 const Global = Immutable.Record({
   qaExitable: false,
@@ -119,6 +122,10 @@ export const machine = createTestModel(
               actions: change({ fundedDai: true, funded: true }),
               cond: is({ fundedDai: false }),
             },
+            DEFUND: {
+              target: 'defund',
+              cond: is({ defundEnded: false, funded: true }),
+            },
             QA_RESOLVE: {
               target: 'pending',
               actions: change({ qaResolved: true }),
@@ -132,6 +139,29 @@ export const machine = createTestModel(
               target: 'tradeFunds',
               actions: change({ tradedFunds: true }),
               cond: is({ tradedFunds: false }),
+            },
+          },
+        },
+        defund: {
+          on: {
+            DEFUND_START: {
+              target: 'open',
+              cond: is({ defundStarted: false }),
+              actions: change({ defundStarted: true }),
+            },
+            DEFUND_STOP: {
+              target: 'open',
+              cond: is({ defundStarted: true, defundEnded: false }),
+              actions: change({ defundEnded: true }),
+            },
+            DEFUND_EXIT: {
+              target: 'open',
+              cond: is({
+                defundStarted: true,
+                defundEnded: false,
+                defundExited: false,
+              }),
+              actions: change({ defundExited: true, defundEnded: true }),
             },
           },
         },
@@ -164,7 +194,7 @@ export const machine = createTestModel(
           on: {
             TRADE_FUNDS: {
               target: 'open',
-              cond: is({ funded: true }),
+              cond: is({ funded: true, defundExited: false }),
             },
             // TRADE_FUNDS_AGAIN to test updating existing balance
           },
@@ -203,7 +233,7 @@ export const machine = createTestModel(
             QA_CLAIM: {
               target: 'enacted',
               actions: global({ qaExitable: true }),
-              cond: is({ funded: true }),
+              cond: is({ funded: true, defundExited: false }),
             },
           },
         },
@@ -220,7 +250,11 @@ export const machine = createTestModel(
           on: {
             TRADE_CONTENT: {
               target: 'solved',
-              cond: isAny({ isClaimed: true, funded: false }),
+              cond: isAny({
+                isClaimed: true,
+                funded: false,
+                defundExited: true,
+              }),
             },
           },
         },
@@ -234,7 +268,7 @@ export const machine = createTestModel(
             },
             CLAIM: {
               actions: change({ isClaimed: true }),
-              cond: is({ isClaimed: false, funded: true }),
+              cond: is({ isClaimed: false, funded: true, defundExited: false }),
             },
             EXIT: {
               actions: change({ exited: true }),
@@ -360,6 +394,16 @@ export const filters = {
   },
   dai: (state, event) => {
     if (event.type === 'FUND') {
+      return false
+    }
+    return true
+  },
+  allowedStates:
+    (...states) =>
+    (state) =>
+      states.includes(state.value),
+  skipDefunding: (state, event) => {
+    if (event.type === 'DEFUND') {
       return false
     }
     return true

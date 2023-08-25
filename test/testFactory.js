@@ -19,13 +19,12 @@ export default function createSuite({ toState, filter, verify, ...options }) {
   expect(filter).to.be.a('function')
   expect(verify).to.be.a('function')
 
-  const { dry, debug, last, first } = options
-  if (dry) {
-    it('dry run', () => {
-      throw new Error('dry run')
+  const { dry, debug, last, first, pathAt } = options
+  if (pathAt !== undefined) {
+    it(`pathAt ${pathAt}`, () => {
+      throw new Error(`pathAt ${pathAt}`)
     })
-  }
-  if (first || last) {
+  } else if (first || last) {
     const text = first ? 'first' : 'last'
     const message = `${text} run only`
     it(message, () => {
@@ -37,9 +36,18 @@ export default function createSuite({ toState, filter, verify, ...options }) {
       throw new Error('dry run')
     })
   }
-
+  const start = Date.now()
   const shortestPaths = machine.getShortestPaths({ toState, filter })
-  expect(shortestPaths.length, 'No paths generated').to.be.greaterThan(0)
+  const time = Date.now() - start
+  it(`generated ${shortestPaths.length} paths in ${time}ms`, () => {
+    expect(shortestPaths.length, 'No paths generated').to.be.greaterThan(0)
+  })
+  if (pathAt !== undefined) {
+    const path = shortestPaths[pathAt]
+    expect(path).to.be.ok
+    shortestPaths.length = 1
+    shortestPaths[0] = path
+  }
   if (last === true) {
     shortestPaths.reverse()
   }
