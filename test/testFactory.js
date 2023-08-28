@@ -20,6 +20,7 @@ export default function createSuite({ toState, filter, verify, ...options }) {
   expect(verify).to.be.a('function')
 
   const { dry, debug, last, first, pathAt } = options
+
   if (pathAt !== undefined) {
     it(`pathAt ${pathAt}`, () => {
       throw new Error(`pathAt ${pathAt}`)
@@ -31,31 +32,39 @@ export default function createSuite({ toState, filter, verify, ...options }) {
       throw new Error(message)
     })
   }
+  const start = Date.now()
+  let states = 0
+  const paths = machine.getShortestPaths({
+    toState: (state) => {
+      states++
+      return toState(state)
+    },
+    filter,
+  })
+  const time = Date.now() - start
   if (dry) {
-    it('dry run', () => {
-      throw new Error('dry run')
+    const msg = `dry run for ${paths.length} paths in ${time}ms with ${states} traversals`
+    it(msg, () => {
+      throw new Error(msg)
     })
   }
-  const start = Date.now()
-  const shortestPaths = machine.getShortestPaths({ toState, filter })
-  const time = Date.now() - start
-  it(`generated ${shortestPaths.length} paths in ${time}ms`, () => {
-    expect(shortestPaths.length, 'No paths generated').to.be.greaterThan(0)
+  it(`generated ${paths.length} paths in ${time}ms with ${states} traversals`, () => {
+    expect(paths.length, 'No paths generated').to.be.greaterThan(0)
   })
   if (pathAt !== undefined) {
-    const path = shortestPaths[pathAt]
+    const path = paths[pathAt]
     expect(path).to.be.ok
-    shortestPaths.length = 1
-    shortestPaths[0] = path
+    paths.length = 1
+    paths[0] = path
   }
   if (last === true) {
-    shortestPaths.reverse()
+    paths.reverse()
   }
   if (first || last) {
-    shortestPaths.length = 1
+    paths.length = 1
   }
 
-  shortestPaths.forEach((path, index) => {
+  paths.forEach((path, index) => {
     it(description(path, index), async () => {
       if (debug) {
         Debug.enable('test:sut')

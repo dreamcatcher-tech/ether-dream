@@ -10,4 +10,6 @@ interface IQA {
 
   // no id => uri of the whole team.  id => uri of the individual qa'er
   function getUri(uint id) external view returns (string memory);
+
+  function name() external view returns (string memory);
 }

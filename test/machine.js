@@ -1,8 +1,8 @@
 import Immutable from 'immutable'
-import { expect } from 'chai'
 import { hash } from './utils.js'
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
+import { change, global, globalIs, not, is, isAny, and } from './conditions.js'
 
 export const types = {
   HEADER: 'HEADER',
@@ -13,66 +13,11 @@ export const types = {
   MERGE: 'MERGE',
 }
 
-export const not = (conditions) => (ctx) => {
-  const t = ctx.transitions.get(ctx.cursorId)
-  for (const key in conditions) {
-    if (t[key] === conditions[key]) {
-      return false
-    }
-  }
-  return true
-}
-
-export const is = (conditions) => (ctx) => {
-  const t = ctx.transitions.get(ctx.cursorId)
-  for (const key in conditions) {
-    if (t[key] !== conditions[key]) {
-      return false
-    }
-  }
-  return true
-}
-
-export const isAny = (conditions) => (ctx) => {
-  const t = ctx.transitions.get(ctx.cursorId)
-  for (const key in conditions) {
-    if (t[key] === conditions[key]) {
-      return true
-    }
-  }
-  return false
-}
-export const and =
-  (...functions) =>
-  (...args) =>
-    functions.every((fn) => fn(...args))
-
-const change = (patch) =>
-  assign({
-    transitions: (ctx) => {
-      const transition = ctx.transitions.get(ctx.cursorId)
-      const next = transition.merge(patch)
-      return ctx.transitions.set(ctx.cursorId, next)
-    },
-  })
-const global = (patch) =>
-  assign({
-    global: (ctx) => ctx.global.merge(patch),
-  })
-export const globalIs =
-  (conditions) =>
-  ({ global }) => {
-    for (const key in conditions) {
-      if (global[key] !== conditions[key]) {
-        return false
-      }
-    }
-    return true
-  }
 const Change = Immutable.Record({
   type: types.HEADER,
   contents: undefined,
   qaResolved: false,
+  qaRejected: false,
   funded: false,
   fundedEth: false,
   fundedDai: false,
@@ -86,6 +31,9 @@ const Change = Immutable.Record({
   defundStarted: false,
   defundEnded: false,
   defundExited: false,
+  disputedResolve: false,
+  disputedRejection: false,
+  disputedShares: false,
 })
 const Global = Immutable.Record({
   qaExitable: false,
@@ -129,8 +77,9 @@ export const machine = createTestModel(
             QA_RESOLVE: {
               target: 'pending',
               actions: change({ qaResolved: true }),
-              cond: not({ type: types.PACKET }),
+              cond: not({ type: types.PACKET }, { type: types.DISPUTE }),
             },
+            // QA_REJECT
             SOLVE: {
               target: 'proposeSolution',
               cond: is({ type: types.PACKET }),
@@ -139,6 +88,10 @@ export const machine = createTestModel(
               target: 'tradeFunds',
               actions: change({ tradedFunds: true }),
               cond: is({ tradedFunds: false }),
+            },
+            SUPER_QA: {
+              target: 'superDispute',
+              cond: is({ type: types.DISPUTE }),
             },
           },
         },
@@ -187,7 +140,74 @@ export const machine = createTestModel(
               actions: change({ enacted: true }),
               cond: is({ type: types.SOLUTION }),
             },
+            DISPUTE: {
+              target: 'dispute',
+              cond: and(
+                isAny({
+                  disputedResolve: false,
+                  // disputedRejection: false,
+                  // disputedShares: false,
+                }),
+                not({ type: types.PACKET }, { type: types.DISPUTE })
+              ),
+            },
             // try trade contents here while pending
+          },
+        },
+        dispute: {
+          on: {
+            DISPUTE_RESOLVE: {
+              target: 'open',
+              actions: [
+                change({ disputedResolve: true }),
+                'createDispute',
+                // second change identifies the dispute type
+                change({ disputedResolve: true }),
+              ],
+              // do doubles by boosting atop an existing dispute DISPUTE_AGAIN
+              cond: is({ qaResolved: true, disputedResolve: false }),
+            },
+            // DISPUTE_SHARES: {
+            //   target: 'open',
+            //   actions: change({ disputedShares: true }),
+            //   cond: is({ qaResolved: true, disputedShares: false }),
+            // },
+            // DISPUTE_REJECT: {
+            //   target: 'open',
+            //   actions: change({ disputedRejection: true }),
+            //   cond: is({ qaRejected: true, disputedRejection: false }),
+            // },
+          },
+        },
+        superDispute: {
+          on: {
+            DISPUTE_UPHELD: {
+              target: 'open',
+              actions: [
+                change({ qaResolved: true }),
+                'focusUplink',
+                change({ qaResolved: false, qaRejected: false }),
+              ],
+              cond: isAny({ disputedResolve: true, disputedRejection: true }),
+              // mint the special shares to those who provided content
+              // move back to open, but raise a flag to stop it being
+              // disputed again, a double flag if this has been disputed twice.
+              // use function getDisputeNftId() to get the id of dispute shares
+              // if this change has been disputed twice, then the shares are merged
+              // then test trading the dispute shares
+              // {
+              //   target: 'enacted',
+              //   actions: 'disputeUpheld',
+              //   cond: is({ disputedShares: true }),
+              // },
+
+              // if its shares, move to enacted, as we have passed the pending
+            },
+            DISPUTE_SHARES_UPHELD: {},
+            DISPUTE_DISMISSED: {
+              // end it, roll back the cursor to the uplink
+              // move to enacted as a byproduct
+            },
           },
         },
         tradeFunds: {
@@ -218,7 +238,7 @@ export const machine = createTestModel(
             },
             SOLVE_PACKET: {
               target: 'solved',
-              actions: 'focusPacket',
+              actions: 'focusUplink',
               cond: is({ type: types.SOLUTION }),
             },
             TRADE: {
@@ -258,7 +278,6 @@ export const machine = createTestModel(
             },
           },
         },
-        dispute: {},
         solved: {
           on: {
             TRADE: {
@@ -326,12 +345,24 @@ export const machine = createTestModel(
             transitions: ctx.transitions.set(solutionId, solution),
           }
         }),
-        focusPacket: assign({
+        focusUplink: assign({
           cursorId: (ctx) => {
-            const solution = ctx.transitions.get(ctx.cursorId)
-            expect(solution.type).to.equal(types.SOLUTION)
-            return solution.uplink
+            const change = ctx.transitions.get(ctx.cursorId)
+            return change.uplink
           },
+        }),
+        createDispute: assign((ctx) => {
+          const disputeId = ctx.transitionsCount
+          const transitionsCount = ctx.transitionsCount + 1
+          let dispute = Change({
+            type: types.DISPUTE,
+            uplink: ctx.cursorId,
+          })
+          return {
+            transitionsCount,
+            cursorId: disputeId,
+            transitions: ctx.transitions.set(disputeId, dispute),
+          }
         }),
       },
     }
@@ -404,6 +435,18 @@ export const filters = {
       states.includes(state.value),
   skipDefunding: (state, event) => {
     if (event.type === 'DEFUND') {
+      return false
+    }
+    return true
+  },
+  skipDisputes: (state, event) => {
+    if (event.type === 'DISPUTE') {
+      return false
+    }
+    return true
+  },
+  skipExit: (state, event) => {
+    if (event.type === 'EXIT') {
       return false
     }
     return true

@@ -1,5 +1,6 @@
 import { initializeSut } from './sut.js'
-import { is, filters, and, globalIs } from './machine.js'
+import { filters } from './machine.js'
+import { is, and, globalIs } from './conditions.js'
 import { expect } from 'chai'
 import test from './testFactory.js'
 
@@ -47,7 +48,12 @@ describe(`exits`, () => {
       toState: (state) =>
         state.matches('solved') &&
         is({ exited: true, fundedDai: true, fundedEth: true })(state.context),
-      filter: and(filters.skipMetaFunding, filters.skipTrading),
+      filter: and(
+        filters.skipMetaFunding,
+        filters.skipTrading,
+        filters.skipDisputes,
+        filters.skipDefunding
+      ),
       verify: (sut) => expect(sut.events.EXIT).to.have.been.calledOnce,
     })
   })
@@ -56,7 +62,12 @@ describe(`exits`, () => {
       toState: (state) =>
         state.matches('solved') &&
         is({ exited: true, fundedDai: true, fundedEth: true })(state.context),
-      filter: and(filters.skipMetaFunding, filters.skipTrading),
+      filter: and(
+        filters.skipMetaFunding,
+        filters.skipTrading,
+        filters.skipDefunding,
+        filters.skipDisputes
+      ),
       verify: (sut) =>
         expect(sut.events.EXIT).to.have.been.calledOnce &&
         expect(sut.tests.exitSingle).to.have.been.calledOnce &&
@@ -74,7 +85,9 @@ describe(`exits`, () => {
       filter: and(
         filters.skipTrading,
         filters.skipPacketFunding,
-        filters.skipDefunding
+        filters.skipDefunding,
+        filters.skipDisputes,
+        filters.dai
       ),
       verify: (sut) =>
         expect(sut.events.QA_EXIT).to.have.been.calledOnce &&

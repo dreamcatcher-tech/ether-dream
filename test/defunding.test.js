@@ -1,4 +1,5 @@
-import { is, filters, and } from './machine.js'
+import { filters } from './machine.js'
+import { is, and } from './conditions.js'
 import { expect } from 'chai'
 import test from './testFactory.js'
 

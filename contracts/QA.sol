@@ -59,4 +59,8 @@ contract QA is IQA {
   }
 
   receive() external payable {}
+
+  function name() external pure returns (string memory) {
+    return 'Test QA';
+  }
 }

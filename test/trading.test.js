@@ -1,5 +1,6 @@
 import { initializeSut } from './sut.js'
-import { is, filters, and } from './machine.js'
+import { filters } from './machine.js'
+import { is, and } from './conditions.js'
 import { expect } from 'chai'
 import test from './testFactory.js'
 
@@ -16,10 +17,12 @@ describe(`trading`, () => {
     test({
       toState: (state) =>
         state.matches('open') && is({ tradedFunds: true })(state.context),
-      filter: (state) =>
-        state.matches('open') ||
-        state.matches('idle') ||
-        state.matches('tradeFunds'),
+      filter: and(
+        filters.allowedStates('idle', 'open', 'tradeFunds'),
+        filters.skipDefunding,
+        filters.skipDisputes,
+        filters.dai
+      ),
       verify: async (sut) =>
         expect(sut.events.TRADE_FUNDS).to.have.been.calledOnce,
     })
@@ -29,7 +32,11 @@ describe(`trading`, () => {
     test({
       toState: (state) =>
         state.matches('enacted') && is({ contentTraded: true })(state.context),
-      filter: filters.skipFunding,
+      filter: and(
+        filters.skipFunding,
+        filters.skipDefunding,
+        filters.skipDisputes
+      ),
       verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
     })
   })
@@ -47,7 +54,9 @@ describe(`trading`, () => {
         filters.skipMetaFunding,
         filters.skipMetaTrading,
         filters.skipFundTrading,
-        filters.skipDefunding
+        filters.skipDefunding,
+        filters.skipDisputes,
+        filters.skipExit
       ),
       verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
     })
@@ -57,7 +66,12 @@ describe(`trading`, () => {
       toState: (state) =>
         state.matches('solved') &&
         is({ contentTraded: true, funded: false })(state.context),
-      filter: and(filters.skipFunding, filters.skipMetaTrading),
+      filter: and(
+        filters.skipFunding,
+        filters.skipMetaTrading,
+        filters.skipDefunding,
+        filters.skipDisputes
+      ),
       verify: (sut) =>
         expect(sut.tests.noFundsToClaim).to.have.been.calledTwice &&
         expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
@@ -74,7 +88,9 @@ describe(`trading`, () => {
         filters.skipMetaFunding,
         filters.skipMetaTrading,
         filters.skipFundTrading,
-        filters.skipDefunding
+        filters.skipDefunding,
+        filters.skipDisputes,
+        filters.dai
       ),
       verify: (sut) =>
         expect(sut.tests.packetContentUntransferrable).to.have.been.calledOnce,
