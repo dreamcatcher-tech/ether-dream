@@ -181,7 +181,7 @@ export const machine = createTestModel(
         },
         superDispute: {
           on: {
-            DISPUTE_UPHELD: {
+            SUPER_UPHELD: {
               target: 'open',
               actions: [
                 change({ qaResolved: true }),
@@ -203,8 +203,8 @@ export const machine = createTestModel(
 
               // if its shares, move to enacted, as we have passed the pending
             },
-            DISPUTE_SHARES_UPHELD: {},
-            DISPUTE_DISMISSED: {
+            SUPER_SHARES_UPHELD: {},
+            SUPER_DISMISSED: {
               // end it, roll back the cursor to the uplink
               // move to enacted as a byproduct
             },

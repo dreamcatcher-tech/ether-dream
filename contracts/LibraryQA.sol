@@ -8,7 +8,7 @@ library LibraryQA {
   using EnumerableSet for EnumerableSet.AddressSet;
   using EnumerableMap for EnumerableMap.UintToUintMap;
   using Counters for Counters.Counter;
-  event ChangeDisputed(uint disputeId);
+  event ChangeDisputed(uint changeId, uint disputeId);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
   event QAClaimed(uint metaId);
@@ -23,7 +23,7 @@ library LibraryQA {
     require(isQa(state, id), 'Must be transition QA');
     Change storage change = state.changes[id];
     require(shares.length > 0, 'Must provide shares');
-    require(change.contentShares.holders.length() == 0);
+    require(change.contentShares.holders.length() == 0, 'Already resolved');
     qaStart(change);
     allocateShares(change, shares);
     emit QAResolved(id);
@@ -63,6 +63,14 @@ library LibraryQA {
     require(total == SHARES_TOTAL, 'Shares must sum to SHARES_TOTAL');
   }
 
+  function disputeResolve(State storage state, uint id, bytes32 reason) public {
+    Change storage c = state.changes[id];
+    require(c.rejectionReason == 0, 'Not a resolve');
+    require(c.contentShares.holders.length() != 0, 'Not solved');
+
+    disputeStart(state, id, reason);
+  }
+
   function disputeShares(
     State storage state,
     uint id,
@@ -76,14 +84,6 @@ library LibraryQA {
     uint disputeId = disputeStart(state, id, reason);
     Change storage dispute = state.changes[disputeId];
     LibraryQA.allocateShares(dispute, s);
-  }
-
-  function disputeResolve(State storage state, uint id, bytes32 reason) public {
-    Change storage c = state.changes[id];
-    require(c.rejectionReason == 0, 'Not a resolve');
-    require(c.contentShares.holders.length() != 0, 'Not solved');
-
-    disputeStart(state, id, reason);
   }
 
   function disputeRejection(
@@ -121,7 +121,7 @@ library LibraryQA {
 
     c.downlinks.push(disputeId);
 
-    emit ChangeDisputed(disputeId);
+    emit ChangeDisputed(id, disputeId);
     return disputeId;
   }
 
@@ -140,19 +140,39 @@ library LibraryQA {
     emit DisputeDismissed(id);
   }
 
+  // TODO need to settle shares by a QA doing a manual merge
+
   function qaDisputeUpheld(State storage state, uint id) external {
     require(isQa(state, id));
     Change storage dispute = state.changes[id];
     require(dispute.createdAt != 0, 'Change does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
 
-    // TODO if shares, change the share allocations
-    // TODO if resolve, then undo the resolve, change back to open
-    // TODO if reject, then undo the reject, change back to open
+    Change storage change = state.changes[dispute.uplink];
+    if (change.rejectionReason != 0) {
+      // TODO if reject, then undo the reject, change back to open
+    } else if (dispute.contentShares.holders.length() != 0) {
+      // TODO if shares, change the share allocations
+    } else {
+      // TODO if resolve, then undo the resolve, change back to open
+      change.disputeWindowStart = 0;
+      deallocateShares(change);
+    }
+
     // TODO handle concurrent disputes
 
     // mint dispute nfts
     emit DisputeUpheld(id);
+  }
+
+  function deallocateShares(Change storage change) internal {
+    ContentShares storage contentShares = change.contentShares;
+    uint holdersCount = contentShares.holders.length();
+    for (uint i = holdersCount; i > 0; i--) {
+      address holder = contentShares.holders.at(i - 1);
+      delete contentShares.balances[holder];
+      contentShares.holders.remove(holder);
+    }
   }
 
   function claimQa(State storage state, uint id) public {

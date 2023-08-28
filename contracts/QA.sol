@@ -63,4 +63,8 @@ contract QA is IQA {
   function name() external pure returns (string memory) {
     return 'Test QA';
   }
+
+  function qaDisputeUpheld(uint id) external {
+    dreamcatcher.qaDisputeUpheld(id);
+  }
 }

@@ -72,7 +72,7 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   event Claimed(uint packetId, address holder);
 
   // from LibraryQA.sol
-  event ChangeDisputed(uint disputeId);
+  event ChangeDisputed(uint changeId, uint disputeId);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
   event QAClaimed(uint metaId);

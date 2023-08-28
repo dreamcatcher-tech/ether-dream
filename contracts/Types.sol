@@ -8,8 +8,8 @@ import '@openzeppelin/contracts/utils/Counters.sol';
 address constant OPEN_SEA = address(0x495f947276749Ce646f68AC8c248420045cb7b5e);
 address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
-uint constant DISPUTE_WINDOW = 3 days;
-uint constant DEFUND_WINDOW = 7 days;
+uint constant DISPUTE_WINDOW = 7 days;
+uint constant DEFUND_WINDOW = 14 days;
 uint constant SHARES_TOTAL = 1000;
 uint constant CONTENT_ASSET_ID = 0;
 
@@ -45,8 +45,12 @@ struct Change {
   ContentShares contentShares; // assigned by QA
   //
   // links
-  uint uplink; //packets to headers, solutions to packets, appeals to metas
-  uint[] downlinks; // packets to solutions, metas to appeals
+  uint uplink; //packets to headers, solutions to packets, disputes to metas
+  uint[] downlinks; // packets to solutions, metas to disputes
+  uint[] edits; // packets to merges ?, metas to edits
+
+  // store reference to the rounds of dispute against a change
+  // store a single outcome for each round
 }
 struct FundingShares {
   EnumerableSet.AddressSet holders;

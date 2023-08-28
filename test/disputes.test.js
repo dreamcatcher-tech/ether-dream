@@ -4,7 +4,7 @@ import { expect } from 'chai'
 import test from './testFactory.js'
 
 describe('disputes', () => {
-  describe.skip('dispute a header', () => {
+  describe('dispute a header', () => {
     // make a header, dispute it, approve it, observe header cancelled
     test({
       toState: (state) =>
@@ -16,11 +16,10 @@ describe('disputes', () => {
         filters.skipDefunding
       ),
       verify: (sut) =>
-        expect(sut.tests.defundExitAfterQa).to.have.been.calledOnce &&
-        expect(sut.tests.defundInvalidStart).to.have.been.calledOnce &&
-        expect(sut.tests.defundInvalidStop).to.have.been.calledOnce,
-      dry: true,
+        expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
+        expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
     })
+    // UP TO HERE - unverified test
   })
   it.skip('reverts if dispute window has passed')
   it.skip('disputes cannot be disputed')
@@ -43,3 +42,11 @@ describe('disputes', () => {
 // check qa cannot claim while dispute is pending or after it got rejected
 
 // check super qa can claim their fees
+
+// check disputes are recognized so long as they are funded
+
+// check cannot dispute an open change
+
+// check only QA can super uphold
+
+// open disputes during the solution packet closing time

@@ -333,6 +333,19 @@ export const initializeSut = async () => {
           .withArgs(cursorId, owner.address)
         await tests.defundDoubleExit(cursorId)
       },
+      DISPUTE_RESOLVE: async ({ state: { context } }) => {
+        const { cursorId } = context
+        const contents = hash('disputing ' + cursorId)
+        await expect(dreamEther.disputeResolve(cursorId, contents))
+          .to.emit(dreamEther, 'ChangeDisputed')
+          .withArgs(context.cursorId, context.transitionsCount)
+      },
+      SUPER_UPHELD: async ({ state: { context } }) => {
+        const { cursorId } = context
+        await expect(qa.qaDisputeUpheld(cursorId))
+          .to.emit(dreamEther, 'DisputeUpheld')
+          .withArgs(cursorId)
+      },
     },
   }
   sinon.spy(sut.tests)

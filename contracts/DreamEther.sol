@@ -51,12 +51,12 @@ contract DreamEther is IDreamcatcher {
     state.qaReject(id, reason);
   }
 
-  function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
-    state.disputeShares(id, reason, s);
-  }
-
   function disputeResolve(uint id, bytes32 reason) external {
     state.disputeResolve(id, reason);
+  }
+
+  function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
+    state.disputeShares(id, reason, s);
   }
 
   function disputeRejection(uint id, bytes32 reason) external {
