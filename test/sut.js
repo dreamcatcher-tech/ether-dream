@@ -17,11 +17,22 @@ const DEFUND_WINDOW_MS = 7 * ONE_DAY_MS
 chai.use(sinonChai)
 const SOLVER1_SHARES = 897
 const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
+const DISPUTER1_SHARES = 787
+const DISPUTER2_SHARES = 1000 - DISPUTER1_SHARES
 
 async function deploy() {
   // Contracts are deployed using the first signer/account by default
-  const [owner, qaAddress, funder1, funder2, solver1, solver2, noone] =
-    await ethers.getSigners()
+  const [
+    owner,
+    qaAddress,
+    funder1,
+    funder2,
+    solver1,
+    solver2,
+    disputer1,
+    disputer2,
+    noone,
+  ] = await ethers.getSigners()
 
   const LibraryQA = await ethers.getContractFactory('LibraryQA')
   const libraryQA = await LibraryQA.deploy()
@@ -63,6 +74,8 @@ async function deploy() {
     funder2,
     solver1,
     solver2,
+    disputer1,
+    disputer2,
     noone,
   }
 }
@@ -70,8 +83,18 @@ async function deploy() {
 export const initializeSut = async () => {
   const fixture = await loadFixture(deploy)
   const tests = sutTests(fixture)
-  const { dreamEther, qa, dai, owner, ethers, funder1, solver1, solver2 } =
-    fixture
+  const {
+    dreamEther,
+    qa,
+    dai,
+    owner,
+    ethers,
+    funder1,
+    solver1,
+    solver2,
+    disputer1,
+    disputer2,
+  } = fixture
 
   const sut = {
     fixture,
@@ -339,11 +362,14 @@ export const initializeSut = async () => {
         await expect(dreamEther.disputeResolve(cursorId, contents))
           .to.emit(dreamEther, 'ChangeDisputed')
           .withArgs(context.cursorId, context.transitionsCount)
+        // TODO twice with the same content should fail.
       },
       SUPER_UPHELD: async ({ state: { context } }) => {
         const { cursorId } = context
-        await expect(qa.qaDisputeUpheld(cursorId))
-          .to.emit(dreamEther, 'DisputeUpheld')
+        const addresses = [disputer1.address, disputer2.address]
+        const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
+        await expect(qa.disputeUpheld(cursorId, addresses, amounts))
+          .to.emit(dreamEther, 'DisputesUpheld')
           .withArgs(cursorId)
       },
     },

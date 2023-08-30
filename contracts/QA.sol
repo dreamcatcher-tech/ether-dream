@@ -22,15 +22,8 @@ contract QA is IQA {
     address[] calldata solvers,
     uint[] calldata amounts
   ) external {
-    IDreamcatcher dc = IDreamcatcher(dreamcatcher);
-    Share[] memory shares = new Share[](solvers.length);
-    require(solvers.length == amounts.length);
-    require(solvers.length > 0);
-
-    for (uint i = 0; i < solvers.length; i++) {
-      shares[i] = Share(solvers[i], amounts[i]);
-    }
-    dc.qaResolve(id, shares);
+    Share[] memory shares = convertToShares(solvers, amounts);
+    dreamcatcher.qaResolve(id, shares);
   }
 
   function failQA(uint id, bytes32 reason) external {
@@ -42,12 +35,17 @@ contract QA is IQA {
     return 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
   }
 
-  function disputeDismissed(uint id, bytes32 reason) external {
-    dreamcatcher.qaDisputeDismissed(id, reason);
+  function disputesDismissed(uint changeId, bytes32 reason) external {
+    dreamcatcher.qaDisputesDismissed(changeId, reason);
   }
 
-  function disputeUpheld(uint id) external {
-    dreamcatcher.qaDisputeUpheld(id);
+  function disputeUpheld(
+    uint id,
+    address[] calldata solvers,
+    uint[] calldata amounts
+  ) external {
+    Share[] memory shares = convertToShares(solvers, amounts);
+    dreamcatcher.qaDisputeUpheld(id, shares);
   }
 
   function claimQa(uint id) external {
@@ -64,7 +62,17 @@ contract QA is IQA {
     return 'Test QA';
   }
 
-  function qaDisputeUpheld(uint id) external {
-    dreamcatcher.qaDisputeUpheld(id);
+  function convertToShares(
+    address[] calldata solvers,
+    uint[] calldata amounts
+  ) internal pure returns (Share[] memory) {
+    Share[] memory shares = new Share[](solvers.length);
+    require(solvers.length == amounts.length);
+    require(solvers.length > 0);
+
+    for (uint i = 0; i < solvers.length; i++) {
+      shares[i] = Share(solvers[i], amounts[i]);
+    }
+    return shares;
   }
 }

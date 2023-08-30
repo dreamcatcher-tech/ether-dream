@@ -28,9 +28,9 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function disputeRejection(uint id, bytes32 reason) external;
 
-  function qaDisputeDismissed(uint id, bytes32 reason) external;
+  function qaDisputesDismissed(uint changeId, bytes32 reason) external;
 
-  function qaDisputeUpheld(uint id) external;
+  function qaDisputeUpheld(uint disputeId, Share[] calldata shares) external;
 
   function enact(uint id) external;
 
@@ -76,8 +76,8 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
   event QAClaimed(uint metaId);
-  event DisputeDismissed(uint disputeId);
-  event DisputeUpheld(uint disputeId);
+  event DisputesDismissed(uint changeId);
+  event DisputesUpheld(uint changeId);
 
   // from LibraryState.sol
   event DefundStarted(uint indexed id, address indexed holder);

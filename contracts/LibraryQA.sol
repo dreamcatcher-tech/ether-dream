@@ -12,8 +12,8 @@ library LibraryQA {
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
   event QAClaimed(uint metaId);
-  event DisputeDismissed(uint disputeId);
-  event DisputeUpheld(uint disputeId);
+  event DisputesDismissed(uint changeId);
+  event DisputesUpheld(uint changeId);
 
   function qaResolve(
     State storage state,
@@ -125,26 +125,34 @@ library LibraryQA {
     return disputeId;
   }
 
-  function qaDisputeDismissed(
+  function qaDisputesDismissed(
     State storage state,
-    uint id,
+    uint changeId,
     bytes32 reason
   ) external {
-    require(isQa(state, id));
+    // closes the round with no disputes chosen
+    require(isQa(state, changeId));
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
-    Change storage dispute = state.changes[id];
-    require(dispute.createdAt != 0, 'Change does not exist');
-    require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
+    Change storage change = state.changes[changeId];
+    require(change.createdAt != 0, 'Change does not exist');
+    require(change.changeType != ChangeType.DISPUTE, 'Cannot be a dispute');
+    require(change.changeType != ChangeType.PACKET, 'Cannot be a packet');
 
-    dispute.rejectionReason = reason;
-    emit DisputeDismissed(id);
+    // close the round out
+
+    emit DisputesDismissed(changeId);
   }
 
-  // TODO need to settle shares by a QA doing a manual merge
+  function qaDisputeUpheld(
+    State storage state,
+    uint disputeId,
+    Share[] calldata shares
+  ) external {
+    // closes the round with the given dispute chosen
+    // no other disputes can be accepted for this DisputeRound
 
-  function qaDisputeUpheld(State storage state, uint id) external {
-    require(isQa(state, id));
-    Change storage dispute = state.changes[id];
+    require(isQa(state, disputeId));
+    Change storage dispute = state.changes[disputeId];
     require(dispute.createdAt != 0, 'Change does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
 
@@ -162,7 +170,7 @@ library LibraryQA {
     // TODO handle concurrent disputes
 
     // mint dispute nfts
-    emit DisputeUpheld(id);
+    emit DisputesUpheld(disputeId);
   }
 
   function deallocateShares(Change storage change) internal {

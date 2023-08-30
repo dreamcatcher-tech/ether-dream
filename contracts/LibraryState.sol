@@ -40,6 +40,8 @@ library LibraryState {
 
     require(state.qaMap[headerId] == address(0), 'QA exists');
     state.qaMap[headerId] = qa;
+    // create a new nft so it can be advertised in opensea
+    // TODO allocate all shares to this contract address
     upsertNftId(state, headerId, CONTENT_ASSET_ID);
     emit ProposedPacket(headerId);
   }

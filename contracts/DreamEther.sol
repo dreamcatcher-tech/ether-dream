@@ -23,6 +23,16 @@ contract DreamEther is IDreamcatcher {
 
   State state;
 
+  constructor() {
+    require(CONTENT_ASSET_ID == state.assetCounter.current());
+    uint[2] memory assetIds = [QA_MEDALLION_ID, DISPUTE_CONTENT_ID];
+    for (uint i = 0; i < assetIds.length; i++) {
+      state.assetCounter.increment();
+      require(state.assetCounter.current() == assetIds[i], 'Asset ID mismatch');
+    }
+    require(state.assetCounter.current() == 2, 'AssetIDs must be preallocated');
+  }
+
   function proposePacket(bytes32 contents, address qa) external {
     state.proposePacket(contents, qa);
   }
@@ -63,12 +73,12 @@ contract DreamEther is IDreamcatcher {
     state.disputeRejection(id, reason);
   }
 
-  function qaDisputeDismissed(uint id, bytes32 reason) external {
-    state.qaDisputeDismissed(id, reason);
+  function qaDisputesDismissed(uint changeId, bytes32 reason) external {
+    state.qaDisputesDismissed(changeId, reason);
   }
 
-  function qaDisputeUpheld(uint id) external {
-    state.qaDisputeUpheld(id);
+  function qaDisputeUpheld(uint disputeId, Share[] calldata shares) external {
+    state.qaDisputeUpheld(disputeId, shares);
   }
 
   function enact(uint id) external {
@@ -80,6 +90,7 @@ contract DreamEther is IDreamcatcher {
   }
 
   function merge(uint fromId, uint toId, bytes32 reasons) external {
+    // TODO ensure this is just an edit on a packet - only packets can merge
     // merge the change of fromId to the change of toId for the given reasons
     require(LibraryUtils.isIpfs(reasons), 'Invalid reason hash');
     Change storage from = state.changes[fromId];

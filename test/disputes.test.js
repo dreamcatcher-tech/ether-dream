@@ -4,7 +4,22 @@ import { expect } from 'chai'
 import test from './testFactory.js'
 
 describe('disputes', () => {
-  describe('dispute a header', () => {
+  describe('dispute a header being resolved', () => {
+    test({
+      toState: (state) =>
+        state.matches('enacted') &&
+        is({ disputedResolve: true, type: types.HEADER })(state.context),
+      filter: and(
+        filters.skipFunding,
+        filters.skipTrading,
+        filters.skipDefunding
+      ),
+      verify: (sut) =>
+        expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
+        expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
+    })
+  })
+  describe.only('dispute a header being rejected', () => {
     // make a header, dispute it, approve it, observe header cancelled
     test({
       toState: (state) =>
@@ -24,6 +39,10 @@ describe('disputes', () => {
   it.skip('reverts if dispute window has passed')
   it.skip('disputes cannot be disputed')
   it.skip('cannot dispute a packet')
+  it.skip('super qa can claim funds put against changes')
+  it.skip('dispute upheld allocates shares')
+  it.skip('dispute shares allows superQa to set any share split')
+  it.skip('super cannot act before dispute window has passed')
 })
 
 // multiple concurrent disputes of the same type, or of different types
@@ -50,3 +69,11 @@ describe('disputes', () => {
 // check only QA can super uphold
 
 // open disputes during the solution packet closing time
+
+// test storing our own nfts against packets
+
+// test super timeout allowing anyone to enact packet.  If dispute super window has passed, then anyone can enact the packet.
+
+// After dispute window, before super acts, no disputes are allowed
+
+// superQa acting closes the round so not other actions are possible

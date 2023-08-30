@@ -8,10 +8,17 @@ import '@openzeppelin/contracts/utils/Counters.sol';
 address constant OPEN_SEA = address(0x495f947276749Ce646f68AC8c248420045cb7b5e);
 address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
+uint constant DISPUTE_ROUND_DISMISSED = 2 ** 256 - 1;
+
+// PREALLOCATED ASSET IDs
+uint constant CONTENT_ASSET_ID = 0;
+uint constant QA_MEDALLION_ID = 1; // QA medallion assigned by packet
+uint constant DISPUTE_CONTENT_ID = 2; // dispute shares
+
+// TUNABLE PARAMETERS
 uint constant DISPUTE_WINDOW = 7 days;
 uint constant DEFUND_WINDOW = 14 days;
 uint constant SHARES_TOTAL = 1000;
-uint constant CONTENT_ASSET_ID = 0;
 
 enum NftType {
   QA,
@@ -47,10 +54,14 @@ struct Change {
   // links
   uint uplink; //packets to headers, solutions to packets, disputes to metas
   uint[] downlinks; // packets to solutions, metas to disputes
-  uint[] edits; // packets to merges ?, metas to edits
-
-  // store reference to the rounds of dispute against a change
-  // store a single outcome for each round
+  uint[] edits; // packets to merges, metas to edits
+  DisputeRound[] disputeRounds;
+}
+struct DisputeRound {
+  uint roundHeight; // length of downlinks array at time of round close
+  uint outcome; // chosen downlink index or DISPUTE_ROUND_DISMISSED
+  bytes32 reasons; // the reasons for the outcome
+  // nftId ?
 }
 struct FundingShares {
   EnumerableSet.AddressSet holders;
@@ -63,6 +74,11 @@ struct ContentShares {
   mapping(address => uint) claims; // holder => claimedShareCount
   mapping(uint => uint) withdrawn; // nftId => amount
   uint totalClaims;
+  QaMedallion qaMedallion; // QA medallion minted on packet resolved
+}
+struct QaMedallion {
+  uint nftId;
+  address holder;
 }
 struct Share {
   address holder;
