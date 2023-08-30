@@ -42,10 +42,11 @@ contract QA is IQA {
   function disputeUpheld(
     uint id,
     address[] calldata solvers,
-    uint[] calldata amounts
+    uint[] calldata amounts,
+    bytes32 reason
   ) external {
     Share[] memory shares = convertToShares(solvers, amounts);
-    dreamcatcher.qaDisputeUpheld(id, shares);
+    dreamcatcher.qaDisputeUpheld(id, shares, reason);
   }
 
   function claimQa(uint id) external {

@@ -100,4 +100,18 @@ library LibraryChange {
       contentShares.holders.remove(holder);
     }
   }
+
+  function mintQaMedallion(
+    Change storage packet,
+    address qa,
+    uint nftId
+  ) internal {
+    require(packet.changeType == ChangeType.PACKET);
+    require(qa != address(0));
+    require(nftId != 0);
+    require(packet.contentShares.qaMedallion.nftId == 0);
+
+    packet.contentShares.qaMedallion.nftId = nftId;
+    packet.contentShares.qaMedallion.holder = qa;
+  }
 }

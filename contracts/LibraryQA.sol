@@ -45,6 +45,7 @@ library LibraryQA {
   }
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
+    require(c.contentShares.holders.length() == 0, 'Already resolved');
     bool isDispute = c.changeType == ChangeType.DISPUTE;
     uint total = 0;
     for (uint i = 0; i < shares.length; i++) {
@@ -63,12 +64,16 @@ library LibraryQA {
     require(total == SHARES_TOTAL, 'Shares must sum to SHARES_TOTAL');
   }
 
-  function disputeResolve(State storage state, uint id, bytes32 reason) public {
+  function disputeResolve(
+    State storage state,
+    uint id,
+    bytes32 reason
+  ) public returns (uint) {
     Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
     require(c.contentShares.holders.length() != 0, 'Not solved');
 
-    disputeStart(state, id, reason);
+    return disputeStart(state, id, reason);
   }
 
   function disputeShares(
@@ -76,25 +81,26 @@ library LibraryQA {
     uint id,
     bytes32 reason,
     Share[] calldata s
-  ) public {
+  ) public returns (uint) {
     Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
     require(c.contentShares.holders.length() != 0, 'Not solved');
 
     uint disputeId = disputeStart(state, id, reason);
     Change storage dispute = state.changes[disputeId];
-    LibraryQA.allocateShares(dispute, s);
+    allocateShares(dispute, s);
+    return disputeId;
   }
 
   function disputeRejection(
     State storage state,
     uint id,
     bytes32 reason
-  ) external {
+  ) external returns (uint) {
     Change storage c = state.changes[id];
     require(c.rejectionReason != 0, 'Not a rejection');
 
-    disputeStart(state, id, reason);
+    return disputeStart(state, id, reason);
   }
 
   function disputeStart(
@@ -130,15 +136,18 @@ library LibraryQA {
     uint changeId,
     bytes32 reason
   ) external {
-    // closes the round with no disputes chosen
     require(isQa(state, changeId));
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage change = state.changes[changeId];
-    require(change.createdAt != 0, 'Change does not exist');
-    require(change.changeType != ChangeType.DISPUTE, 'Cannot be a dispute');
-    require(change.changeType != ChangeType.PACKET, 'Cannot be a packet');
+    require(change.disputeWindowStart > 0, 'Dispute window not started');
+    uint elapsedTime = block.timestamp - change.disputeWindowStart;
+    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
 
-    // close the round out
+    DisputeRound memory round;
+    round.roundHeight = change.downlinks.length;
+    round.outcome = DISPUTE_ROUND_DISMISSED;
+    round.reason = reason;
+    change.disputeRounds.push(round);
 
     emit DisputesDismissed(changeId);
   }
@@ -146,31 +155,58 @@ library LibraryQA {
   function qaDisputeUpheld(
     State storage state,
     uint disputeId,
-    Share[] calldata shares
+    Share[] calldata shares,
+    bytes32 reason
   ) external {
-    // closes the round with the given dispute chosen
-    // no other disputes can be accepted for this DisputeRound
-
-    require(isQa(state, disputeId));
+    require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
+    require(shares.length > 0, 'Must provide shares');
     Change storage dispute = state.changes[disputeId];
-    require(dispute.createdAt != 0, 'Change does not exist');
+    require(dispute.createdAt != 0, 'Dispute does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
+    require(isQa(state, disputeId));
 
     Change storage change = state.changes[dispute.uplink];
+    require(change.disputeWindowStart > 0, 'Dispute window not started');
+    uint elapsedTime = block.timestamp - change.disputeWindowStart;
+    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+
     if (change.rejectionReason != 0) {
-      // TODO if reject, then undo the reject, change back to open
+      delete change.rejectionReason;
+      delete change.disputeWindowStart;
     } else if (dispute.contentShares.holders.length() != 0) {
-      // TODO if shares, change the share allocations
+      deallocateShares(change);
+      copyShares(dispute.contentShares, change.contentShares);
+      delete dispute.contentShares;
     } else {
-      // TODO if resolve, then undo the resolve, change back to open
-      change.disputeWindowStart = 0;
+      delete change.disputeWindowStart;
       deallocateShares(change);
     }
 
-    // TODO handle concurrent disputes
+    DisputeRound memory round;
+    round.roundHeight = change.downlinks.length;
+    round.outcome = disputeId;
+    round.reason = reason;
+    change.disputeRounds.push(round);
 
-    // mint dispute nfts
+    allocateShares(dispute, shares);
     emit DisputesUpheld(disputeId);
+
+    // TODO handle concurrent disputes
+  }
+
+  function copyShares(
+    ContentShares storage from,
+    ContentShares storage to
+  ) internal {
+    require(to.holders.length() == 0);
+    uint holdersCount = from.holders.length();
+    for (uint i = 0; i < holdersCount; i++) {
+      address holder = from.holders.at(i);
+      uint balance = from.balances[holder];
+      require(!to.holders.contains(holder));
+      to.holders.add(holder);
+      to.balances[holder] = balance;
+    }
   }
 
   function deallocateShares(Change storage change) internal {
@@ -231,23 +267,6 @@ library LibraryQA {
     }
     if (change.changeType == ChangeType.DISPUTE) {
       return isQa(state, change.uplink);
-    }
-    revert('Invalid change');
-  }
-
-  function getQa(State storage state, uint id) public view returns (address) {
-    Change storage change = state.changes[id];
-    if (change.changeType == ChangeType.HEADER) {
-      return state.qaMap[id];
-    }
-    if (change.changeType == ChangeType.SOLUTION) {
-      return getQa(state, change.uplink);
-    }
-    if (change.changeType == ChangeType.PACKET) {
-      return getQa(state, change.uplink);
-    }
-    if (change.changeType == ChangeType.DISPUTE) {
-      return getQa(state, change.uplink);
     }
     revert('Invalid change');
   }

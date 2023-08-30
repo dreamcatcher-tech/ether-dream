@@ -13,7 +13,6 @@ uint constant DISPUTE_ROUND_DISMISSED = 2 ** 256 - 1;
 // PREALLOCATED ASSET IDs
 uint constant CONTENT_ASSET_ID = 0;
 uint constant QA_MEDALLION_ID = 1; // QA medallion assigned by packet
-uint constant DISPUTE_CONTENT_ID = 2; // dispute shares
 
 // TUNABLE PARAMETERS
 uint constant DISPUTE_WINDOW = 7 days;
@@ -60,8 +59,7 @@ struct Change {
 struct DisputeRound {
   uint roundHeight; // length of downlinks array at time of round close
   uint outcome; // chosen downlink index or DISPUTE_ROUND_DISMISSED
-  bytes32 reasons; // the reasons for the outcome
-  // nftId ?
+  bytes32 reason; // the reason for the outcome
 }
 struct FundingShares {
   EnumerableSet.AddressSet holders;

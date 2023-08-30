@@ -13,7 +13,8 @@ import sutTests, { tradeContent } from './sutTests.js'
 import Debug from 'debug'
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
-const DEFUND_WINDOW_MS = 7 * ONE_DAY_MS
+const DEFUND_WINDOW_MS = 14 * ONE_DAY_MS
+const DISPUTE_WINDOW_MS = 7 * ONE_DAY_MS
 chai.use(sinonChai)
 const SOLVER1_SHARES = 897
 const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
@@ -365,10 +366,12 @@ export const initializeSut = async () => {
         // TODO twice with the same content should fail.
       },
       SUPER_UPHELD: async ({ state: { context } }) => {
+        await time.increase(DISPUTE_WINDOW_MS)
         const { cursorId } = context
         const addresses = [disputer1.address, disputer2.address]
         const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
-        await expect(qa.disputeUpheld(cursorId, addresses, amounts))
+        const reason = hash('upheld ' + cursorId)
+        await expect(qa.disputeUpheld(cursorId, addresses, amounts, reason))
           .to.emit(dreamEther, 'DisputesUpheld')
           .withArgs(cursorId)
       },

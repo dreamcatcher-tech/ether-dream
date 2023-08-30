@@ -30,7 +30,7 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function qaDisputesDismissed(uint changeId, bytes32 reason) external;
 
-  function qaDisputeUpheld(uint disputeId, Share[] calldata shares) external;
+  function qaDisputeUpheld(uint id, Share[] calldata s, bytes32 r) external;
 
   function enact(uint id) external;
 

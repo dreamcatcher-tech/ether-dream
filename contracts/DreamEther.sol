@@ -25,12 +25,12 @@ contract DreamEther is IDreamcatcher {
 
   constructor() {
     require(CONTENT_ASSET_ID == state.assetCounter.current());
-    uint[2] memory assetIds = [QA_MEDALLION_ID, DISPUTE_CONTENT_ID];
+    uint[1] memory assetIds = [QA_MEDALLION_ID];
     for (uint i = 0; i < assetIds.length; i++) {
       state.assetCounter.increment();
       require(state.assetCounter.current() == assetIds[i], 'Asset ID mismatch');
     }
-    require(state.assetCounter.current() == 2, 'AssetIDs must be preallocated');
+    require(state.assetCounter.current() == 1, 'AssetIDs must be preallocated');
   }
 
   function proposePacket(bytes32 contents, address qa) external {
@@ -62,23 +62,26 @@ contract DreamEther is IDreamcatcher {
   }
 
   function disputeResolve(uint id, bytes32 reason) external {
-    state.disputeResolve(id, reason);
+    uint disputeId = state.disputeResolve(id, reason);
+    state.upsertNftId(disputeId, CONTENT_ASSET_ID);
   }
 
   function disputeShares(uint id, bytes32 reason, Share[] calldata s) external {
-    state.disputeShares(id, reason, s);
+    uint disputeId = state.disputeShares(id, reason, s);
+    state.upsertNftId(disputeId, CONTENT_ASSET_ID);
   }
 
   function disputeRejection(uint id, bytes32 reason) external {
-    state.disputeRejection(id, reason);
+    uint disputeId = state.disputeRejection(id, reason);
+    state.upsertNftId(disputeId, CONTENT_ASSET_ID);
   }
 
   function qaDisputesDismissed(uint changeId, bytes32 reason) external {
     state.qaDisputesDismissed(changeId, reason);
   }
 
-  function qaDisputeUpheld(uint disputeId, Share[] calldata shares) external {
-    state.qaDisputeUpheld(disputeId, shares);
+  function qaDisputeUpheld(uint id, Share[] calldata s, bytes32 r) external {
+    state.qaDisputeUpheld(id, s, r);
   }
 
   function enact(uint id) external {

@@ -19,7 +19,7 @@ describe('disputes', () => {
         expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
     })
   })
-  describe.only('dispute a header being rejected', () => {
+  describe('dispute a header being rejected', () => {
     // make a header, dispute it, approve it, observe header cancelled
     test({
       toState: (state) =>
@@ -77,3 +77,9 @@ describe('disputes', () => {
 // After dispute window, before super acts, no disputes are allowed
 
 // superQa acting closes the round so not other actions are possible
+
+// super cannot act until the dispute window has passed
+
+// check that dispute content is created
+
+// doulbe qa calls should error as the round has closed
