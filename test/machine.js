@@ -34,6 +34,8 @@ const Change = Immutable.Record({
   disputedResolve: false,
   disputedRejection: false,
   disputedShares: false,
+  disputeUpheld: false,
+  disputeDismissed: false,
 })
 const Global = Immutable.Record({
   qaExitable: false,
@@ -148,7 +150,8 @@ export const machine = createTestModel(
                   // disputedRejection: false,
                   // disputedShares: false,
                 }),
-                not({ type: types.PACKET }, { type: types.DISPUTE })
+                not({ type: types.PACKET }, { type: types.DISPUTE }),
+                not({ disputeDismissed: true, disputeUpheld: true })
               ),
             },
             // try trade contents here while pending
@@ -186,9 +189,17 @@ export const machine = createTestModel(
               actions: [
                 change({ qaResolved: true }),
                 'focusUplink',
-                change({ qaResolved: false, qaRejected: false }),
+                change({
+                  qaResolved: false,
+                  qaRejected: false,
+                  disputeUpheld: true,
+                }),
               ],
-              cond: isAny({ disputedResolve: true, disputedRejection: true }),
+              cond: isAny({
+                disputedResolve: true,
+                disputedRejection: true,
+                disputeUpheld: false,
+              }),
               // mint the special shares to those who provided content
               // move back to open, but raise a flag to stop it being
               // disputed again, a double flag if this has been disputed twice.
@@ -207,6 +218,13 @@ export const machine = createTestModel(
             SUPER_DISMISSED: {
               // end it, roll back the cursor to the uplink
               // move to enacted as a byproduct
+              target: 'pending',
+              actions: [
+                change({ qaResolved: true }), // settle the dispute
+                'focusUplink',
+                change({ disputeDismissed: true }),
+              ],
+              cond: is({ disputeDismissed: false }),
             },
           },
         },

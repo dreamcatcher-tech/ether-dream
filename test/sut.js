@@ -375,6 +375,15 @@ export const initializeSut = async () => {
           .to.emit(dreamEther, 'DisputesUpheld')
           .withArgs(cursorId)
       },
+      SUPER_DISMISSED: async ({ state: { context } }) => {
+        await time.increase(DISPUTE_WINDOW_MS)
+        const { cursorId } = context
+        const dispute = context.transitions.get(cursorId)
+        const reason = hash('dismissed ' + dispute.uplink)
+        await expect(qa.disputesDismissed(dispute.uplink, reason))
+          .to.emit(dreamEther, 'DisputesDismissed')
+          .withArgs(dispute.uplink)
+      },
     },
   }
   sinon.spy(sut.tests)

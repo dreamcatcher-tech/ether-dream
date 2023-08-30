@@ -424,4 +424,8 @@ contract DreamEther is IDreamcatcher {
   function issues() external pure returns (string memory) {
     return 'https://github.com/dreamcatcher-tech/ether-dream/issues';
   }
+
+  function getQA(uint id) external view returns (address) {
+    return state.getQa(id);
+  }
 }
