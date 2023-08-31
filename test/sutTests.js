@@ -98,7 +98,7 @@ export default function createTests(fixture) {
       const msg = 'Defund timeout not reached'
       await expect(dreamEther.defund(cursorId)).to.be.revertedWith(msg)
     },
-    superDismissBeforeResolve: async (changeId) => {
+    superDismissBeforeQa: async (changeId) => {
       const reason = hash('dismissed before resolve' + changeId)
       await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
         'Dispute window not started'
@@ -135,6 +135,12 @@ export default function createTests(fixture) {
       await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
         'Invalid reason hash'
       )
+    },
+    disputeInvalidRejection: async (changeId) => {
+      const reason = hash('invalid rejection' + changeId)
+      await expect(
+        dreamEther.disputeRejection(changeId, reason)
+      ).to.be.revertedWith('Not a rejection')
     },
   }
 }

@@ -39,7 +39,7 @@ describe('disputes', () => {
       verify: (sut) =>
         expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
         expect(sut.events.SUPER_DISMISSED).to.have.been.calledOnce &&
-        expect(sut.tests.superDismissBeforeResolve).to.have.been.calledOnce &&
+        expect(sut.tests.superDismissBeforeQa).to.have.been.calledOnce &&
         expect(sut.tests.superDismissInvalidHash).to.have.been.calledOnce &&
         expect(sut.tests.superDismissEarly).to.have.been.calledOnce &&
         expect(sut.tests.nonQaDismiss).to.have.been.calledOnce &&
@@ -48,17 +48,26 @@ describe('disputes', () => {
         expect(sut.events.SUPER_UPHELD).to.have.not.been.called,
     })
   })
-  // describe('dispute a header being rejected', () => {
-  //   test({
-  //     toState: (state) =>
-  //       state.matches('enacted') &&
-  //       is({ disputedResolve: true, type: types.HEADER })(state.context),
-  //     filter,
-  //     verify: (sut) =>
-  //       expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
-  //       expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
-  //   })
-  // })
+  describe('uphold dispute of a header being rejected', () => {
+    test({
+      toState: (state) =>
+        state.matches('enacted') &&
+        is({
+          disputedRejection: true,
+          disputeUpheld: true,
+          type: types.HEADER,
+        })(state.context),
+      filter,
+      verify: (sut) =>
+        expect(sut.events.QA_REJECT).to.have.been.calledOnce &&
+        expect(sut.events.DISPUTE_REJECT).to.have.been.calledOnce &&
+        expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce &&
+        expect(sut.tests.superDismissBeforeQa).to.have.been.calledTwice &&
+        expect(sut.tests.disputeInvalidRejection).to.have.been.calledOnce,
+    })
+    // how does QA claim from a rejected header ?
+    // can QA claim before enactment ?
+  })
   it.skip('reverts if dispute window has passed')
   it.skip('disputes cannot be disputed')
   it.skip('cannot dispute a packet')
@@ -106,3 +115,5 @@ describe('disputes', () => {
 // check that dispute content is created
 
 // doulbe qa calls should error as the round has closed
+
+// round outcome should be retrievable correctly

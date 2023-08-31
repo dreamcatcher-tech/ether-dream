@@ -58,7 +58,7 @@ describe('defunding', () => {
       filter: and(
         filters.skipPacketFunding,
         filters.skipTrading,
-        filters.allowedStates('idle', 'open', 'defund', 'pending'),
+        filters.allowedStates('idle', 'open', 'qa', 'defund', 'pending'),
         filters.dai
       ),
       verify: (sut) =>
@@ -75,7 +75,14 @@ describe('defunding', () => {
       filter: and(
         filters.skipPacketFunding,
         filters.skipTrading,
-        filters.allowedStates('idle', 'open', 'defund', 'pending', 'enacted'),
+        filters.allowedStates(
+          'idle',
+          'open',
+          'qa',
+          'defund',
+          'pending',
+          'enacted'
+        ),
         filters.dai
       ),
       verify: (sut) =>

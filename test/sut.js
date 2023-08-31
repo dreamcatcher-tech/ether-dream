@@ -171,12 +171,23 @@ export const initializeSut = async () => {
       QA_RESOLVE: async ({ state: { context } }) => {
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
-        debug('qa resolving', type, cursorId)
-        await tests.superDismissBeforeResolve(cursorId)
+        debug('qa resolve', type, cursorId)
+        await tests.superDismissBeforeQa(cursorId)
         const addresses = [solver1.address, solver2.address]
         const amounts = [SOLVER1_SHARES, SOLVER2_SHARES]
         await expect(qa.passQA(cursorId, addresses, amounts))
           .to.emit(dreamEther, 'QAResolved')
+          .withArgs(cursorId)
+        await tests.disputeInvalidRejection(cursorId)
+      },
+      QA_REJECT: async ({ state: { context } }) => {
+        const { cursorId } = context
+        const { type } = context.transitions.get(cursorId)
+        debug('qa reject', type, cursorId)
+        await tests.superDismissBeforeQa(cursorId)
+        const reason = hash('rejected ' + cursorId)
+        await expect(qa.failQA(cursorId, reason))
+          .to.emit(dreamEther, 'QARejected')
           .withArgs(cursorId)
       },
       ENACT_HEADER: async ({ state: { context } }) => {
@@ -360,10 +371,20 @@ export const initializeSut = async () => {
       },
       DISPUTE_RESOLVE: async ({ state: { context } }) => {
         const { cursorId } = context
-        const contents = hash('disputing ' + cursorId)
+        const contents = hash('disputing resolve ' + cursorId)
+        const disputeId = context.transitionsCount
         await expect(dreamEther.disputeResolve(cursorId, contents))
           .to.emit(dreamEther, 'ChangeDisputed')
-          .withArgs(context.cursorId, context.transitionsCount)
+          .withArgs(context.cursorId, disputeId)
+        // TODO twice with the same content should fail.
+      },
+      DISPUTE_REJECT: async ({ state: { context } }) => {
+        const { cursorId } = context
+        const contents = hash('disputing rejection ' + cursorId)
+        const disputeId = context.transitionsCount
+        await expect(dreamEther.disputeRejection(cursorId, contents))
+          .to.emit(dreamEther, 'ChangeDisputed')
+          .withArgs(cursorId, disputeId)
         // TODO twice with the same content should fail.
       },
       SUPER_UPHELD: async ({ state: { context } }) => {

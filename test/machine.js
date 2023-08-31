@@ -76,12 +76,10 @@ export const machine = createTestModel(
               target: 'defund',
               cond: is({ defundEnded: false, funded: true }),
             },
-            QA_RESOLVE: {
-              target: 'pending',
-              actions: change({ qaResolved: true }),
+            QA: {
+              target: 'qa',
               cond: not({ type: types.PACKET }, { type: types.DISPUTE }),
             },
-            // QA_REJECT
             SOLVE: {
               target: 'proposeSolution',
               cond: is({ type: types.PACKET }),
@@ -92,8 +90,20 @@ export const machine = createTestModel(
               cond: is({ tradedFunds: false }),
             },
             SUPER_QA: {
-              target: 'superDispute',
+              target: 'superQa',
               cond: is({ type: types.DISPUTE }),
+            },
+          },
+        },
+        qa: {
+          on: {
+            QA_RESOLVE: {
+              target: 'pending',
+              actions: change({ qaResolved: true }),
+            },
+            QA_REJECT: {
+              target: 'pending',
+              actions: change({ qaRejected: true }),
             },
           },
         },
@@ -135,23 +145,24 @@ export const machine = createTestModel(
             ENACT_HEADER: {
               target: 'enacted',
               actions: change({ enacted: true }),
-              cond: is({ type: types.HEADER }),
+              cond: is({ type: types.HEADER, qaResolved: true }),
             },
             ENACT_SOLUTION: {
               target: 'enacted',
               actions: change({ enacted: true }),
-              cond: is({ type: types.SOLUTION }),
+              cond: is({ type: types.SOLUTION, qaResolved: true }),
             },
+            REJECT: { target: 'rejected', cond: is({ qaRejected: true }) },
             DISPUTE: {
               target: 'dispute',
               cond: and(
                 isAny({
                   disputedResolve: false,
-                  // disputedRejection: false,
-                  // disputedShares: false,
+                  disputedRejection: false,
+                  disputedShares: false,
                 }),
-                not({ type: types.PACKET }, { type: types.DISPUTE }),
-                not({ disputeDismissed: true, disputeUpheld: true })
+                is({ disputeDismissed: false, disputeUpheld: false }),
+                not({ type: types.PACKET }, { type: types.DISPUTE })
               ),
             },
             // try trade contents here while pending
@@ -175,14 +186,18 @@ export const machine = createTestModel(
             //   actions: change({ disputedShares: true }),
             //   cond: is({ qaResolved: true, disputedShares: false }),
             // },
-            // DISPUTE_REJECT: {
-            //   target: 'open',
-            //   actions: change({ disputedRejection: true }),
-            //   cond: is({ qaRejected: true, disputedRejection: false }),
-            // },
+            DISPUTE_REJECT: {
+              target: 'open',
+              actions: [
+                change({ disputedRejection: true }),
+                'createDispute',
+                change({ disputedRejection: true }),
+              ],
+              cond: is({ qaRejected: true, disputedRejection: false }),
+            },
           },
         },
-        superDispute: {
+        superQa: {
           on: {
             SUPER_UPHELD: {
               target: 'open',
@@ -236,6 +251,9 @@ export const machine = createTestModel(
             },
             // TRADE_FUNDS_AGAIN to test updating existing balance
           },
+        },
+        rejected: {
+          // test can never edit a rejected change
         },
         enacted: {
           // the meta change is incapable of financially changing any further
