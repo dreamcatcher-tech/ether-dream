@@ -92,7 +92,7 @@ contract DreamEther is IDreamcatcher {
     state.solve(packetId, contents);
   }
 
-  function merge(uint fromId, uint toId, bytes32 reasons) external {
+  function merge(uint fromId, uint toId, bytes32 reasons) external view {
     // TODO ensure this is just an edit on a packet - only packets can merge
     // merge the change of fromId to the change of toId for the given reasons
     require(LibraryUtils.isIpfs(reasons), 'Invalid reason hash');

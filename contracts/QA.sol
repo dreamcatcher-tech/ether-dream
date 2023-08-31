@@ -12,7 +12,7 @@ contract QA is IQA {
     dreamcatcher = IDreamcatcher(_dreamcatcher);
   }
 
-  function isJudgeable(uint id) external pure returns (bool) {
+  function isJudgeable(uint) external pure returns (bool) {
     // TODO - check funding
     return true;
   }
@@ -30,7 +30,7 @@ contract QA is IQA {
     dreamcatcher.qaReject(id, reason);
   }
 
-  function getUri(uint id) external view override returns (string memory) {
+  function getUri(uint) external pure override returns (string memory) {
     // TODO
     return 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
   }
