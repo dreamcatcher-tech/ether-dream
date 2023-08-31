@@ -371,18 +371,29 @@ export const initializeSut = async () => {
       },
       DISPUTE_RESOLVE: async ({ state: { context } }) => {
         const { cursorId } = context
-        const contents = hash('disputing resolve ' + cursorId)
+        const reason = hash('disputing resolve ' + cursorId)
         const disputeId = context.transitionsCount
-        await expect(dreamEther.disputeResolve(cursorId, contents))
+        await expect(dreamEther.disputeResolve(cursorId, reason))
+          .to.emit(dreamEther, 'ChangeDisputed')
+          .withArgs(context.cursorId, disputeId)
+        // TODO twice with the same content should fail.
+      },
+      DISPUTE_SHARES: async ({ state: { context } }) => {
+        const { cursorId } = context
+        const reason = hash('disputing shares ' + cursorId)
+        // check the shares are actually different
+        const disputeId = context.transitionsCount
+        const shares = [[owner.address, 1000]]
+        await expect(dreamEther.disputeShares(cursorId, reason, shares))
           .to.emit(dreamEther, 'ChangeDisputed')
           .withArgs(context.cursorId, disputeId)
         // TODO twice with the same content should fail.
       },
       DISPUTE_REJECT: async ({ state: { context } }) => {
         const { cursorId } = context
-        const contents = hash('disputing rejection ' + cursorId)
+        const reason = hash('disputing rejection ' + cursorId)
         const disputeId = context.transitionsCount
-        await expect(dreamEther.disputeRejection(cursorId, contents))
+        await expect(dreamEther.disputeRejection(cursorId, reason))
           .to.emit(dreamEther, 'ChangeDisputed')
           .withArgs(cursorId, disputeId)
         // TODO twice with the same content should fail.
@@ -396,6 +407,17 @@ export const initializeSut = async () => {
         await expect(qa.disputeUpheld(cursorId, addresses, amounts, reason))
           .to.emit(dreamEther, 'DisputesUpheld')
           .withArgs(cursorId)
+      },
+      SUPER_SHARES_UPHELD: async ({ state: { context } }) => {
+        await time.increase(DISPUTE_WINDOW_MS)
+        const { cursorId } = context
+        const addresses = [disputer1.address, disputer2.address]
+        const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
+        const reason = hash('shares upheld ' + cursorId)
+        await expect(qa.disputeUpheld(cursorId, addresses, amounts, reason))
+          .to.emit(dreamEther, 'DisputesUpheld')
+          .withArgs(cursorId)
+        // TODO verify the shares are correct
       },
       SUPER_DISMISSED: async ({ state: { context } }) => {
         const { cursorId } = context

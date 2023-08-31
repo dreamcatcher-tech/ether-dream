@@ -65,9 +65,24 @@ describe('disputes', () => {
         expect(sut.tests.superDismissBeforeQa).to.have.been.calledTwice &&
         expect(sut.tests.disputeInvalidRejection).to.have.been.calledOnce,
     })
-    // how does QA claim from a rejected header ?
-    // can QA claim before enactment ?
   })
+  describe('uphold dispute of a headers share split', () => {
+    test({
+      toState: (state) =>
+        state.matches('enacted') &&
+        is({
+          disputedShares: true,
+          disputeUpheld: true,
+          type: types.HEADER,
+        })(state.context),
+      filter,
+      verify: (sut) =>
+        expect(sut.events.DISPUTE_SHARES).to.have.been.calledOnce &&
+        expect(sut.events.SUPER_SHARES_UPHELD).to.have.been.calledOnce,
+      // UP TO HERE - need to check that the shares are correct
+    })
+  })
+
   it.skip('reverts if dispute window has passed')
   it.skip('disputes cannot be disputed')
   it.skip('cannot dispute a packet')
@@ -76,6 +91,10 @@ describe('disputes', () => {
   it.skip('dispute shares allows superQa to set any share split')
   it.skip('super cannot act before dispute window has passed')
 })
+
+// how does QA claim from a rejected header ?
+
+// can QA claim before enactment ?
 
 // multiple concurrent disputes of the same type, or of different types
 

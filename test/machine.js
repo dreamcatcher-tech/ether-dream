@@ -155,15 +155,7 @@ export const machine = createTestModel(
             REJECT: { target: 'rejected', cond: is({ qaRejected: true }) },
             DISPUTE: {
               target: 'dispute',
-              cond: and(
-                isAny({
-                  disputedResolve: false,
-                  disputedRejection: false,
-                  disputedShares: false,
-                }),
-                is({ disputeDismissed: false, disputeUpheld: false }),
-                not({ type: types.PACKET }, { type: types.DISPUTE })
-              ),
+              cond: is({ disputeDismissed: false, disputeUpheld: false }),
             },
             // try trade contents here while pending
           },
@@ -181,11 +173,15 @@ export const machine = createTestModel(
               // do doubles by boosting atop an existing dispute DISPUTE_AGAIN
               cond: is({ qaResolved: true, disputedResolve: false }),
             },
-            // DISPUTE_SHARES: {
-            //   target: 'open',
-            //   actions: change({ disputedShares: true }),
-            //   cond: is({ qaResolved: true, disputedShares: false }),
-            // },
+            DISPUTE_SHARES: {
+              target: 'open',
+              actions: [
+                change({ disputedShares: true }),
+                'createDispute',
+                change({ disputedShares: true }),
+              ],
+              cond: is({ qaResolved: true, disputedShares: false }),
+            },
             DISPUTE_REJECT: {
               target: 'open',
               actions: [
@@ -210,17 +206,18 @@ export const machine = createTestModel(
                   disputeUpheld: true,
                 }),
               ],
-              cond: isAny({
-                disputedResolve: true,
-                disputedRejection: true,
-                disputeUpheld: false,
-              }),
-              // mint the special shares to those who provided content
-              // move back to open, but raise a flag to stop it being
-              // disputed again, a double flag if this has been disputed twice.
-              // use function getDisputeNftId() to get the id of dispute shares
-              // if this change has been disputed twice, then the shares are merged
-              // then test trading the dispute shares
+              cond: and(
+                isAny({
+                  disputedResolve: true,
+                  disputedRejection: true,
+                }),
+                is({
+                  disputedShares: false,
+                  disputeUpheld: false,
+                  disputeDismissed: false,
+                })
+              ),
+              // test trading the dispute content shares
               // {
               //   target: 'enacted',
               //   actions: 'disputeUpheld',
@@ -229,17 +226,28 @@ export const machine = createTestModel(
 
               // if its shares, move to enacted, as we have passed the pending
             },
-            SUPER_SHARES_UPHELD: {},
+            SUPER_SHARES_UPHELD: {
+              target: 'pending', // but it can only be enacted
+              actions: [
+                change({ qaResolved: true }),
+                'focusUplink',
+                // TODO change the share allocations
+                change({ disputeUpheld: true }),
+              ],
+              cond: is({
+                disputedShares: true,
+                disputeUpheld: false,
+                disputeDismissed: false,
+              }),
+            },
             SUPER_DISMISSED: {
-              // end it, roll back the cursor to the uplink
-              // move to enacted as a byproduct
               target: 'pending',
               actions: [
                 change({ qaResolved: true }), // settle the dispute
                 'focusUplink',
                 change({ disputeDismissed: true }),
               ],
-              cond: is({ disputeDismissed: false }),
+              cond: is({ disputeUpheld: false, disputeDismissed: false }),
             },
           },
         },

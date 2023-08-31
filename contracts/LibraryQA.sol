@@ -200,12 +200,11 @@ library LibraryQA {
     ContentShares storage from,
     ContentShares storage to
   ) internal {
-    require(to.holders.length() == 0);
+    assert(to.holders.length() == 0);
     uint holdersCount = from.holders.length();
     for (uint i = 0; i < holdersCount; i++) {
       address holder = from.holders.at(i);
       uint balance = from.balances[holder];
-      require(!to.holders.contains(holder));
       to.holders.add(holder);
       to.balances[holder] = balance;
     }
