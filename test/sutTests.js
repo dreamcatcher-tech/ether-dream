@@ -2,16 +2,19 @@ import {
   time,
   takeSnapshot,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
+import { hash } from './utils.js'
 import { expect } from 'chai'
 import Debug from 'debug'
 const debug = Debug('test:sut')
 const SOLVER1_SHARES = 897
 const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
+const DISPUTER1_SHARES = 787
+const DISPUTER2_SHARES = 1000 - DISPUTER1_SHARES
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const DEFUND_WINDOW_MS = 7 * ONE_DAY_MS
 
 export default function createTests(fixture) {
-  const { dreamEther, solver1, qa, owner } = fixture
+  const { dreamEther, solver1, qa, owner, disputer1, disputer2 } = fixture
   return {
     packetContentUntransferrable: async (context) => {
       const [tx] = await tradeContent(fixture, context)
@@ -94,6 +97,44 @@ export default function createTests(fixture) {
     defundEarly: async (cursorId) => {
       const msg = 'Defund timeout not reached'
       await expect(dreamEther.defund(cursorId)).to.be.revertedWith(msg)
+    },
+    superDismissBeforeResolve: async (changeId) => {
+      const reason = hash('dismissed before resolve' + changeId)
+      await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
+        'Dispute window not started'
+      )
+    },
+    superDismissEarly: async (changeId) => {
+      const reason = hash('dismissed early' + changeId)
+      await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
+        'Dispute window still open'
+      )
+    },
+    superDismissAgain: async (changeId) => {
+      const reason = hash('dismissed again' + changeId)
+      await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
+        'No active disputes'
+      )
+    },
+    superUpholdAfterDismiss: async (changeId) => {
+      const addresses = [disputer1.address, disputer2.address]
+      const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
+      const reason = hash('upheld after dismiss ' + changeId)
+      await expect(
+        qa.disputeUpheld(changeId, addresses, amounts, reason)
+      ).to.be.revertedWith('No active disputes')
+    },
+    nonQaDismiss: async (changeId) => {
+      const reason = hash('nonQaDismiss' + changeId)
+      await expect(
+        dreamEther.qaDisputesDismissed(changeId, reason)
+      ).to.be.revertedWith('Must be the change QA')
+    },
+    superDismissInvalidHash: async (changeId) => {
+      const reason = ethers.hexlify(new Uint8Array(32))
+      await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
+        'Invalid reason hash'
+      )
     },
   }
 }

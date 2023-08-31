@@ -172,6 +172,7 @@ export const initializeSut = async () => {
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
         debug('qa resolving', type, cursorId)
+        await tests.superDismissBeforeResolve(cursorId)
         const addresses = [solver1.address, solver2.address]
         const amounts = [SOLVER1_SHARES, SOLVER2_SHARES]
         await expect(qa.passQA(cursorId, addresses, amounts))
@@ -376,13 +377,19 @@ export const initializeSut = async () => {
           .withArgs(cursorId)
       },
       SUPER_DISMISSED: async ({ state: { context } }) => {
-        await time.increase(DISPUTE_WINDOW_MS)
         const { cursorId } = context
         const dispute = context.transitions.get(cursorId)
+        await tests.superDismissInvalidHash(dispute.uplink)
+        await tests.superDismissEarly(dispute.uplink)
+        await time.increase(DISPUTE_WINDOW_MS)
         const reason = hash('dismissed ' + dispute.uplink)
+        await tests.nonQaDismiss(dispute.uplink)
         await expect(qa.disputesDismissed(dispute.uplink, reason))
           .to.emit(dreamEther, 'DisputesDismissed')
           .withArgs(dispute.uplink)
+        await tests.superDismissAgain(dispute.uplink)
+        await tests.superUpholdAfterDismiss(cursorId)
+        // TODO test trying to apply as not QA should reject
       },
     },
   }

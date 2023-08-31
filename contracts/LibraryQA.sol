@@ -136,12 +136,13 @@ library LibraryQA {
     uint changeId,
     bytes32 reason
   ) external {
-    require(isQa(state, changeId));
+    require(isQa(state, changeId), 'Must be the change QA');
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage change = state.changes[changeId];
     require(change.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - change.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(isDisputed(change), 'No active disputes');
 
     DisputeRound memory round;
     round.roundHeight = change.downlinks.length;
@@ -163,12 +164,13 @@ library LibraryQA {
     Change storage dispute = state.changes[disputeId];
     require(dispute.createdAt != 0, 'Dispute does not exist');
     require(dispute.changeType == ChangeType.DISPUTE, 'Not a dispute');
-    require(isQa(state, disputeId));
+    require(isQa(state, disputeId), 'Must be the change QA');
 
     Change storage change = state.changes[dispute.uplink];
     require(change.disputeWindowStart > 0, 'Dispute window not started');
     uint elapsedTime = block.timestamp - change.disputeWindowStart;
     require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(isDisputed(change), 'No active disputes');
 
     if (change.rejectionReason != 0) {
       delete change.rejectionReason;
@@ -269,5 +271,16 @@ library LibraryQA {
       return isQa(state, change.uplink);
     }
     revert('Invalid change');
+  }
+
+  function isDisputed(Change storage change) internal view returns (bool) {
+    DisputeRound memory last;
+    if (change.disputeRounds.length > 0) {
+      last = change.disputeRounds[change.disputeRounds.length - 1];
+    }
+    if (last.roundHeight == change.downlinks.length) {
+      return false;
+    }
+    return true;
   }
 }

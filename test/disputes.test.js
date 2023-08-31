@@ -14,13 +14,16 @@ describe('disputes', () => {
     test({
       toState: (state) =>
         state.matches('enacted') &&
-        is({ disputedResolve: true, disputeUpheld: true, type: types.HEADER })(
-          state.context
-        ),
+        is({
+          disputedResolve: true,
+          disputeUpheld: true,
+          type: types.HEADER,
+        })(state.context),
       filter,
       verify: (sut) =>
         expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
-        expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
+        expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce &&
+        expect(sut.events.SUPER_DISMISSED).to.have.not.been.called,
     })
   })
   describe('dismiss dispute of a header being resolved', () => {
@@ -35,23 +38,27 @@ describe('disputes', () => {
       filter,
       verify: (sut) =>
         expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
-        expect(sut.events.SUPER_UPHELD).to.have.not.been.called &&
-        expect(sut.events.SUPER_DISMISSED).to.have.been.calledOnce,
+        expect(sut.events.SUPER_DISMISSED).to.have.been.calledOnce &&
+        expect(sut.tests.superDismissBeforeResolve).to.have.been.calledOnce &&
+        expect(sut.tests.superDismissInvalidHash).to.have.been.calledOnce &&
+        expect(sut.tests.superDismissEarly).to.have.been.calledOnce &&
+        expect(sut.tests.nonQaDismiss).to.have.been.calledOnce &&
+        expect(sut.tests.superDismissAgain).to.have.been.calledOnce &&
+        expect(sut.tests.superUpholdAfterDismiss).to.have.been.calledOnce &&
+        expect(sut.events.SUPER_UPHELD).to.have.not.been.called,
     })
-    // UP TO HERE - unverified test
   })
-  describe('dispute a header being rejected', () => {
-    // // make a header, dispute it, approve it, observe header cancelled
-    // test({
-    //   toState: (state) =>
-    //     state.matches('enacted') &&
-    //     is({ disputedResolve: true, type: types.HEADER })(state.context),
-    //   filter,
-    //   verify: (sut) =>
-    //     expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
-    //     expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
-    // })
-  })
+  // describe('dispute a header being rejected', () => {
+  //   test({
+  //     toState: (state) =>
+  //       state.matches('enacted') &&
+  //       is({ disputedResolve: true, type: types.HEADER })(state.context),
+  //     filter,
+  //     verify: (sut) =>
+  //       expect(sut.events.DISPUTE_RESOLVE).to.have.been.calledOnce &&
+  //       expect(sut.events.SUPER_UPHELD).to.have.been.calledOnce,
+  //   })
+  // })
   it.skip('reverts if dispute window has passed')
   it.skip('disputes cannot be disputed')
   it.skip('cannot dispute a packet')
