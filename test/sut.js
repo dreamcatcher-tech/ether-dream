@@ -5,12 +5,14 @@ import sinon from 'sinon'
 import {
   time,
   loadFixture,
+  setBalance,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
 import { types } from './machine.js'
 import { is } from './conditions.js'
 import { hash } from './utils.js'
 import sutTests, { tradeContent } from './sutTests.js'
 import Debug from 'debug'
+
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const DEFUND_WINDOW_MS = 14 * ONE_DAY_MS
@@ -63,6 +65,10 @@ async function deploy() {
   const Dai = await ethers.getContractFactory('MockDai')
   const dai = await Dai.deploy(dreamEther.target)
 
+  const openSeaAddress = '0x495f947276749Ce646f68AC8c248420045cb7b5e'
+  const openSea = await ethers.getImpersonatedSigner(openSeaAddress)
+  await setBalance(openSeaAddress, ethers.parseEther('1'))
+
   return {
     dreamEther,
     qa,
@@ -77,6 +83,7 @@ async function deploy() {
     disputer1,
     disputer2,
     noone,
+    openSea,
   }
 }
 
@@ -145,6 +152,7 @@ export const initializeSut = async () => {
         await expect(dreamEther.proposePacket(header, qa.target))
           .to.emit(dreamEther, 'ProposedPacket')
           .withArgs(cursorId)
+        expect(await dreamEther.getQA(cursorId)).to.equal(qa.target)
       },
       FUND: async ({ state: { context } }) => {
         const { cursorId } = context
@@ -254,17 +262,20 @@ export const initializeSut = async () => {
         expect(packet.type).to.equal(types.PACKET)
         debug('claiming', cursorId)
         const contentId = await dreamEther.contentNftId(cursorId)
-        const solver1Balance = await dreamEther
-          .connect(solver1)
-          .balanceOf(solver1.address, contentId)
+        const solver1Balance = await dreamEther.balanceOf(
+          solver1.address,
+          contentId
+        )
         expect(solver1Balance).to.equal(SOLVER1_SHARES)
-        const solver2Balance = await dreamEther
-          .connect(solver2)
-          .balanceOf(solver2.address, contentId)
+        const solver2Balance = await dreamEther.balanceOf(
+          solver2.address,
+          contentId
+        )
         expect(solver2Balance).to.equal(SOLVER2_SHARES)
-        const ownerBalance = await dreamEther
-          .connect(owner)
-          .balanceOf(owner.address, contentId)
+        const ownerBalance = await dreamEther.balanceOf(
+          owner.address,
+          contentId
+        )
         expect(ownerBalance).to.equal(0)
 
         const actors = [solver1, solver2]
@@ -291,7 +302,7 @@ export const initializeSut = async () => {
         // TODO add balace of checks pre and post trade
 
         expect(await dreamEther.isNftHeld(cursorId, owner.address)).to.be.true
-        const result = await dreamEther.fundingNftIdsFor(cursorId)
+        const result = await dreamEther.fundingNftIdsFor(owner, cursorId)
         const nfts = result.toArray()
         expect(nfts.length).to.be.greaterThan(0)
         const addresses = nfts.map(() => owner)
@@ -301,7 +312,6 @@ export const initializeSut = async () => {
           expect(balance).to.be.greaterThan(0)
           expect(await dreamEther.totalSupply(nft)).to.equal(balance)
         }
-        debug('addresses', addresses, nfts)
         const balances = await dreamEther.balanceOfBatch(addresses, nfts)
         debug('balances', balances)
         const operator = owner.address
@@ -309,9 +319,11 @@ export const initializeSut = async () => {
         const to = funder1.address
         const id = nfts[0]
         const amount = 1
+        debug({ operator, from, to, id, amount })
         await expect(dreamEther.safeTransferFrom(from, to, id, amount, '0x'))
           .to.emit(dreamEther, 'TransferSingle')
           .withArgs(operator, from, to, id, amount)
+        await tests.nooneHasNoBalance(cursorId)
       },
       TRADE_CONTENT: async ({ state: { context } }) => {
         const [tx, args] = await tradeContent(fixture, context)

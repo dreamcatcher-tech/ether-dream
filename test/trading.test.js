@@ -13,6 +13,16 @@ describe(`trading`, () => {
     await expect(dreamEther.totalSupply(1)).to.be.revertedWith(msg)
     await expect(dreamEther.totalSupply(100)).to.be.revertedWith(msg)
   })
+  it('rejects data on trades', async () => {
+    const sut = await initializeSut()
+    const { dreamEther, owner } = sut.fixture
+    const fakeNftId = 0
+    const fakeAmount = 0
+    const fakeData = ethers.randomBytes(1)
+    await expect(
+      dreamEther.safeTransferFrom(owner, owner, fakeNftId, fakeAmount, fakeData)
+    ).to.be.revertedWith('Data not supported')
+  })
   describe('header funding shares can trade', () => {
     test({
       toState: (state) =>
@@ -24,7 +34,8 @@ describe(`trading`, () => {
         filters.dai
       ),
       verify: async (sut) =>
-        expect(sut.events.TRADE_FUNDS).to.have.been.calledOnce,
+        expect(sut.events.TRADE_FUNDS).to.have.been.calledOnce &&
+        expect(sut.tests.nooneHasNoBalance).to.have.been.calledOnce,
     })
   })
 
@@ -96,11 +107,11 @@ describe(`trading`, () => {
         expect(sut.tests.packetContentUntransferrable).to.have.been.calledOnce,
     })
   })
-  it.skip('header QA shares can be traded')
+  it('header QA shares can be traded')
 
-  it.skip('content shares can be traded')
-  it.skip('funding shares can be traded')
-  it.skip('can deny opensea operator access')
-  it.skip('no trading before claimin')
-  it.skip('unfunded packets are tradeable without claim')
+  it('content shares can be traded')
+  it('funding shares can be traded')
+  it('no trading before claimin')
+  it('unfunded packets are tradeable without claim')
+  it('QA Medallion can be traded')
 })

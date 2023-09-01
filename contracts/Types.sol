@@ -44,6 +44,7 @@ struct Change {
   bytes32 contents; // v1 CID hash component
   bytes32 rejectionReason;
   uint disputeWindowStart;
+  bytes32 editContents; // if an edit, this is the replacement contents
   //
   // shares
   EnumerableMap.UintToUintMap funds; // nftId => amount

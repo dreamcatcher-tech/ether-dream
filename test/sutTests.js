@@ -14,7 +14,8 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const DEFUND_WINDOW_MS = 7 * ONE_DAY_MS
 
 export default function createTests(fixture) {
-  const { dreamEther, solver1, qa, owner, disputer1, disputer2 } = fixture
+  const { dreamEther, solver1, qa, owner, disputer1, disputer2, noone } =
+    fixture
   return {
     packetContentUntransferrable: async (context) => {
       const [tx] = await tradeContent(fixture, context)
@@ -212,6 +213,14 @@ export default function createTests(fixture) {
       const balanceOwner = await dreamEther.balanceOf(owner, nftId)
       debug('balance owner', nftId, balanceOwner)
       expect(balanceOwner).to.equal(1000)
+    },
+    nooneHasNoBalance: async (cursorId) => {
+      const nftIds = await dreamEther.fundingNftIds(cursorId)
+      for (const nftId of nftIds) {
+        const balanceNoone = await dreamEther.balanceOf(noone, nftId)
+        debug('balance noone', nftId, balanceNoone)
+        expect(balanceNoone).to.equal(0)
+      }
     },
   }
 }

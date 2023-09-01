@@ -36,9 +36,9 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function solve(uint packetId, bytes32 contents) external;
 
-  function merge(uint fromId, uint toId, bytes32 reasons) external;
+  function merge(uint fromId, uint toId, bytes32 reason) external;
 
-  function edit(uint id, bytes32 contents, bytes32 reasons) external;
+  function edit(uint id, bytes32 editContents, bytes32 reason) external;
 
   function claim(uint id) external;
 
@@ -92,11 +92,9 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function fundingNftIds(uint id) external view returns (uint[] memory);
 
-  function fundingNftIdsFor(uint id) external view returns (uint[] memory);
-
   function fundingNftIdsFor(
-    uint id,
-    address holder
+    address holder,
+    uint id
   ) external view returns (uint[] memory);
 
   function contentNftId(uint id) external view returns (uint);

@@ -477,6 +477,10 @@ export const filters = {
     (...states) =>
     (state) =>
       states.includes(state.value),
+  disallowedStates:
+    (...states) =>
+    (state) =>
+      !states.includes(state.value),
   skipDefunding: (state, event) => {
     if (event.type === 'DEFUND') {
       return false

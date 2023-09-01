@@ -2,7 +2,6 @@
 pragma solidity ^0.8.9;
 
 import './Types.sol';
-import './LibraryUtils.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
@@ -399,5 +398,51 @@ library LibraryState {
       return getQa(state, change.uplink);
     }
     revert('Invalid change');
+  }
+
+  function edit(
+    State storage state,
+    uint id,
+    bytes32 editContents,
+    bytes32 reason
+  ) external {
+    require(LibraryUtils.isIpfs(editContents), 'Invalid editContents hash');
+    require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
+    Change storage change = state.changes[id];
+    require(change.createdAt != 0, 'Change does not exist');
+    require(change.changeType != ChangeType.PACKET, 'Cannot edit packets');
+
+    state.changeCounter.increment();
+    uint editId = state.changeCounter.current();
+    Change storage editChange = state.changes[editId];
+    require(editChange.createdAt == 0, 'Edit already exists');
+
+    editChange.changeType = ChangeType.EDIT;
+    editChange.createdAt = block.timestamp;
+    editChange.contents = reason;
+    editChange.editContents = editContents;
+    editChange.uplink = id;
+    change.edits.push(editId);
+    upsertNftId(state, editId, CONTENT_ASSET_ID);
+  }
+
+  function merge(
+    State storage state,
+    uint fromId,
+    uint toId,
+    bytes32 reason
+  ) external {
+    // TODO ensure this is just an edit on a packet - only packets can merge
+    // merge the change of fromId to the change of toId for the given reason
+    // require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
+    // Change storage from = state.changes[fromId];
+    // Change storage to = state.changes[toId];
+    // require(from.createdAt != 0, 'From change does not exist');
+    // require(to.createdAt != 0, 'To change does not exist');
+    // require(from.changeType == to.changeType, 'Change types must match');
+    // require(from.changeType != ChangeType.MERGE, 'Cannot merge merges');
+    // address fromQa = state.getQa(fromId);
+    // address toQa = state.getQa(toId);
+    // require(fromQa == toQa, 'QA must match');
   }
 }

@@ -12,4 +12,8 @@ interface IQA {
   function getUri(uint id) external view returns (string memory);
 
   function name() external view returns (string memory);
+
+  // TODO add an onChange function to be called when a change is made
+  // this is the chance for a given QA to reject a change automatically
+  // or perform any other function they may wish to do
 }

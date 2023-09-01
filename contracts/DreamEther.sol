@@ -92,23 +92,12 @@ contract DreamEther is IDreamcatcher {
     state.solve(packetId, contents);
   }
 
-  function merge(uint fromId, uint toId, bytes32 reasons) external view {
-    // TODO ensure this is just an edit on a packet - only packets can merge
-    // merge the change of fromId to the change of toId for the given reasons
-    require(LibraryUtils.isIpfs(reasons), 'Invalid reason hash');
-    Change storage from = state.changes[fromId];
-    Change storage to = state.changes[toId];
-    require(from.createdAt != 0, 'From change does not exist');
-    require(to.createdAt != 0, 'To change does not exist');
-    require(from.changeType == to.changeType, 'Change types must match');
-    require(from.changeType != ChangeType.MERGE, 'Cannot merge merges');
-    address fromQa = state.getQa(fromId);
-    address toQa = state.getQa(toId);
-    require(fromQa == toQa, 'QA must match');
+  function merge(uint fromId, uint toId, bytes32 reason) external {
+    state.merge(fromId, toId, reason);
   }
 
-  function edit(uint id, bytes32 contents, bytes32 reasons) external {
-    // edit the given id with the new contents for the given reasons
+  function edit(uint id, bytes32 editContents, bytes32 reason) external {
+    state.edit(id, editContents, reason);
   }
 
   function claim(uint id) public {
@@ -225,7 +214,7 @@ contract DreamEther is IDreamcatcher {
   }
 
   function setApprovalForAll(address operator, bool approved) external {
-    require(operator != address(0));
+    require(operator != address(0), 'Invalid operator');
     require(msg.sender != operator, 'Setting approval status for self');
     Approval positive = operator == OPEN_SEA
       ? Approval.NONE
@@ -340,6 +329,7 @@ contract DreamEther is IDreamcatcher {
     Change storage change = state.changes[nft.changeId];
     require(change.funds.contains(id), 'NFT not found');
     return change.funds.get(id);
+    // TODO test total supply of the QA Medallion
   }
 
   // IERC1155Receiver
@@ -383,14 +373,8 @@ contract DreamEther is IDreamcatcher {
   }
 
   function fundingNftIdsFor(
+    address holder,
     uint changeId
-  ) external view returns (uint[] memory) {
-    return fundingNftIdsFor(changeId, msg.sender);
-  }
-
-  function fundingNftIdsFor(
-    uint changeId,
-    address holder
   ) public view returns (uint[] memory) {
     require(holder != address(0), 'Invalid holder');
     Change storage change = state.changes[changeId];

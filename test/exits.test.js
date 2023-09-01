@@ -37,8 +37,7 @@ describe(`exits`, () => {
   it('reverts on invalid holder', async () => {
     const sut = await initializeSut()
     const { dreamEther } = sut.fixture
-    const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-    await expect(dreamEther.exitList(ZERO_ADDRESS)).to.be.revertedWith(
+    await expect(dreamEther.exitList(ethers.ZeroAddress)).to.be.revertedWith(
       'Invalid holder'
     )
   })
