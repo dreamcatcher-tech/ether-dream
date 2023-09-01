@@ -20,32 +20,31 @@ library LibraryQA {
     uint id,
     Share[] calldata shares
   ) external {
-    require(isQa(state, id), 'Must be transition QA');
+    require(isQa(state, id), 'Must be the change QA');
     Change storage change = state.changes[id];
-    require(shares.length > 0, 'Must provide shares');
-    require(change.contentShares.holders.length() == 0, 'Already resolved');
     qaStart(change);
     allocateShares(change, shares);
     emit QAResolved(id);
   }
 
   function qaReject(State storage state, uint id, bytes32 reason) public {
-    require(isQa(state, id), 'Must be transition QA');
-    Change storage change = state.changes[id];
+    require(isQa(state, id), 'Must be the change QA');
     require(LibraryUtils.isIpfs(reason), 'Invalid rejection hash');
+    Change storage change = state.changes[id];
     qaStart(change);
     change.rejectionReason = reason;
     emit QARejected(id);
   }
 
   function qaStart(Change storage change) internal {
-    require(change.createdAt != 0, 'Transition does not exist');
-    require(change.disputeWindowStart == 0, 'Dispute period started');
+    require(change.disputeWindowStart == 0, 'Dispute window started');
     change.disputeWindowStart = block.timestamp;
   }
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
-    require(c.contentShares.holders.length() == 0, 'Already resolved');
+    require(shares.length > 0, 'Must provide shares');
+    assert(c.contentShares.holders.length() == 0);
+
     bool isDispute = c.changeType == ChangeType.DISPUTE;
     uint total = 0;
     for (uint i = 0; i < shares.length; i++) {
@@ -257,6 +256,9 @@ library LibraryQA {
 
   function isQa(State storage state, uint id) public view returns (bool) {
     Change storage change = state.changes[id];
+    if (change.createdAt == 0) {
+      revert('Change does not exist');
+    }
     if (change.changeType == ChangeType.HEADER) {
       return state.qaMap[id] == msg.sender;
     }

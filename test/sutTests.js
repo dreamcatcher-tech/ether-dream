@@ -41,6 +41,68 @@ export default function createTests(fixture) {
       const notQa = 'Must be transition QA'
       await expect(dreamEther.claimQa(cursorId)).to.be.revertedWith(notQa)
     },
+    qaResolvePre: async (changeId) => {
+      const shares = []
+      await expect(dreamEther.qaResolve(changeId, shares)).to.be.revertedWith(
+        'Must be the change QA'
+      )
+      await expect(qa.passQA(changeId, shares)).to.be.revertedWith(
+        'Must provide shares'
+      )
+      const lessThan1000 = 999
+      await expect(
+        qa.passQA(changeId, [[solver1.address, lessThan1000]])
+      ).to.be.revertedWith('Shares must sum to SHARES_TOTAL')
+      const repeat = solver1.address
+      await expect(
+        qa.passQA(changeId, [
+          [repeat, lessThan1000],
+          [repeat, 1000 - lessThan1000],
+        ])
+      ).to.be.revertedWith('Owner exists')
+      await expect(
+        qa.passQA(changeId, [[ethers.ZeroAddress, 1000]])
+      ).to.be.revertedWith('Owner cannot be 0')
+      await expect(qa.passQA(changeId, [[qa.target, 1000]])).to.be.revertedWith(
+        'Owner cannot be QA'
+      )
+      await expect(
+        qa.passQA(changeId, [[solver1.address, 0]])
+      ).to.be.revertedWith('Amount cannot be 0')
+    },
+    qaResolvePost: async (changeId) => {
+      const shares = []
+      await expect(qa.passQA(changeId, shares)).to.be.revertedWith(
+        'Dispute window started'
+      )
+      const invalidIds = [0, 100]
+      for (const invalidId of invalidIds) {
+        await expect(qa.passQA(invalidId, shares)).to.be.revertedWith(
+          'Change does not exist'
+        )
+      }
+    },
+    qaRejectPre: async (changeId) => {
+      const reason = hash('qaRejectPre ' + changeId)
+      await expect(dreamEther.qaReject(changeId, reason)).to.be.revertedWith(
+        'Must be the change QA'
+      )
+      await expect(qa.failQA(changeId, ethers.ZeroHash)).to.be.revertedWith(
+        'Invalid rejection hash'
+      )
+    },
+    qaRejectPost: async (changeId) => {
+      const reason = hash('qaRejectPost ' + changeId)
+      await expect(qa.failQA(changeId, reason)).to.be.revertedWith(
+        'Dispute window started'
+      )
+      const invalidIds = [0, 100]
+      for (const invalidId of invalidIds) {
+        await expect(qa.failQA(invalidId, reason)).to.be.revertedWith(
+          'Change does not exist'
+        )
+      }
+    },
     exitSingle: async (account, debt) => {
       const [tokenAddress, tokenId] = debt
       const assetId = await dreamEther.getAssetId(tokenAddress, tokenId)
@@ -117,11 +179,13 @@ export default function createTests(fixture) {
       )
     },
     superUpholdAfterDismiss: async (changeId) => {
-      const addresses = [disputer1.address, disputer2.address]
-      const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
+      const shares = [
+        [disputer1.address, DISPUTER1_SHARES],
+        [disputer2.address, DISPUTER2_SHARES],
+      ]
       const reason = hash('upheld after dismiss ' + changeId)
       await expect(
-        qa.disputeUpheld(changeId, addresses, amounts, reason)
+        qa.disputeUpheld(changeId, shares, reason)
       ).to.be.revertedWith('No active disputes')
     },
     nonQaDismiss: async (changeId) => {
@@ -130,8 +194,9 @@ export default function createTests(fixture) {
         dreamEther.qaDisputesDismissed(changeId, reason)
       ).to.be.revertedWith('Must be the change QA')
     },
+
     superDismissInvalidHash: async (changeId) => {
-      const reason = ethers.hexlify(new Uint8Array(32))
+      const reason = ethers.ZeroHash
       await expect(qa.disputesDismissed(changeId, reason)).to.be.revertedWith(
         'Invalid reason hash'
       )
@@ -141,6 +206,12 @@ export default function createTests(fixture) {
       await expect(
         dreamEther.disputeRejection(changeId, reason)
       ).to.be.revertedWith('Not a rejection')
+    },
+    ownerHasAllContentShares: async (cursorId) => {
+      const nftId = await dreamEther.contentNftId(cursorId)
+      const balanceOwner = await dreamEther.balanceOf(owner, nftId)
+      debug('balance owner', nftId, balanceOwner)
+      expect(balanceOwner).to.equal(1000)
     },
   }
 }

@@ -17,12 +17,7 @@ contract QA is IQA {
     return true;
   }
 
-  function passQA(
-    uint id,
-    address[] calldata solvers,
-    uint[] calldata amounts
-  ) external {
-    Share[] memory shares = convertToShares(solvers, amounts);
+  function passQA(uint id, Share[] calldata shares) external {
     dreamcatcher.qaResolve(id, shares);
   }
 
@@ -41,11 +36,9 @@ contract QA is IQA {
 
   function disputeUpheld(
     uint id,
-    address[] calldata solvers,
-    uint[] calldata amounts,
+    Share[] calldata shares,
     bytes32 reason
   ) external {
-    Share[] memory shares = convertToShares(solvers, amounts);
     dreamcatcher.qaDisputeUpheld(id, shares, reason);
   }
 
@@ -61,19 +54,5 @@ contract QA is IQA {
 
   function name() external pure returns (string memory) {
     return 'Test QA';
-  }
-
-  function convertToShares(
-    address[] calldata solvers,
-    uint[] calldata amounts
-  ) internal pure returns (Share[] memory) {
-    Share[] memory shares = new Share[](solvers.length);
-    require(solvers.length == amounts.length);
-    require(solvers.length > 0);
-
-    for (uint i = 0; i < solvers.length; i++) {
-      shares[i] = Share(solvers[i], amounts[i]);
-    }
-    return shares;
   }
 }

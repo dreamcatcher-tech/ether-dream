@@ -40,7 +40,6 @@ async function deploy() {
 
   const Base58 = await ethers.getContractFactory('Base58')
   const base58 = await Base58.deploy()
-
   const LibraryUtils = await ethers.getContractFactory('LibraryUtils', {
     libraries: { Base58: base58.target },
   })
@@ -173,22 +172,30 @@ export const initializeSut = async () => {
         const { type } = context.transitions.get(cursorId)
         debug('qa resolve', type, cursorId)
         await tests.superDismissBeforeQa(cursorId)
-        const addresses = [solver1.address, solver2.address]
-        const amounts = [SOLVER1_SHARES, SOLVER2_SHARES]
-        await expect(qa.passQA(cursorId, addresses, amounts))
+        await tests.qaResolvePre(cursorId)
+
+        const shares = [
+          [solver1.address, SOLVER1_SHARES],
+          [solver2.address, SOLVER2_SHARES],
+        ]
+        await expect(qa.passQA(cursorId, shares))
           .to.emit(dreamEther, 'QAResolved')
           .withArgs(cursorId)
         await tests.disputeInvalidRejection(cursorId)
+        await tests.qaResolvePost(cursorId)
       },
       QA_REJECT: async ({ state: { context } }) => {
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
         debug('qa reject', type, cursorId)
         await tests.superDismissBeforeQa(cursorId)
+        await tests.qaRejectPre(cursorId)
+
         const reason = hash('rejected ' + cursorId)
         await expect(qa.failQA(cursorId, reason))
           .to.emit(dreamEther, 'QARejected')
           .withArgs(cursorId)
+        await tests.qaRejectPost(cursorId)
       },
       ENACT_HEADER: async ({ state: { context } }) => {
         const { transitionsCount, cursorId } = context
@@ -401,22 +408,28 @@ export const initializeSut = async () => {
       SUPER_UPHELD: async ({ state: { context } }) => {
         await time.increase(DISPUTE_WINDOW_MS)
         const { cursorId } = context
-        const addresses = [disputer1.address, disputer2.address]
-        const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
+        const shares = [
+          [disputer1.address, DISPUTER1_SHARES],
+          [disputer2.address, DISPUTER2_SHARES],
+        ]
         const reason = hash('upheld ' + cursorId)
-        await expect(qa.disputeUpheld(cursorId, addresses, amounts, reason))
+        await expect(qa.disputeUpheld(cursorId, shares, reason))
           .to.emit(dreamEther, 'DisputesUpheld')
           .withArgs(cursorId)
       },
       SUPER_SHARES_UPHELD: async ({ state: { context } }) => {
         await time.increase(DISPUTE_WINDOW_MS)
         const { cursorId } = context
-        const addresses = [disputer1.address, disputer2.address]
-        const amounts = [DISPUTER1_SHARES, DISPUTER2_SHARES]
+        const shares = [
+          [disputer1.address, DISPUTER1_SHARES],
+          [disputer2.address, DISPUTER2_SHARES],
+        ]
         const reason = hash('shares upheld ' + cursorId)
-        await expect(qa.disputeUpheld(cursorId, addresses, amounts, reason))
+        await expect(qa.disputeUpheld(cursorId, shares, reason))
           .to.emit(dreamEther, 'DisputesUpheld')
           .withArgs(cursorId)
+        const dispute = context.transitions.get(cursorId)
+        await tests.ownerHasAllContentShares(dispute.uplink)
         // TODO verify the shares are correct
       },
       SUPER_DISMISSED: async ({ state: { context } }) => {

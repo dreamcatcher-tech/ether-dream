@@ -10,7 +10,12 @@ globals:
   describe: true
   it: true
   before: true
-rules: {}
+plugins: [
+  mocha
+]
+rules: {
+  "mocha/no-exclusive-tests": "error"
+}
 ignorePatterns:
   - hardhat.config.cjs
   - coverage/**

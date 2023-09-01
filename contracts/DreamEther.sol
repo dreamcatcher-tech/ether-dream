@@ -24,13 +24,13 @@ contract DreamEther is IDreamcatcher {
   State state;
 
   constructor() {
-    require(CONTENT_ASSET_ID == state.assetCounter.current());
+    assert(CONTENT_ASSET_ID == state.assetCounter.current());
     uint[1] memory assetIds = [QA_MEDALLION_ID];
     for (uint i = 0; i < assetIds.length; i++) {
       state.assetCounter.increment();
-      require(state.assetCounter.current() == assetIds[i], 'Asset ID mismatch');
+      assert(state.assetCounter.current() == assetIds[i]);
     }
-    require(state.assetCounter.current() == 1, 'AssetIDs must be preallocated');
+    assert(state.assetCounter.current() == 1);
   }
 
   function proposePacket(bytes32 contents, address qa) external {

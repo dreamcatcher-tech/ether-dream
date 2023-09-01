@@ -19,6 +19,7 @@ describe('check', () => {
   })
   const elapsed = Date.now() - start
 
+  // eslint-disable-next-line
   it.only('model generation', async () => {
     expect(shortestPaths.length).to.be.greaterThan(sampleSize + 1)
     expect(shortestPaths.length).to.be.lessThan(30000)
@@ -35,6 +36,7 @@ describe('check', () => {
   })
 
   const firstPath = shortestPaths.shift()
+  // eslint-disable-next-line
   it.only('first path: ' + description(firstPath), async () => {
     await firstPath.test(await initializeSut())
   })

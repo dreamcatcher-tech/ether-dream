@@ -10,6 +10,27 @@ const filter = and(
 )
 
 describe('disputes', () => {
+  describe('qaResolve must be qa', () => {
+    test({
+      toState: (state) =>
+        state.matches('pending') && is({ qaResolved: true })(state.context),
+      filter: and(filter, filters.skipDisputes),
+      verify: (sut) =>
+        expect(sut.tests.qaResolvePre).to.have.been.calledOnce &&
+        expect(sut.tests.qaResolvePost).to.have.been.calledOnce,
+    })
+  })
+  describe('qaReject must be qa', () => {
+    test({
+      toState: (state) =>
+        state.matches('pending') && is({ qaRejected: true })(state.context),
+      filter: and(filter, filters.skipDisputes),
+      verify: (sut) =>
+        expect(sut.tests.qaRejectPre).to.have.been.calledOnce &&
+        expect(sut.tests.qaRejectPost).to.have.been.calledOnce,
+    })
+  })
+
   describe('uphold dispute of a header being resolved', () => {
     test({
       toState: (state) =>
@@ -78,18 +99,19 @@ describe('disputes', () => {
       filter,
       verify: (sut) =>
         expect(sut.events.DISPUTE_SHARES).to.have.been.calledOnce &&
-        expect(sut.events.SUPER_SHARES_UPHELD).to.have.been.calledOnce,
-      // UP TO HERE - need to check that the shares are correct
+        expect(sut.events.SUPER_SHARES_UPHELD).to.have.been.calledOnce &&
+        expect(sut.tests.ownerHasAllContentShares).to.have.been.calledOnce,
     })
   })
 
-  it.skip('reverts if dispute window has passed')
-  it.skip('disputes cannot be disputed')
-  it.skip('cannot dispute a packet')
-  it.skip('super qa can claim funds put against changes')
-  it.skip('dispute upheld allocates shares')
-  it.skip('dispute shares allows superQa to set any share split')
-  it.skip('super cannot act before dispute window has passed')
+  it('reverts if dispute window has passed')
+  it('disputes cannot be disputed')
+  it('cannot dispute a packet')
+  it('super qa can claim funds put against changes')
+  it('dispute upheld allocates shares')
+  it('dispute shares allows superQa to set any share split')
+  it('super cannot act before dispute window has passed')
+  it('shows no content balances before dispute settled')
 })
 
 // how does QA claim from a rejected header ?
