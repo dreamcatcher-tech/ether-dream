@@ -217,13 +217,6 @@ export const machine = createTestModel(
                   disputeDismissed: false,
                 })
               ),
-              // test trading the dispute content shares
-              // {
-              //   target: 'enacted',
-              //   actions: 'disputeUpheld',
-              //   cond: is({ disputedShares: true }),
-              // },
-
               // if its shares, move to enacted, as we have passed the pending
             },
             SUPER_SHARES_UPHELD: {
@@ -496,6 +489,59 @@ export const filters = {
   skipExit: (state, event) => {
     if (event.type === 'EXIT') {
       return false
+    }
+    return true
+  },
+  skipDisputeDismissed: (state, event) => {
+    if (event.type === 'SUPER_DISMISSED') {
+      return false
+    }
+    return true
+  },
+  skipDisputeShares: (state, event) => {
+    if (event.type === 'SUPER_SHARES_UPHELD') {
+      return false
+    }
+    return true
+  },
+  skipUndisputed: (state) => {
+    if (state.matches('enacted')) {
+      return isAny({ disputeUpheld: true })(state.context)
+    }
+    return true
+  },
+  skipDisputeSolutions: (state, event) => {
+    if (event.type === 'SUPER_UPHELD') {
+      const { context } = state
+      const change = context.transitions.get(context.cursorId)
+      if (change.type === types.SOLUTION) {
+        return false
+      }
+    }
+    return true
+  },
+  skipClaims: (state, event) => {
+    if (event.type === 'CLAIM') {
+      return false
+    }
+    if (event.type === 'QA_CLAIM') {
+      return false
+    }
+    return true
+  },
+  skipRejections: (state, event) => {
+    if (event.type === 'QA_REJECT') {
+      return false
+    }
+    return true
+  },
+  skipUnfunded: (state, event) => {
+    if (
+      event.type === 'SOLVE' ||
+      event.type === 'QA' ||
+      event.type === 'SUPER_QA'
+    ) {
+      return is({ funded: true })(state.context)
     }
     return true
   },

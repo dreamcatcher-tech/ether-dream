@@ -52,6 +52,25 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function exitBurn(uint assetId) external;
 
+  // views
+  function isNftHeld(
+    uint changeId,
+    address holder
+  ) external view returns (bool);
+
+  function fundingNftIds(uint id) external view returns (uint[] memory);
+
+  function fundingNftIdsFor(
+    address holder,
+    uint id
+  ) external view returns (uint[] memory);
+
+  function contentNftId(uint id) external view returns (uint);
+
+  function qaMedallionNftId(uint id) external view returns (uint);
+
+  function changeCount() external view returns (uint);
+
   event Exit(address indexed user);
   event ExitBurn(address indexed user, uint assetId);
 
@@ -83,19 +102,4 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   event DefundStarted(uint indexed id, address indexed holder);
   event Defunded(uint indexed id, address indexed holder);
   event DefundStopped(uint indexed id, address indexed holder);
-
-  // views
-  function isNftHeld(
-    uint changeId,
-    address holder
-  ) external view returns (bool);
-
-  function fundingNftIds(uint id) external view returns (uint[] memory);
-
-  function fundingNftIdsFor(
-    address holder,
-    uint id
-  ) external view returns (uint[] memory);
-
-  function contentNftId(uint id) external view returns (uint);
 }

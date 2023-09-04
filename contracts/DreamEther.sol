@@ -396,6 +396,14 @@ contract DreamEther is IDreamcatcher {
     return state.taskNftsLut.lut[changeId][CONTENT_ASSET_ID];
   }
 
+  function qaMedallionNftId(uint changeId) external view returns (uint) {
+    Change storage change = state.changes[changeId];
+    require(change.createdAt != 0, 'Change does not exist');
+    uint id = state.taskNftsLut.lut[changeId][QA_MEDALLION_ID];
+    require(id != 0, 'QA Medallion does not exist');
+    return id;
+  }
+
   function getAssetId(
     address tokenAddress,
     uint tokenId
@@ -415,5 +423,9 @@ contract DreamEther is IDreamcatcher {
 
   function getQA(uint id) external view returns (address) {
     return state.getQa(id);
+  }
+
+  function changeCount() external view returns (uint) {
+    return state.changeCounter.current();
   }
 }

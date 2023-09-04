@@ -238,11 +238,11 @@ library LibraryQA {
 
     for (uint i = 0; i < nftIds.length; i++) {
       uint nftId = nftIds[i];
-      uint funds = change.funds.get(nftId);
-      require(funds > 0, 'No funds');
       if (change.contentShares.withdrawn[nftId] != 0) {
         revert('Already claimed');
       }
+      uint funds = change.funds.get(nftId);
+      assert(funds > 0);
       TaskNft memory nft = state.taskNfts[nftId];
       require(nft.changeId == id, 'NFT not for this transition');
 

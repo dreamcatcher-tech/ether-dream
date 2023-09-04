@@ -17,6 +17,7 @@ library LibraryUtils {
     uint assetId
   ) public view returns (string memory) {
     string memory suffix = '';
+
     if (assetId == CONTENT_ASSET_ID) {
       if (c.changeType == ChangeType.PACKET) {
         suffix = 'PACKET';
@@ -25,6 +26,8 @@ library LibraryUtils {
       } else {
         suffix = 'META';
       }
+    } else if (assetId == QA_MEDALLION_ID) {
+      suffix = 'QA_MEDALLION';
     } else {
       if (c.changeType == ChangeType.PACKET) {
         suffix = 'PACKET_FUNDING';
@@ -34,8 +37,8 @@ library LibraryUtils {
         suffix = 'META_FUNDING';
       }
     }
+    assert(bytes(suffix).length > 0);
 
-    // TODO figure out how to know if it was QA
     return toCIDv0(c.contents, suffix);
   }
 
