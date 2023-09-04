@@ -6,8 +6,8 @@ import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
 import '@openzeppelin/contracts/utils/Counters.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
 import './IDreamcatcher.sol';
-import './IQA.sol';
 import './LibraryChange.sol';
+import './LibraryQA.sol';
 
 library LibraryState {
   using EnumerableSet for EnumerableSet.AddressSet;
@@ -25,6 +25,7 @@ library LibraryState {
   event DefundStarted(uint indexed id, address indexed holder);
   event Defunded(uint indexed id, address indexed holder);
   event DefundStopped(uint indexed id, address indexed holder);
+  event ProposeEdit(uint indexed forId, uint indexed editId);
 
   function proposePacket(
     State storage state,
@@ -37,11 +38,12 @@ library LibraryState {
     Change storage header = state.changes[headerId];
     header.createHeader(contents);
 
-    require(state.qaMap[headerId] == address(0), 'QA exists');
+    assert(state.qaMap[headerId] == address(0));
     state.qaMap[headerId] = qa;
     // create a new nft so it can be advertised in opensea
-    // TODO allocate all shares to this contract address
     upsertNftId(state, headerId, CONTENT_ASSET_ID);
+
+    LibraryQA.onChange(state, headerId);
     emit ProposedPacket(headerId);
   }
 
@@ -80,6 +82,8 @@ library LibraryState {
       updateHoldings(state, changeId, p);
     }
     delete change.fundingShares.defundWindows[msg.sender];
+
+    LibraryQA.onFund(state, changeId, payments);
     emit FundedTransition(changeId, msg.sender);
   }
 
@@ -198,6 +202,8 @@ library LibraryState {
 
     solution.uplink = packetId;
     packet.downlinks.push(solutionId);
+
+    LibraryQA.onChange(state, solutionId);
     emit SolutionProposed(solutionId);
   }
 
@@ -344,7 +350,7 @@ library LibraryState {
     packet.mergeShares(state.changes);
 
     uint qaMedallionNftId = upsertNftId(state, packetId, QA_MEDALLION_ID);
-    packet.mintQaMedallion(getQa(state, packetId), qaMedallionNftId);
+    packet.mintQaMedallion(LibraryQA.getQa(state, packetId), qaMedallionNftId);
     upsertNftId(state, packetId, CONTENT_ASSET_ID);
     emit PacketResolved(packetId);
   }
@@ -383,23 +389,6 @@ library LibraryState {
     return assetId;
   }
 
-  function getQa(State storage state, uint id) public view returns (address) {
-    Change storage change = state.changes[id];
-    if (change.changeType == ChangeType.HEADER) {
-      return state.qaMap[id];
-    }
-    if (change.changeType == ChangeType.SOLUTION) {
-      return getQa(state, change.uplink);
-    }
-    if (change.changeType == ChangeType.PACKET) {
-      return getQa(state, change.uplink);
-    }
-    if (change.changeType == ChangeType.DISPUTE) {
-      return getQa(state, change.uplink);
-    }
-    revert('Invalid change');
-  }
-
   function edit(
     State storage state,
     uint id,
@@ -424,6 +413,9 @@ library LibraryState {
     editChange.uplink = id;
     change.edits.push(editId);
     upsertNftId(state, editId, CONTENT_ASSET_ID);
+
+    LibraryQA.onChange(state, editId);
+    emit ProposeEdit(id, editId);
   }
 
   function merge(

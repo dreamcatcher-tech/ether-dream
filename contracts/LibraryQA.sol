@@ -3,6 +3,7 @@ pragma solidity ^0.8.9;
 
 import './Types.sol';
 import './LibraryUtils.sol';
+import './IQA.sol';
 
 library LibraryQA {
   using EnumerableSet for EnumerableSet.AddressSet;
@@ -126,6 +127,7 @@ library LibraryQA {
 
     c.downlinks.push(disputeId);
 
+    onChange(state, disputeId);
     emit ChangeDisputed(id, disputeId);
     return disputeId;
   }
@@ -259,17 +261,23 @@ library LibraryQA {
     if (change.createdAt == 0) {
       revert('Change does not exist');
     }
+    address qa = getQa(state, id);
+    return qa == msg.sender;
+  }
+
+  function getQa(State storage state, uint id) public view returns (address) {
+    Change storage change = state.changes[id];
     if (change.changeType == ChangeType.HEADER) {
-      return state.qaMap[id] == msg.sender;
+      return state.qaMap[id];
     }
     if (change.changeType == ChangeType.SOLUTION) {
-      return isQa(state, change.uplink);
+      return getQa(state, change.uplink);
     }
     if (change.changeType == ChangeType.PACKET) {
-      return isQa(state, change.uplink);
+      return getQa(state, change.uplink);
     }
     if (change.changeType == ChangeType.DISPUTE) {
-      return isQa(state, change.uplink);
+      return getQa(state, change.uplink);
     }
     revert('Invalid change');
   }
@@ -283,5 +291,19 @@ library LibraryQA {
       return false;
     }
     return true;
+  }
+
+  function onChange(State storage state, uint newId) public view {
+    address qa = getQa(state, newId);
+    IQA(qa).onChange(newId);
+  }
+
+  function onFund(
+    State storage state,
+    uint id,
+    Payment[] calldata payments
+  ) public view {
+    address qa = getQa(state, id);
+    IQA(qa).onFund(id, payments);
   }
 }

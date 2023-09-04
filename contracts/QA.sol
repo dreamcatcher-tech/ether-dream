@@ -27,7 +27,7 @@ contract QA is IQA {
 
   function getUri(uint) external pure override returns (string memory) {
     // TODO
-    return 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+    return 'https://dreamcatcher.land';
   }
 
   function disputesDismissed(uint changeId, bytes32 reason) external {
@@ -53,6 +53,38 @@ contract QA is IQA {
   receive() external payable {}
 
   function name() external pure returns (string memory) {
-    return 'Test QA';
+    return 'Dreamcatcher Command';
   }
+
+  bool rejectOnChange = false;
+
+  function setRejectOnChange() external {
+    rejectOnChange = true;
+  }
+
+  function onChange(uint) external view override {
+    if (rejectOnChange) {
+      revert('QA: onChange rejected');
+    }
+  }
+
+  bool rejectOnFund = false;
+
+  function setRejectOnFund() external {
+    rejectOnFund = true;
+  }
+
+  function onFund(uint, Payment[] calldata) external view {
+    if (rejectOnFund) {
+      revert('QA: onFund rejected');
+    }
+  }
+
+  function onTransfer(
+    address operator,
+    address from,
+    address to,
+    uint id,
+    uint amount
+  ) external view {}
 }
