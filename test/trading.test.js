@@ -48,7 +48,19 @@ describe(`trading`, () => {
         filters.skipDefunding,
         filters.skipDisputes
       ),
-      verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
+      verify: async (sut) => {
+        expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce
+        const { dreamEther, solver1, noone } = sut.fixture
+        const firstId = 1
+        const nftId = await dreamEther.contentNftId(firstId)
+        const balance = await dreamEther.balanceOf(solver1, nftId)
+        expect(balance).to.be.greaterThan(0)
+        const tx = dreamEther
+          .connect(solver1)
+          .safeTransferFrom(solver1, noone, nftId, balance, '0x')
+        await expect(tx).to.emit(dreamEther, 'TransferSingle')
+        expect(await dreamEther.balanceOf(solver1, nftId)).to.equal(0)
+      },
     })
   })
   describe('funded packet content shares can trade', () => {

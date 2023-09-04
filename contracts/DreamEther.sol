@@ -327,7 +327,7 @@ contract DreamEther is IDreamcatcher {
       return SHARES_TOTAL;
     }
     Change storage change = state.changes[nft.changeId];
-    require(change.funds.contains(id), 'NFT not found');
+    assert(change.funds.contains(id));
     return change.funds.get(id);
     // TODO test total supply of the QA Medallion
   }

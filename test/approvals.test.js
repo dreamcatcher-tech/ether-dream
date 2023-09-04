@@ -1,3 +1,4 @@
+import { initializeSut } from './sut.js'
 import { filters } from './machine.js'
 import { is, and } from './conditions.js'
 import { expect } from 'chai'
@@ -94,5 +95,15 @@ describe('approvals', () => {
         ).to.emit(dreamEther, 'TransferSingle')
       },
     })
+  })
+  it('errors on invalid params', async () => {
+    const sut = await initializeSut()
+    const { dreamEther, owner } = sut.fixture
+    await expect(
+      dreamEther.setApprovalForAll(ethers.ZeroAddress, true)
+    ).to.be.revertedWith('Invalid operator')
+    await expect(
+      dreamEther.setApprovalForAll(owner.address, true)
+    ).to.be.revertedWith('Setting approval status for self')
   })
 })
