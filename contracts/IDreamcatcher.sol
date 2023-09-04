@@ -8,7 +8,7 @@ import '@openzeppelin/contracts/token/ERC1155/IERC1155Receiver.sol';
 import './Types.sol';
 
 interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
-  function proposePacket(bytes32 contents, address qa) external;
+  function proposePacket(bytes32 contents, address qa) external returns (uint);
 
   function fund(uint id, Payment[] calldata payments) external payable;
 
