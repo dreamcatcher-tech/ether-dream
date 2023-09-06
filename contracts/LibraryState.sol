@@ -295,7 +295,7 @@ library LibraryState {
       state.changeCounter.increment();
       uint packetId = state.changeCounter.current();
       Change storage packet = state.changes[packetId];
-      require(packet.createdAt == 0, 'Packet already exists');
+      assert(packet.createdAt == 0);
       packet.changeType = ChangeType.PACKET;
       packet.createdAt = block.timestamp;
       packet.uplink = id;
@@ -305,8 +305,8 @@ library LibraryState {
     } else if (c.changeType == ChangeType.SOLUTION) {
       emit SolutionAccepted(id);
       Change storage packet = state.changes[c.uplink];
-      require(packet.createdAt != 0, 'Packet does not exist');
-      require(packet.changeType == ChangeType.PACKET, 'Not a packet');
+      assert(packet.createdAt != 0);
+      assert(packet.changeType == ChangeType.PACKET);
 
       enactPacket(c.uplink, state);
     } else if (c.changeType == ChangeType.EDIT) {
@@ -316,6 +316,47 @@ library LibraryState {
     } else {
       revert('Invalid transition type');
     }
+  }
+
+  function enactPacket(uint packetId, State storage state) internal {
+    Change storage packet = state.changes[packetId];
+    assert(packet.createdAt != 0);
+    assert(packet.changeType == ChangeType.PACKET);
+    assert(packet.contentShares.holders.length() == 0);
+
+    for (uint i = 0; i < packet.downlinks.length; i++) {
+      uint solutionId = packet.downlinks[i];
+      if (isFeasible(solutionId, state)) {
+        return; // this is not the final solution
+      }
+    }
+    packet.slurpShares(state.changes);
+
+    uint qaMedallionNftId = upsertNftId(state, packetId, QA_MEDALLION_ID);
+    packet.mintQaMedallion(LibraryQA.getQa(state, packetId), qaMedallionNftId);
+    upsertNftId(state, packetId, CONTENT_ASSET_ID);
+    emit PacketResolved(packetId);
+  }
+
+  function isFeasible(
+    uint id,
+    State storage state
+  ) internal view returns (bool) {
+    Change storage solution = state.changes[id];
+    assert(solution.createdAt != 0);
+    assert(solution.changeType == ChangeType.SOLUTION);
+
+    if (solution.disputeWindowStart == 0) {
+      // has not been passed by QA yet, but is eligible
+      Change storage packet = state.changes[solution.uplink];
+      IQA qa = IQA(state.qaMap[packet.uplink]);
+      return qa.isJudgeable(id);
+    }
+    // until the dispute window is closed the solution is still possible
+    uint elapsedTime = block.timestamp - solution.disputeWindowStart;
+    return elapsedTime < DISPUTE_WINDOW;
+
+    // TODO handle disputes being outstanding after the window closed
   }
 
   function upsertNftId(
@@ -334,44 +375,6 @@ library LibraryState {
       state.taskNftsLut.lut[changeId][assetId] = nftId;
     }
     return nftId;
-  }
-
-  function enactPacket(uint packetId, State storage state) internal {
-    Change storage packet = state.changes[packetId];
-    require(packet.createdAt != 0, 'Packet does not exist');
-    require(packet.changeType == ChangeType.PACKET, 'Not a packet');
-    require(packet.contentShares.holders.length() == 0, 'Already enacted');
-
-    for (uint i = 0; i < packet.downlinks.length; i++) {
-      uint solutionId = packet.downlinks[i];
-      if (isPossible(solutionId, state)) {
-        return; // this is not the final solution
-      }
-    }
-    packet.mergeShares(state.changes);
-
-    uint qaMedallionNftId = upsertNftId(state, packetId, QA_MEDALLION_ID);
-    packet.mintQaMedallion(LibraryQA.getQa(state, packetId), qaMedallionNftId);
-    upsertNftId(state, packetId, CONTENT_ASSET_ID);
-    emit PacketResolved(packetId);
-  }
-
-  function isPossible(
-    uint id,
-    State storage state
-  ) internal view returns (bool) {
-    Change storage solution = state.changes[id];
-    require(solution.createdAt != 0, 'Change does not exist');
-    require(solution.changeType == ChangeType.SOLUTION, 'Not a solution');
-
-    if (solution.disputeWindowStart == 0) {
-      Change storage packet = state.changes[solution.uplink];
-      IQA qa = IQA(state.qaMap[packet.uplink]);
-      return qa.isJudgeable(id);
-    }
-    uint elapsedTime = block.timestamp - solution.disputeWindowStart;
-    return elapsedTime < DISPUTE_WINDOW;
-    // TODO handle disputes being outstanding after the window closed
   }
 
   function upsertAssetId(

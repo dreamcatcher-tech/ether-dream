@@ -36,6 +36,7 @@ const Change = Immutable.Record({
   disputedShares: false,
   disputeUpheld: false,
   disputeDismissed: false,
+  doubleSolved: false,
 })
 const Global = Immutable.Record({
   qaExitable: false,
@@ -150,6 +151,14 @@ export const machine = createTestModel(
             ENACT_SOLUTION: {
               target: 'enacted',
               actions: change({ enacted: true }),
+              cond: is({ type: types.SOLUTION, qaResolved: true }),
+            },
+            ENACT_DOUBLE_SOLUTION: {
+              target: 'enacted',
+              actions: [
+                'tickCounter',
+                change({ enacted: true, doubleSolved: true }),
+              ],
               cond: is({ type: types.SOLUTION, qaResolved: true }),
             },
             REJECT: { target: 'rejected', cond: is({ qaRejected: true }) },
@@ -400,6 +409,10 @@ export const machine = createTestModel(
             cursorId: disputeId,
             transitions: ctx.transitions.set(disputeId, dispute),
           }
+        }),
+        tickCounter: assign({
+          // used because a double solution is added to the same packet
+          transitionsCount: (ctx) => ctx.transitionsCount + 1,
         }),
       },
     }

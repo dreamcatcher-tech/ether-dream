@@ -27,10 +27,11 @@ library LibraryChange {
     return packet.contentShares.holders.length() != 0;
   }
 
-  function mergeShares(
+  function slurpShares(
     Change storage packet,
     mapping(uint => Change) storage changes
   ) internal {
+    // merge all solution shares into packet shares delete the solution shares
     ContentShares storage contentShares = packet.contentShares;
     require(contentShares.holders.length() == 0);
 
@@ -38,17 +39,17 @@ library LibraryChange {
     for (uint i = 0; i < packet.downlinks.length; i++) {
       uint solutionId = packet.downlinks[i];
       Change storage solution = changes[solutionId];
-      require(solution.changeType == ChangeType.SOLUTION);
+      assert(solution.changeType == ChangeType.SOLUTION);
 
       if (solution.rejectionReason != 0) {
         continue;
       }
       if (solution.disputeWindowStart == 0) {
-        // dispute window has passed, else isPossible() would have failed.
+        // dispute window has passed, else isFeasible() would have failed.
         continue;
       }
       uint holdersCount = solution.contentShares.holders.length();
-      require(holdersCount > 0);
+      assert(holdersCount > 0);
       for (uint j = 0; j < holdersCount; j++) {
         address holder = solution.contentShares.holders.at(j);
         uint balance = solution.contentShares.balances[holder];
@@ -56,10 +57,13 @@ library LibraryChange {
           contentShares.holders.add(holder);
         }
         contentShares.balances[holder] += balance;
+
+        // TODO emit burn events
       }
       solutionCount++;
+      delete solution.contentShares;
     }
-    require(solutionCount > 0, 'Must have downlinks');
+    assert(solutionCount > 0);
     if (solutionCount == 1) {
       return;
     }
@@ -81,10 +85,10 @@ library LibraryChange {
       uint newBalance = balance / solutionCount;
       if (newBalance == 0) {
         toDelete[toDeleteIndex++] = holder;
-        continue;
+      } else {
+        contentShares.balances[holder] = newBalance;
+        sum += newBalance;
       }
-      contentShares.balances[holder] = newBalance;
-      sum += newBalance;
     }
     require(biggestHolder != address(0), 'Must have biggest holder');
     uint remainder = SHARES_TOTAL - sum;

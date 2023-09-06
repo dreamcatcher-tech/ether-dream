@@ -238,6 +238,36 @@ export const initializeSut = async () => {
         debug('packet resolved', uplink)
         await expect(tx).to.emit(dreamEther, 'PacketResolved').withArgs(uplink)
       },
+      ENACT_DOUBLE_SOLUTION: async ({ state: { context } }) => {
+        const { cursorId } = context
+        const { type, uplink } = context.transitions.get(cursorId)
+        expect(type).to.equal(types.SOLUTION)
+
+        const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
+        await time.increase(THREE_DAYS_IN_SECONDS)
+
+        // add a solution that is feasible but has not entered qa
+
+        // also a solution that has been qa'd but the dispute window is open
+        await expect(
+          dreamEther.solve(uplink, hash('double solving' + uplink))
+        ).to.emit(dreamEther, 'SolutionProposed')
+
+        debug('enact', type, cursorId)
+        await expect(dreamEther.enact(cursorId))
+          .to.emit(dreamEther, 'SolutionAccepted')
+          .withArgs(cursorId)
+
+        // qa pass, then shapshot restore, then reject, then enact the
+        // competing solution, and observe packet resolved
+
+        // test rejection passing, and then observe the first solution is enacted
+
+        const tx = dreamEther.enact(cursorId)
+
+        debug('packet resolved', uplink)
+        await expect(tx).to.emit(dreamEther, 'PacketResolved').withArgs(uplink)
+      },
       QA_CLAIM: async ({ state: { context } }) => {
         const { cursorId } = context
 

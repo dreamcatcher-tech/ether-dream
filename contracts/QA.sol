@@ -26,7 +26,6 @@ contract QA is IQA {
   }
 
   function getUri(uint) external pure override returns (string memory) {
-    // TODO
     return 'https://dreamcatcher.land';
   }
 
@@ -62,7 +61,7 @@ contract QA is IQA {
     rejectOnChange = true;
   }
 
-  function onChange(uint) external view override {
+  function onChange(uint) external view {
     if (rejectOnChange) {
       revert('QA: onChange rejected');
     }

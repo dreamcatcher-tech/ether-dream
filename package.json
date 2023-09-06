@@ -9,7 +9,8 @@
     "size": "hardhat size-contracts",
     "watch": "nodemon --exec \"hardhat --emoji test\"",
     "watch:check": "nodemon --exec \"npm run check\"",
-    "watch:coverage": "nodemon --exec \"npm run coverage\""
+    "watch:coverage": "nodemon --exec \"npm run coverage\"",
+    "multi": "nodemon --exec \"npx mocha test/multi/multi.test.js\""
   },
   "devDependencies": {
     "@ipld/dag-pb": "^4.0.5",
@@ -27,7 +28,7 @@
     "hardhat-gas-reporter": "^1.0.9",
     "immutable": "^4.3.4",
     "mocha": "^10.2.0",
-    "multiformats": "^12.1.0",
+    "multiformats": "^12.1.1",
     "nodemon": "^3.0.1",
     "sinon": "^15.2.0",
     "sinon-chai": "^3.7.0",

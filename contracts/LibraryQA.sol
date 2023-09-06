@@ -39,6 +39,8 @@ library LibraryQA {
 
   function qaStart(Change storage change) internal {
     require(change.disputeWindowStart == 0, 'Dispute window started');
+    require(change.changeType != ChangeType.PACKET, 'Cannot QA packets');
+    require(change.changeType != ChangeType.DISPUTE, 'Cannot QA disputes');
     change.disputeWindowStart = block.timestamp;
   }
 
@@ -84,7 +86,6 @@ library LibraryQA {
   ) public returns (uint) {
     Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
-    require(c.contentShares.holders.length() != 0, 'Not solved');
 
     uint disputeId = disputeStart(state, id, reason);
     Change storage dispute = state.changes[disputeId];

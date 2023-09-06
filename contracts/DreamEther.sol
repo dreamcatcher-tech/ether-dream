@@ -258,6 +258,7 @@ contract DreamEther is IDreamcatcher {
     Change storage change = state.changes[nft.changeId];
 
     if (nft.assetId == CONTENT_ASSET_ID) {
+      require(change.changeType != ChangeType.SOLUTION, 'No Solution shares');
       require(LibraryState.isTransferrable(change, from), 'Untransferrable');
       // TODO handle id being part of an open share dispute
       uint fromBalance = change.contentShares.balances[from];
