@@ -403,7 +403,8 @@ library LibraryState {
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage change = state.changes[id];
     require(change.createdAt != 0, 'Change does not exist');
-    require(change.changeType != ChangeType.PACKET, 'Cannot edit packets');
+    require(change.changeType != ChangeType.PACKET, 'Cannot edit Packets');
+    require(change.changeType != ChangeType.EDIT, 'Cannot edit Edits');
 
     state.changeCounter.increment();
     uint editId = state.changeCounter.current();
