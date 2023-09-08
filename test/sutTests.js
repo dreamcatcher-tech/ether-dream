@@ -205,7 +205,7 @@ export default function createTests(fixture) {
     disputeInvalidRejection: async (changeId) => {
       const reason = hash('invalid rejection' + changeId)
       await expect(
-        dreamEther.disputeRejection(changeId, reason)
+        dreamEther.disputeReject(changeId, reason)
       ).to.be.revertedWith('Not a rejection')
     },
     ownerHasAllContentShares: async (cursorId) => {

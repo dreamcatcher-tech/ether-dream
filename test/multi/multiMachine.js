@@ -1,7 +1,8 @@
 import { createMachine, assign } from 'xstate'
 
 // use https://stately.ai/viz to visualize the machine
-
+const DISPUTE_WINDOW_TICKS = 1
+const DEFUND_WINDOW_TICKS = 2
 const getChange = ({ changes, selectedChange }) => {
   if (changes.length === 0) {
     return {}
@@ -13,33 +14,99 @@ function isTime(ticks) {
     return time > ticks
   }
 }
+const make = (params = {}) => {
+  const base = {
+    type: '',
+    uplink: undefined,
+    downlinks: [],
+    qaResolved: false,
+    qaRejected: false,
+    enacted: false,
+    disputed: false,
+    qaTickStart: undefined,
+  }
+  for (const key of Object.keys(params)) {
+    if (!(key in base)) {
+      throw new Error(`key ${key} is not in base key set`)
+    }
+  }
+  return { ...base, ...params }
+}
+
+const setDirect = (change, params) => {
+  const base = make()
+  const next = { ...change, ...params }
+  for (const key of Object.keys(next)) {
+    if (!(key in base)) {
+      throw new Error(`key ${key} is not in base key set`)
+    }
+  }
+  return next
+}
+
+const set = (params) =>
+  assign({
+    changes: (context) => {
+      // get the currenct change
+      // update it with the given params
+      const change = getChange(context)
+      const next = { ...change, ...params }
+      for (const key of Object.keys(next)) {
+        if (!(key in next)) {
+          throw new Error(`key ${key} is not in change key set`)
+        }
+      }
+      const changes = [...context.changes]
+      changes[context.selectedChange] = next
+      return changes
+    },
+  })
+const is = (params) => (context) => isDirect(context, params)
+const isDirect = (context, params) => {
+  const change = getChange(context)
+  return isSingle(change, params)
+}
+const isSingle = (change, params) => {
+  const base = make()
+  for (const key of Object.keys(params)) {
+    if (!(key in base)) {
+      throw new Error(`key ${key} is not in base key set`)
+    }
+    if (change[key] !== params[key]) {
+      return false
+    }
+  }
+  return true
+}
 
 export const config = {
   guards: {
-    isProposer: (context, event, meta) =>
-      meta.state.matches('accounts.selected.proposer') ||
-      meta.state.matches('accounts.selected.anyone'),
+    isChange: (context) => !!getChange(context).type,
     isNotLast: (context) => context.selectedChange < context.changes.length - 1,
     isNotFirst: (context) => context.selectedChange > 0,
     isHeader: (context) => getChange(context).type === 'HEADER',
     isPacket: (context) => getChange(context).type === 'PACKET',
+    isPacketResolved: (context) => {
+      if (!isDirect(context, { type: 'PACKET' })) {
+        return false
+      }
+      for (const solutionIndex of getChange(context).downlinks) {
+        const change = context.changes[solutionIndex]
+        if (!isSingle(change, { type: 'SOLUTION' })) {
+          throw new Error('downlink is not a solution')
+        }
+        if (isSingle(change, { qaResolved: true, enacted: true })) {
+          return true
+        }
+      }
+      return false
+    },
+    isNotPacket: (context) => !config.guards.isPacket(context),
     isSolution: (context) => getChange(context).type === 'SOLUTION',
     isDispute: (context) => getChange(context).type === 'DISPUTE',
     isEdit: (context) => getChange(context).type === 'EDIT',
     isMerge: (context) => getChange(context).type === 'MERGE',
-    isQa: (context, event, meta) => meta.state.matches('accounts.selected.qa'),
-    isFunder: (context, event, meta) =>
-      meta.state.matches('accounts.selected.funder') ||
-      meta.state.matches('accounts.selected.anyone'),
-    isTrader: (context, event, meta) =>
-      meta.state.matches('accounts.selected.trader') ||
-      meta.state.matches('accounts.selected.anyone'),
-    isEditable: (context, event, meta) => {
-      const isAnyone = meta.state.matches('accounts.selected.anyone')
-      const isEditor = meta.state.matches('accounts.selected.editor')
-      if (!isAnyone && !isEditor) {
-        return false
-      }
+    isEditable: (context) => {
       const change = getChange(context)
       if (!change.type) {
         return false
@@ -64,35 +131,106 @@ export const config = {
     isTime3: isTime(3),
     isTime4: isTime(4),
     isTime5: isTime(5),
+    isQaResolved: (context) => getChange(context).qaResolved,
+    isQaRejected: (context) => getChange(context).qaRejected,
+    isQaApplied: (context) =>
+      getChange(context).qaResolved || getChange(context).qaRejected,
+    isEnacted: (context) => getChange(context).enacted,
+    isEnactable: (context) => {
+      // if no disputes, enough time has passed, then enact
+      const change = getChange(context)
+      if (!config.guards.isQaApplied(context)) {
+        return false
+      }
+      // get the current time tick, see if enough time passed
+      return !change.disputed
+    },
+    isDisputed: (context) => getChange(context).disputed,
+    isSuperable: (context) => {
+      const change = getChange(context)
+      if (!config.guards.isDisputed(context)) {
+        return false
+      }
+      // get the current time tick, see if enough time passed
+
+      return true
+    },
+    isSharesUpholdable: (context) => {
+      const change = getChange(context)
+      if (!config.guards.isSuperable(context)) {
+        return false
+      }
+      // check if this is a dispute for shares
+      return true
+    },
+    isDisputeUpheld: (context) => !config.guards.isSharesUpholdable(context),
+    isResolveable: is({ qaResolved: false, qaRejected: false }),
+    isDisputeable: (context) =>
+      config.guards.isQaApplied(context) &&
+      config.guards.isDisputeWindowOpen(context),
+    isDisputeWindowOpen: (context) => {
+      const change = getChange(context)
+      const { time } = context
+      if (!config.guards.isQaApplied(context)) {
+        return false
+      }
+      if (time - change.qaTickStart < DISPUTE_WINDOW_TICKS) {
+        return false
+      }
+      return true
+    },
   },
   actions: {
-    proposePacket: assign({
-      changes: (context) => {
-        return [...context.changes, { type: 'HEADER' }]
-      },
-      selectedChange: (context) => {
-        return context.changes.length
-      },
-    }),
     nextChange: assign({
       selectedChange: ({ selectedChange }) => selectedChange + 1,
     }),
     prevChange: assign({
       selectedChange: ({ selectedChange }) => selectedChange - 1,
     }),
+    proposePacket: assign({
+      changes: ({ changes }) => [...changes, make({ type: 'HEADER' })],
+      selectedChange: (context) => context.changes.length,
+    }),
     proposeEdit: assign({
-      changes: (context) => {
-        return [...context.changes, { type: 'EDIT' }]
-      },
-      selectedChange: (context) => {
-        return context.changes.length
-      },
+      changes: ({ changes }) => [...changes, make({ type: 'EDIT' })],
+      selectedChange: (context) => context.changes.length,
+    }),
+    proposeSolution: assign({
+      changes: ({ changes }) => [...changes, make({ type: 'SOLUTION' })],
+      selectedChange: (context) => context.changes.length,
     }),
     tick: assign({
       time: (context) => {
         return context.time + 1
       },
     }),
+    qaReject: set({ qaRejected: true }),
+    qaResolve: set({ qaResolved: true }),
+    qaStartDisputeWindow: assign({
+      changes: (context) => {
+        const change = getChange(context)
+        const next = setDirect(change, { qaTickStart: context.time })
+        const changes = [...context.changes]
+        changes[context.selectedChange] = next
+        return changes
+      },
+    }),
+    dispute: set({ disputed: true }),
+    disputeShares: (context) =>
+      assign({
+        changes: ({ changes }) => [...changes, make({ type: 'DISPUTE' })],
+        selectedChange: (context) => context.changes.length,
+      }),
+    disputeResolve: (context) =>
+      assign({
+        changes: ({ changes }) => [...changes, make({ type: 'DISPUTE' })],
+        selectedChange: (context) => context.changes.length,
+      }),
+    disputeReject: (context) =>
+      assign({
+        changes: ({ changes }) => [...changes, make({ type: 'DISPUTE' })],
+        selectedChange: (context) => context.changes.length,
+      }),
   },
 }
 
@@ -118,10 +256,10 @@ export const multiMachine = createMachine(
           tick0: { always: { target: 'tick1', cond: 'isTime0' } },
           tick1: { always: { target: 'tick2', cond: 'isTime1' } },
           tick2: { always: { target: 'tick3', cond: 'isTime2' } },
-          tick3: { always: { target: 'tick4', cond: 'isTime3' } },
-          tick4: { always: { target: 'tick5', cond: 'isTime4' } },
-          tick5: { always: { target: 'tick6', cond: 'isTime5' } },
-          tick6: { type: 'final' },
+          // tick3: { always: { target: 'tick4', cond: 'isTime3' } },
+          // tick4: { always: { target: 'tick5', cond: 'isTime4' } },
+          // tick5: { always: { target: 'tick6', cond: 'isTime5' } },
+          tick3: { type: 'final' },
         },
       },
       accounts: {
@@ -163,142 +301,175 @@ export const multiMachine = createMachine(
               BE_QA: '.qa',
               BE_SUPERQA: '.superqa',
               BE_TRADER: '.trader',
-              BE_ANYONE: '.anyone',
               BE_EDITOR: '.editor',
-              BE_OPENSEA: '.opensea',
-              BE_OPERATOR: '.operator',
+              BE_DISPUTER: '.disputer',
             },
             states: {
-              proposer: {},
-              funder: {},
-              solver: {},
-              qa: {},
-              superqa: {},
-              trader: {},
-              anyone: {},
-              editor: {},
-              opensea: {},
-              operator: {},
+              proposer: {
+                on: {
+                  PROPOSE_PACKET: {
+                    target: '#loadChange',
+                    actions: 'proposePacket',
+                  },
+                },
+              },
+              funder: {
+                on: {
+                  FUND: { target: '#funding' },
+                  DEFUND_START: { target: '#funding' },
+                  DEFUND_STOP: { target: '#funding' },
+                  DEFUND: { target: '#funding' },
+                },
+              },
+              solver: {
+                on: {
+                  PROPOSE_SOLUTION: {
+                    target: '#loadChange',
+                    actions: 'proposeSolution',
+                    cond: 'isPacket',
+                  },
+                },
+              },
+              qa: {
+                on: {
+                  QA_RESOLVE: {
+                    target: '#quality',
+                    cond: 'isResolveable',
+                    actions: ['qaDisputeWindowStart', 'qaResolve'],
+                  },
+                  QA_REJECT: {
+                    target: '#quality',
+                    cond: 'isResolveable',
+                    actions: ['qaDisputeWindowStart', 'qaReject'],
+                  },
+                  ENACT: {
+                    target: '#quality',
+                    cond: 'isEnactable',
+                    actions: 'enact',
+                  },
+                },
+              },
+              superqa: {
+                on: {
+                  QA_DISPUTES_DISMISSED: {
+                    target: '#quality',
+                    cond: 'isSuperable',
+                  },
+                  QA_DISPUTE_UPHELD: {
+                    target: '#quality',
+                    cond: 'isSuperable',
+                  },
+                },
+              },
+              trader: {
+                on: {
+                  TRADE_CONTENT: {
+                    target: '#contentTrading',
+                    cond: 'isEnacted',
+                  },
+                  TRADE_FUNDING: { target: '#fundTrading' },
+                  TRADE_QA_MEDALLION: { target: '#qaMedallionTrading' },
+                },
+              },
+              editor: {
+                on: {
+                  PROPOSE_EDIT: {
+                    target: '#loadChange',
+                    cond: 'isEditable',
+                    actions: 'proposeEdit',
+                  },
+                },
+              },
+              disputer: {
+                on: {
+                  DISPUTE_RESOLVE: {
+                    target: '#loadChange',
+                    actions: ['dispute', 'disputeResolve'],
+                    cond: 'isDisputeable',
+                  },
+                  DISPUTE_SHARES: {
+                    target: '#loadChange',
+                    actions: ['dispute', 'disputeShares'],
+                    cond: 'isDisputeable',
+                  },
+                  DISPUTE_REJECT: {
+                    target: '#loadChange',
+                    actions: ['dispute', 'disputeReject'],
+                    cond: 'isDisputeable',
+                  },
+                },
+              },
             },
           },
         },
       },
       changes: {
         description: `The stack of all changes can be navigated using the NEXT and PREV events.`,
+        initial: 'loadChange',
         on: {
-          PROPOSE_PACKET: {
-            target: '.loadFromStack',
-            actions: 'proposePacket',
-            cond: 'isProposer',
-          },
           NEXT: {
-            target: '.loadFromStack',
+            target: '.loadChange',
             cond: 'isNotLast',
             actions: 'nextChange',
           },
           PREV: {
-            target: '.loadFromStack',
+            target: '.loadChange',
             cond: 'isNotFirst',
             actions: 'prevChange',
           },
-          PROPOSE_EDIT: {
-            target: '.loadFromStack',
-            cond: 'isEditable',
-            actions: 'proposeEdit',
-          },
         },
         states: {
-          loadFromStack: {
-            always: {
-              target: ['selected.controls.load', 'selected.funding.load'],
-            },
+          loadChange: {
+            id: 'loadChange',
+            always: { target: '#quality', cond: 'isChange' },
           },
-          selected: {
-            type: 'parallel',
+          actions: {
+            id: 'actions',
+            initial: 'quality',
             states: {
-              controls: {
+              assets: {
                 states: {
-                  load: {
-                    always: [
-                      { target: 'header', cond: 'isHeader' },
-                      { target: 'packet', cond: 'isPacket' },
-                      { target: 'solution', cond: 'isSolution' },
-                      { target: 'dispute', cond: 'isDispute' },
-                      { target: 'edit', cond: 'isEdit' },
-                      { target: 'merge', cond: 'isMerge' },
-                    ],
+                  funding: {
+                    id: 'funding',
+                    description: 'Funding of the change',
                   },
-                  header: {},
-                  packet: {},
-                  solution: {},
-                  dispute: {},
-                  edit: {},
-                  merge: {},
+                  fundTrading: {
+                    id: 'fundTrading',
+                    description: 'Trading of the funding shares of the change',
+                  },
+                  contentTrading: {
+                    id: 'contentTrading',
+                    description: 'Trading of the content shares of the change',
+                  },
+                  qaMedallionTrading: {
+                    id: 'qaMedallionTrading',
+                    description:
+                      'Trading of the QA medallion of the resolved packet',
+                  },
                 },
               },
               quality: {
-                initial: 'judging',
+                initial: 'idle',
                 states: {
+                  idle: {
+                    id: 'quality',
+                    always: [{ target: 'judging', cond: 'isNotPacket' }],
+                  },
                   judging: {
-                    on: {
-                      RESOLVE: { target: 'pending.approved', cond: 'isQa' },
-                      REJECT: { target: 'pending.rejected', cond: 'isQa' },
-                    },
+                    always: [
+                      { target: 'pending.resolved', cond: 'isQaResolved' },
+                      { target: 'pending.rejected', cond: 'isQaRejected' },
+                      { target: 'pending.disputed', cond: 'isDisputed' },
+                    ],
                   },
                   pending: {
+                    always: { target: '#contentTrading', cond: 'isEnacted' },
                     states: {
-                      approved: {
-                        on: {
-                          ENACT: { cond: 'isDisputeWindowClosed' },
-                        },
-                      },
+                      resolved: {},
                       rejected: {},
+                      disputed: {},
                     },
                   },
-                },
-              },
-              funding: {
-                description: 'Funding of the change',
-                initial: 'empty',
-                on: {
-                  FUND: { target: '.funded', cond: 'isFunder' },
-                  DEFUND_START: { target: '.funded', cond: 'isFunder' },
-                  DEFUND_STOP: { target: '.funded', cond: 'isFunder' },
-                  DEFUND: { target: '.empty', cond: 'isFunder' },
-                },
-                states: {
-                  load: {
-                    // always: [
-                    //   { target: 'empty', cond: 'isHeader' },
-                    //   { target: 'funded', cond: 'isEdit' },
-                    // ],
-                  },
-                  empty: {},
-                  funded: {},
-                },
-              },
-              fundTrading: {
-                description: 'Trading of the funding shares of the change',
-                initial: 'untraded',
-                on: {
-                  TRADE: { target: '.traded', cond: 'isTrader' },
-                  TRADE_ALL: { target: '.traded', cond: 'isTrader' },
-                },
-                states: {
-                  untraded: {},
-                  traded: {},
-                },
-              },
-              contentTrading: {
-                description: 'Trading of the content shares of the change',
-                initial: 'untraded',
-                on: {
-                  TRADE: { target: '.traded', cond: 'isTrader' },
-                  TRADE_ALL: { target: '.traded', cond: 'isTrader' },
-                },
-                states: {
-                  untraded: {},
-                  traded: {},
                 },
               },
             },

@@ -182,7 +182,7 @@ library LibraryState {
     // TODO check if any solutions have passed threshold and revert if so
   }
 
-  function solve(
+  function proposeSolution(
     State storage state,
     uint packetId,
     bytes32 contents
@@ -393,7 +393,7 @@ library LibraryState {
     return assetId;
   }
 
-  function edit(
+  function proposeEdit(
     State storage state,
     uint id,
     bytes32 editContents,

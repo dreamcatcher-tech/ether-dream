@@ -71,8 +71,8 @@ contract DreamEther is IDreamcatcher {
     state.upsertNftId(disputeId, CONTENT_ASSET_ID);
   }
 
-  function disputeRejection(uint id, bytes32 reason) external {
-    uint disputeId = state.disputeRejection(id, reason);
+  function disputeReject(uint id, bytes32 reason) external {
+    uint disputeId = state.disputeReject(id, reason);
     state.upsertNftId(disputeId, CONTENT_ASSET_ID);
   }
 
@@ -88,16 +88,16 @@ contract DreamEther is IDreamcatcher {
     state.enact(id);
   }
 
-  function solve(uint packetId, bytes32 contents) external {
-    state.solve(packetId, contents);
+  function proposeSolution(uint packetId, bytes32 contents) external {
+    state.proposeSolution(packetId, contents);
   }
 
   function merge(uint fromId, uint toId, bytes32 reason) external {
     state.merge(fromId, toId, reason);
   }
 
-  function edit(uint id, bytes32 editContents, bytes32 reason) external {
-    state.edit(id, editContents, reason);
+  function proposeEdit(uint id, bytes32 editContents, bytes32 reason) external {
+    state.proposeEdit(id, editContents, reason);
   }
 
   function claim(uint id) public {

@@ -93,7 +93,7 @@ library LibraryQA {
     return disputeId;
   }
 
-  function disputeRejection(
+  function disputeReject(
     State storage state,
     uint id,
     bytes32 reason

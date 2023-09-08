@@ -250,7 +250,7 @@ export const initializeSut = async () => {
 
         // also a solution that has been qa'd but the dispute window is open
         await expect(
-          dreamEther.solve(uplink, hash('double solving' + uplink))
+          dreamEther.proposeSolution(uplink, hash('double solving' + uplink))
         ).to.emit(dreamEther, 'SolutionProposed')
 
         debug('enact', type, cursorId)
@@ -444,7 +444,7 @@ export const initializeSut = async () => {
         const { cursorId } = context
         const reason = hash('disputing rejection ' + cursorId)
         const disputeId = context.transitionsCount
-        await expect(dreamEther.disputeRejection(cursorId, reason))
+        await expect(dreamEther.disputeReject(cursorId, reason))
           .to.emit(dreamEther, 'ChangeDisputed')
           .withArgs(cursorId, disputeId)
         // TODO twice with the same content should fail.

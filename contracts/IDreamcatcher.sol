@@ -26,7 +26,7 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function disputeResolve(uint id, bytes32 reason) external;
 
-  function disputeRejection(uint id, bytes32 reason) external;
+  function disputeReject(uint id, bytes32 reason) external;
 
   function qaDisputesDismissed(uint changeId, bytes32 reason) external;
 
@@ -34,11 +34,11 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function enact(uint id) external;
 
-  function solve(uint packetId, bytes32 contents) external;
+  function proposeSolution(uint packetId, bytes32 contents) external;
 
   function merge(uint fromId, uint toId, bytes32 reason) external;
 
-  function edit(uint id, bytes32 editContents, bytes32 reason) external;
+  function proposeEdit(uint id, bytes32 editContents, bytes32 reason) external;
 
   function claim(uint id) external;
 
