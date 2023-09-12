@@ -61,6 +61,7 @@ const set = (params) =>
       return changes
     },
   })
+const not = (params) => (context) => !isDirect(context, params)
 const is = (params) => (context) => isDirect(context, params)
 const isDirect = (context, params) => {
   const change = getChange(context)
@@ -84,8 +85,7 @@ export const config = {
     isChange: (context) => !!getChange(context).type,
     isNotLast: (context) => context.selectedChange < context.changes.length - 1,
     isNotFirst: (context) => context.selectedChange > 0,
-    isHeader: (context) => getChange(context).type === 'HEADER',
-    isPacket: (context) => getChange(context).type === 'PACKET',
+    isPacket: is({ type: 'PACKET' }),
     isPacketResolved: (context) => {
       if (!isDirect(context, { type: 'PACKET' })) {
         return false
@@ -104,15 +104,12 @@ export const config = {
     isNotPacket: (context) => !config.guards.isPacket(context),
     isSolution: (context) => getChange(context).type === 'SOLUTION',
     isDispute: (context) => getChange(context).type === 'DISPUTE',
-    isEdit: (context) => getChange(context).type === 'EDIT',
+    isEdit: is({ type: 'EDIT' }),
     isMerge: (context) => getChange(context).type === 'MERGE',
-    isEditable: (context) => {
-      const change = getChange(context)
-      if (!change.type) {
-        return false
-      }
-      return change.type !== 'PACKET' && change.type !== 'EDIT'
-    },
+    isEditable: (context) =>
+      config.guards.isChange(context) &&
+      !config.guards.isPacket(context) &&
+      !config.guards.isEdit(context),
     isEmpty: (context) => {
       // const change = getChange(context)
       // if (!change.type) {
@@ -179,6 +176,28 @@ export const config = {
       }
       return true
     },
+    isExitable: (context) => {
+      // get the current balance of the account, see if we can exit anything
+      return false
+    },
+    isNotOpen: not({ qaResolved: false, qaRejected: false }),
+    isFundableEth: (context, event) => false,
+
+    isFundableDai: (context, event) => false,
+
+    isFundable1155: (context, event) => false,
+
+    isFundable721: (context, event) => false,
+
+    isDefunding: (context, event) => false,
+
+    isNotDefundStopLoop: (context, event) => false,
+
+    isDefundWindowPassed: (context, event) => false,
+
+    isDefundWaiting: (context, event) => false,
+
+    isDefundedOnce: (context, event) => false,
   },
   actions: {
     nextChange: assign({
@@ -236,8 +255,7 @@ export const config = {
 
 export const multiMachine = createMachine(
   {
-    /** @xstate-layout N4IgpgJg5mDOIC5QFsCuAbALgSwMQBUBJAWQFEB9ABQBkBVAZXIBFD7Lb8KB1QgOSYDyXANoAGALqJQABwD2sbDlkA7KSAAeiACyiA7ADoAHACZRAZgCsANl0BGC-YsWANCACeiW8YC+312ixsfQBDAGNQ2VRlTFwAIQoAMVp+UgAlMUkkEDkFJVUszQRdXVcPBC0dfQtRGtFDKwstYwszXQtffwwcEPDI6LiKegFqADU0jLUcxWwVNULi0sRTKyra0StbQy1bHVsOkADusIiomPjyAEUAQQmsqby5xAX3bQBOV-010VfdQ3NjYxmfaHILHPpnQa0SjjCSTeTTWYFJ4lF4IJwGaq1Yy6Kw-LSvPZ+A5dUG9U4DKipASUAT0GGZGTwh5IooosrGBqfNYWbFWURaQy2XTAkk9E79c74VJXJj0uG5Gb5UDzNmIMyA1a1Kw6Yy2Ww2EWBMXgilXXgATQEvFIt0ZCsRyuRiwQZhMXNqbWMgsMPMN3VCAAtgsoYLBcJQqTS6eQABKkGVyu5MxWPVnO+z4-Q6Kzqsy4mzVLR+oKB4Oh3DWgAa+Ft2WTDo0TtROx5+leLWaPJxdi9xf0pZDcHDqVII1r9xTLOeZVslhWmK8QpzjVnfYHof7KkwACdZOhYPpsMppsF0Lhx-WlY2EFY+UYTIZXdYcY0zOnGhZ9LoObozForKYhi6Hoa5BoOB4RNEu77oex44Ke562Aydb2lehTaqI95ek+NgNFob7NsUmE-DY2KiBY9RmF4oFlnAm5QXuB5HieZ7CMYyETg26F3oYD44S++Hpq0hhtjiuIVIYrzqoYNHgfRO6MbBLHnmYHGXqmOaYbx2E+rhr7piYHxaN2eoEjs+rtESIL9mBG6QQpMHMfBrFaGpqEaaYWGPrpAkETOvEGCR+Y4k0ohCrJdlbtBTFwdgCHCBYbkImhiANFpfE+XhfmeD2Wbdt8DSvNi7YRXRwTSNIu4AG6nvoABWqDQEeUC4COQyjDasJJu5LIAisXzkcBWzvIYzq-AYazbJiWjWISnRGuuZUVdVtUNU1IataQABSpAAMI1l1drJamfXurUFhDfiryjaij4YudvEjXUpUHgAZlEEDNbgST8BePWOggth6OmvxmEYFivDN2I6Q4vhEsosgQHAaggvKx0sgAtK0zpUZqNR6hy6w+hyfZgqcaPMgDxivOmtgfGseq6ASuj-uYpNktE+iVbIORgNuFOTlT-5tjs6x1PyM0OM6HKfpiNRdnyArhVZopk5z73KEj-PdejQsrAS2bixUTi2M6FS2GddR4c0rSWfNRwc5g+iwHuVV8wLXFLMLBti38xtS6ipgTWsJibGY8tFirRpq07ACOwQeylCDGN7ot8n7kum6iV1498vz-IC7Pik7sCoNIfPx4nJ2p4bGcm86TgiQz3zrGYrzPVHDvF-oO7BFrVe9TXvsS-XqLqlolsYbq+rCp3pLd8GbgqGAA96yLtcjwHZSusYueet6vpzzZtHwDrlPXnqzobLvaymPqBJhT4R+LRBUWMav14zWD2mh9+liAVYdMXoPjflvCzawFQpIvXktFJSzkP6FGqBbH+uo-48itkJduolbyvD5FJX8+FoH2VgQGMAfd3Zn0FteJmIk8x-2aGFbUXh0zbAMKA4CHJqY8hJs-WydFiGKVIeQ7c+geZgCvJxJOWwVh0MBAw-U2xjDvhzF+DkuJBTGWuofe2JY+GvwYjBIRWt9AayRhABBiBpH6FkeqJBTClHNgArvPqVhHweg4UQt+hiyHGPLprZqFiEBWJsfI+x75yL6D6nYdU7ZTCiCfjo4+ckBEwWkGEAA1mATAgSTCfiZq4pmv4-x5xBriSJP4hRM0hr+GSvCT4wMUi7dAqBz6SNTD6MG7YqJMwunqNugDmytAMC44m4chTkU8QYg8n1YDSBaSvShnsgmeS6TPAEThcEGWxKomw8SGjrN4pMhyB5ICKECb8ESBTGhhTChdbYBl6jlNvEBaohZI6JJfg0mCyA+YwByWYMGgIKhAtsXmEGQMdm-mpv+Vxhy6lyXKtzGq6BAkQyvu8PG4dHzGV+FYaBiKVroHqo1KAATFlJyBqqIJuMKJ-j1OYAqEz4UbgJbIZFXNxGfRDIE0y6Zvg3w9ABd4+p8XLTZbVPxXKoAhDFW7cx5LUwz1pkzPG9RcECltqKpFErOXNX0NuMAdUwChEwJAHlNggGundEDfCTDJIJOJAtPRJiPpkqOufRBNNHGtHBpDC6ph3gAiBMyuipi9VgGQNITAZR3VUMKLOEBxQAVhR0O8bUVKhTNGsRDf840NnvGgWGkMLrNZmoVb1XBVRGg2B7NfHMAyZy-AnpYP10NvKwzhkAA */
-
+    /** @xstate-layout N4IgpgJg5mDOIC5QBUAWYAEARATmAhgLYDG+ALsejgHSX4B2MsAxAIoCCA2gAwC6ioAA4B7WAEsyY4fQEgAHogCcAdgA0IAJ6IAjAFYAbN2q6AzNoBMugL5X1aTLgIlylMDTqM4zAGIBVAHJYAKIASjz8SCAi4pLSsgoIKupaiYr61AAcyta2IPbYeESkFFS0qAxMzMgh7MFhfLLRElIykQlJmjoZuhnU+lk5dugFTsWu7uWesNRkOPgQYozUAGYArvQQsMhzC0vraxuQzOGNos1xbYgmGQAs2tSKJso3iuZP3Ia6usmIyoo31Asgzyw0cRRcpQ8TBmO0WUBW60223mcIRhwgVRqwQA+uwADJ4k6RJqxVqgBI3czmIzmZQmSmKLIfbhfH4IDIWPqWGxDByFZwlNxlCpwGEopYHJGwiWIo7VWpBbEAZQA8gBZIJEoRnUnxRCU6nUWn08yM5TM1mdBDKfTmQHc3L5MEC8bCqZi3bwyVbaVe2UYrVRHUtPUIA00ukMpmfb5W5TadJAnkgvmjCFCqGi2bi+HEaRkMD0MjIz3UdaF-DEAsBhrE4MXclXDImRSAxSmbg3aMs2MpbQsoy24FO-ljSGTaHZ0t5ouF4u+j0EABGABswJiFbiCYGSSHLmHacpjN1XmaLb2dB9W0nHaDR+mJiLplPUTOC0WS6ip8u1xucaqNR3esyXkfVD2PXRT27S0+24bReiHZMRzTQVH3dF8ljfOdPyWb98FXdcgJiPdGwPZQjx6SDTWgi9EmUO1ENvVNwVQt1oWEQRC2OWttWIhtQIQMxzHuG5+meN5zRjNkTBk4wkLvFDXUzaYOK4zhtAiXjzhAhITHA7QuyjSSezZbpdEybJ5OYl1xyfahVPoNFPR8AIsGxIJkAACSI7TQwseMHg+Sw2UUOCuWHBSWKUidRQcpy4RcwJsSwdgAEkfN1fd-PuUKhxC3Q7RvXkRii2z3TiyUEr8JLtD0XQMpIgTssCvKrX7bgGIdYrnTHDMYpUzjHMqxhErc+jtAa-iEma3LgralkTHtCLrN6tD2MG+K9nobx-W4zSgz4nSdFMAFhO4R5sjZWq6Qs5aSpsvq7IqxFUUlSBqHoYQyCwMBhqgZhgmqtylWQdgQmQSajoQbRQoBDk5tg55qHou6eofNjYo2v6nPez7vt+l6RshvzYcyIErqBI0upTe7VoxgbC02v10WoCACY2BLAdc5VkBVAAFYmstJ+HaP7cxTup5DSse8qscJ5m2YgVn2ecrnAkF0jzH0XQARuILRb0+5GO6+9WOU+y5Y5mUWbZv6qlSgBhABpbFkFSwCeIO3z9ypG44cu+aXluqzafR83nqthX3tt+W9tOQ7Q0sbIjW11qUkUdtqE7BN9FzvO85DtGzf6i3GYAR3wOO6wTn2M-M65zBFq6DDtZQRcL03oqejaK+oAArVZoASjhsRCIJVTxAA1TVPd3KadDSe5tHjAYrq7I3Jcih61sx8v8H7weoGH9hR6CAApIIHYh2fgJJ-Ql5XgO+0+LOhNRzuyuhQbnI1gTm16Nu5MrTCXfopT+opv6ojwLAYQK4ABuRxf4JF0P2Yw3BAEI0QAVO0m8VphxLpApYeA+5gCrIgm+NdSJ6DUFaDIpojSgOljvaYhD4QLFgIIVY1Y2AnywKlJUfNfDIHHslfhap+FKiCFgJBiB-7IybnGZORUaZFy7u6VhrMxAcK4UcEeSpPJgxEb4Pmnkgh4mkRQ72pE5EYNonQ8yxsVEfxll-QspZ2GcO4SPYxpjzEyPZNceRQCUhZETA6XIn02bwEiFLbe8crFNTZAAWnFh3MBLi4DxMyqRF4bJ9CLUYdvemHo4RZMarpSk6QgovAkueNkOsl64NDsXOyGEFY+hzGU+egkdaLUMiYfQdJjIwUQLaBCTTVHgOfAub0OF4T7H9F0qGJhIIiVuAMoZdTFFGGUbEum5s2lOQ6aWN6EAlmhhbG3YwbwjJbJSORHZEznHMJKdbKUOZFxnOrgkik1xegZFysvd4Uk4z32oE8Qp+yS6HKwh+X05z9z0iRtU14wKTK0O6EtNJTDikwvzNhBc5Z6CVmrAi0iKyqRZ1tDUtFIzoYdXSI4vZ+DWkLlhfOD5eECJkoEpc1ss1KS0tFgy8K2KikHLZfiuFnKdiQB5RSG4PRwUWBpcM4Vy9g5MWaWo9ahZ5U6GXuZWatF+iFSeekl5cU4FiDAAAd1Kd87JvKLC9AMrcaiarm5gu4G-MVULu6Mz+vq6GVJFrGrZDaVsTKt7+tloG+WZZtqLMdeUnQes7SQQhRTTO7ZmwyXzQWv1LK41DQTac4NCZGSAjgi3WioUKJ3Hzk2-QRaWklqZjjJWeMfpBpTd05eolq16DTpeeiyNzU4vDpbE5-pla9q0k6hINyjUZDod0D4okVAmApgMzVJsLXFIjjOm20gwDBtpNrcFa7gmXnQcjRQOdm251bTq3ejkK4Vr+ACZe8En46BbN+id4qS5xV7gPIejAK3usBI-UWBUAQZxuH8R9edlAvqmaXd9+9iGkNJX2qGobzLXV-aLfQetkb0ghehjJDMsPUGgbAhBXyF2poQIRwEP7V5tRQUePS7ctWTJo9QVhFbzpshuDJajLyNEMfgXK-DFyH1oNsfUw0kLi2uMjvRsAJCyHMa9ou0ZOsgmYIQAVIw6m22afcVozx8mWPdMbrrdZf7rQmAs1J4pGiPE6KVg5JUqxOI4GDTJKN7Y36mXgp5823nbO+eoLAQLbglRgDIGQNc+m57LL0tQfprnQlyQE88rzbjUQVirPhNcIW7hZ10OghRKRdB-BsDYIAA */
     id: 'The Dreamcatcher',
     type: 'parallel',
 
@@ -247,232 +265,375 @@ export const multiMachine = createMachine(
       time: 0,
     },
     states: {
-      time: {
+      // time: {
+      //   on: {
+      //     TIME_PLUS_DISPUTE_WINDOW: { target: '.tick0', actions: 'tick' },
+      //   },
+      //   initial: 'tick0',
+      //   states: {
+      //     tick0: { always: { target: 'tick1', cond: 'isTime0' } },
+      //     tick1: { always: { target: 'tick2', cond: 'isTime1' } },
+      //     tick2: { always: { target: 'tick3', cond: 'isTime2' } },
+      //     // tick3: { always: { target: 'tick4', cond: 'isTime3' } },
+      //     // tick4: { always: { target: 'tick5', cond: 'isTime4' } },
+      //     // tick5: { always: { target: 'tick6', cond: 'isTime5' } },
+      //     tick3: { type: 'final' },
+      //   },
+      // },
+      // accounts: {
+      //   type: 'parallel',
+      //   states: {
+      //     actions: {
+      //       description: 'The actions applied to the selected account',
+      //       initial: 'idle',
+      //       on: {
+      //         MANAGE_EXITS: { target: '.exits', cond: 'isExitable' },
+      //         MANAGE_APPROVALS: { target: '.approvals' },
+      //       },
+      //       states: {
+      //         idle: {},
+      //         exits: {
+      //           description: 'everything to do with exiting from the account',
+      //           on: {
+      //             EXIT: { target: 'idle' },
+      //             EXIT_SINGLE: { target: 'idle' },
+      //             BURN: { target: 'idle' },
+      //           },
+      //         },
+      //         approvals: {
+      //           description:
+      //             'Approve operators to trade on behalf of the account',
+      //           on: {
+      //             APPROVE_OPENSEA: 'idle',
+      //             REVOKE_OPENSEA: 'idle',
+      //             APPROVE_OPERATOR: 'idle',
+      //             REVOKE_OPERATOR: 'idle',
+      //           },
+      //         },
+      //       },
+      //     },
+      //     selected: {
+      //       description: 'The selected account that actions will be applied to',
+      //       initial: 'proposer',
+      //       on: {
+      //         BE_PROPOSER: { target: '.proposer' },
+      //         BE_FUNDER: { target: '.funder', cond: 'isChange' },
+      //         BE_SOLVER: { target: '.solver', cond: 'isChange' },
+      //         BE_QA: { target: '.qa', cond: 'isChange' },
+      //         BE_SUPERQA: { target: '.superqa', cond: 'isChange' },
+      //         BE_TRADER: { target: '.trader', cond: 'isChange' },
+      //         BE_EDITOR: { target: '.editor', cond: 'isEditable' },
+      //         BE_DISPUTER: { target: '.disputer', cond: 'isChange' },
+      //         BE_SERVICE_WORKER: { target: '.serviceWorker', cond: 'isChange' },
+      //       },
+      //       states: {
+      //         proposer: {
+      //           on: {
+      //             PROPOSE_PACKET: {
+      //               target: '#quality',
+      //               actions: 'proposePacket',
+      //             },
+      //           },
+      //         },
+      //         funder: {
+      //           on: {
+      //             MANAGE_FUNDING: { target: '#funding' },
+      //           },
+      //         },
+      //         solver: {
+      //           on: {
+      //             PROPOSE_SOLUTION: {
+      //               target: '#quality',
+      //               actions: 'proposeSolution',
+      //               cond: 'isPacket',
+      //             },
+      //           },
+      //         },
+      //         qa: {
+      //           on: {
+      //             MANAGE_QA: { target: '#qa' },
+      //           },
+      //         },
+      //         superqa: {
+      //           on: {
+      //             MANAGE_SUPER_QA: { target: '#super' },
+      //           },
+      //         },
+      //         trader: {
+      //           on: {
+      //             MANAGE_TRADING: { target: '#trading' },
+      //           },
+      //         },
+      //         editor: {
+      //           on: {
+      //             PROPOSE_EDIT: {
+      //               target: '#quality',
+      //               actions: 'proposeEdit',
+      //             },
+      //           },
+      //         },
+      //         disputer: {
+      //           on: {
+      //             MANAGE_DISPUTES: { target: '#disputes' },
+      //           },
+      //         },
+      //         serviceWorker: {
+      //           on: {
+      //             ENACT: {
+      //               target: '#quality',
+      //               cond: 'isEnactable',
+      //               actions: 'enact',
+      //             },
+      //           },
+      //         },
+      //       },
+      //     },
+      //   },
+      // },
+      changes: {
+        description: `The stack of all changes can be navigated using the NEXT and PREV events.`,
+        initial: 'open',
         on: {
-          TIME_PLUS_DISPUTE_WINDOW: { target: '.tick0', actions: 'tick' },
+          // NEXT: {
+          //   target: '#quality',
+          //   cond: 'isNotLast',
+          //   actions: 'nextChange',
+          // },
+          // PREV: {
+          //   target: '#quality',
+          //   cond: 'isNotFirst',
+          //   actions: 'prevChange',
+          // },
+          QA: '#qa',
+          FUNDER: { target: '#funding' },
+          TRADER: { target: '#trading' },
         },
-        initial: 'tick0',
         states: {
-          tick0: { always: { target: 'tick1', cond: 'isTime0' } },
-          tick1: { always: { target: 'tick2', cond: 'isTime1' } },
-          tick2: { always: { target: 'tick3', cond: 'isTime2' } },
-          // tick3: { always: { target: 'tick4', cond: 'isTime3' } },
-          // tick4: { always: { target: 'tick5', cond: 'isTime4' } },
-          // tick5: { always: { target: 'tick6', cond: 'isTime5' } },
-          tick3: { type: 'final' },
-        },
-      },
-      accounts: {
-        type: 'parallel',
-        states: {
-          actions: {
-            description: 'The actions applied to the selected account',
-            initial: 'idle',
+          trading: {
+            id: 'trading',
+            type: 'parallel',
             on: {
-              EXIT: { target: '.exits' },
-              EXIT_SINGLE: { target: '.exits' },
-              BURN: { target: '.exits' },
-
-              APPROVE_OPENSEA: '.approvals',
-              REVOKE_OPENSEA: '.approvals',
-              APPROVE_OPERATOR: '.approvals',
-              REVOKE_OPERATOR: '.approvals',
+              // TRADE_CONTENT: {
+              //   target: '#contentTrading',
+              //   cond: 'isEnacted',
+              // },
+              // TRADE_FUNDING: { target: '#fundTrading' },
+              // TRADE_QA_MEDALLION: { target: '#qaMedallionTrading' },
             },
             states: {
-              idle: {},
-              exits: {
-                description: 'everything to do with exiting from the account',
-                always: 'idle',
+              fundsTrading: {
+                initial: 'unfunded',
+                states: {
+                  unfunded: {
+                    description: `No funding is available for trading`,
+                    always: { target: 'funded', cond: 'isFunded' },
+                  },
+
+                  funded: {
+                    description: `Funding is available for trading`,
+                    always: { target: 'traded', cond: 'isFundsTraded' },
+                    on: {
+                      TRADE_ALL: 'traded',
+                      TRADE_SOME: 'traded',
+                    },
+                  },
+
+                  traded: {
+                    type: 'final',
+                  },
+                },
               },
-              approvals: {
-                description:
-                  'Approve operators to trade on behalf of the account',
-                always: 'idle',
+              contentTrading: {
+                states: {
+                  unenacted: {
+                    description: `Nothing to trade until the change is resolved`,
+
+                    always: {
+                      target: 'tradeable',
+                      cond: 'isEnacted',
+                    },
+                  },
+
+                  tradeable: {
+                    on: {
+                      TRADE_ALL: 'traded',
+                      TRADE_SOME: 'traded',
+                    },
+
+                    always: {
+                      target: 'traded',
+                      cond: 'isContentTraded',
+                    },
+
+                    description: `Content Shares are available for trading`,
+                  },
+
+                  traded: {
+                    type: 'final',
+                  },
+                },
+
+                initial: 'unenacted',
               },
             },
           },
-          selected: {
-            description: 'The selected account that actions will be applied to',
-            initial: 'proposer',
-            on: {
-              BE_PROPOSER: '.proposer',
-              BE_FUNDER: '.funder',
-              BE_SOLVER: '.solver',
-              BE_QA: '.qa',
-              BE_SUPERQA: '.superqa',
-              BE_TRADER: '.trader',
-              BE_EDITOR: '.editor',
-              BE_DISPUTER: '.disputer',
-            },
+          open: {
+            id: 'quality',
+            initial: 'viewing',
+            always: [
+              { target: '#pending', cond: 'isPending' },
+              { target: '#trading', cond: 'isPacket' },
+            ],
             states: {
-              proposer: {
+              viewing: {
+                // show what type of change this is
+                // hold the focus of the statechart
+                // always: { target: 'qa', cond: 'isQaActed'}
+              },
+
+              funding: {
+                id: 'funding',
+                description: 'Manage the funding of the change',
+                initial: 'unFunded',
+                states: {
+                  unFunded: {
+                    always: {
+                      target: 'funded',
+                      cond: 'isFunded',
+                      description: '(state restoration)',
+                    },
+                  },
+                  funded: {
+                    initial: 'notDefunding',
+                    states: {
+                      notDefunding: {
+                        always: {
+                          target: 'defunding',
+                          cond: 'isDefunding',
+                          description: '(state restoration)',
+                        },
+                        on: {
+                          DEFUND_START: {
+                            target: 'defunding',
+                          },
+                        },
+                      },
+                      defunding: {
+                        always: {
+                          target: 'done',
+                          cond: 'isDefundedOnce',
+                          description: 'Prevent infinite loops',
+                        },
+                        on: {
+                          DEFUND_STOP: {
+                            target: 'notDefunding',
+                            cond: 'isNotDefundStopLoop',
+                          },
+                          DEFUND: {
+                            target: '#funding.unFunded',
+                            cond: 'isDefundWindowPassed',
+                          },
+                          TICK_TIME: {
+                            cond: 'isDefundWaiting',
+                            description:
+                              'Move time forwards so defunding is possible',
+                            internal: true,
+                          },
+                        },
+                      },
+                      done: {
+                        type: 'final',
+                      },
+                    },
+                  },
+                },
                 on: {
-                  PROPOSE_PACKET: {
-                    target: '#loadChange',
-                    actions: 'proposePacket',
+                  FUND_ETH: {
+                    target: '.funded',
+                    cond: 'isFundableEth',
+                    internal: true,
+                  },
+                  FUND_DAI: {
+                    target: '.funded',
+                    cond: 'isFundableDai',
+                    internal: true,
+                  },
+                  FUND_1155: {
+                    target: '.funded',
+                    cond: 'isFundable1155',
+                    internal: true,
+                  },
+                  FUND_721: {
+                    target: '.funded',
+                    cond: 'isFundable721',
+                    internal: true,
                   },
                 },
               },
-              funder: {
-                on: {
-                  FUND: { target: '#funding' },
-                  DEFUND_START: { target: '#funding' },
-                  DEFUND_STOP: { target: '#funding' },
-                  DEFUND: { target: '#funding' },
-                },
-              },
-              solver: {
-                on: {
-                  PROPOSE_SOLUTION: {
-                    target: '#loadChange',
-                    actions: 'proposeSolution',
-                    cond: 'isPacket',
-                  },
-                },
-              },
+
               qa: {
-                on: {
-                  QA_RESOLVE: {
-                    target: '#quality',
-                    cond: 'isResolveable',
-                    actions: ['qaDisputeWindowStart', 'qaResolve'],
+                id: 'qa',
+                always: { target: 'viewing', cond: 'isPacket' },
+                states: {
+                  judging: {
+                    on: {
+                      QA_RESOLVE: {
+                        target: 'resolved',
+                        cond: 'isResolveable',
+                        actions: ['qaDisputeWindowStart', 'qaResolve'],
+                      },
+                      QA_REJECT: {
+                        target: 'rejected',
+                        cond: 'isResolveable',
+                        actions: ['qaDisputeWindowStart', 'qaReject'],
+                      },
+                    },
                   },
-                  QA_REJECT: {
-                    target: '#quality',
-                    cond: 'isResolveable',
-                    actions: ['qaDisputeWindowStart', 'qaReject'],
-                  },
-                  ENACT: {
-                    target: '#quality',
-                    cond: 'isEnactable',
-                    actions: 'enact',
-                  },
+                  rejected: { type: 'final' },
+                  resolved: { type: 'final' },
                 },
+
+                initial: 'judging',
               },
-              superqa: {
+            },
+          },
+          pending: {
+            id: 'pending',
+            initial: 'resolved',
+
+            states: {
+              resolved: {
+                always: { target: 'rejected', cond: 'isRejected' },
+              },
+              rejected: {
+                always: { target: 'disputed', cond: 'isDisputed' },
+              },
+              disputed: {
+                id: 'super',
                 on: {
                   QA_DISPUTES_DISMISSED: {
                     target: '#quality',
                     cond: 'isSuperable',
                   },
-                  QA_DISPUTE_UPHELD: {
+                  QA_SHARES_UPHELD: {
                     target: '#quality',
-                    cond: 'isSuperable',
+                    cond: 'isShareDispute',
                   },
+                  QA_UPHELD: {
+                    target: '#quality',
+                    cond: 'isNotShareDispute',
+                  },
+                },
+                states: {
+                  openSuper: {},
+                  superSettled: {},
                 },
               },
-              trader: {
-                on: {
-                  TRADE_CONTENT: {
-                    target: '#contentTrading',
-                    cond: 'isEnacted',
-                  },
-                  TRADE_FUNDING: { target: '#fundTrading' },
-                  TRADE_QA_MEDALLION: { target: '#qaMedallionTrading' },
-                },
-              },
-              editor: {
-                on: {
-                  PROPOSE_EDIT: {
-                    target: '#loadChange',
-                    cond: 'isEditable',
-                    actions: 'proposeEdit',
-                  },
-                },
-              },
-              disputer: {
-                on: {
-                  DISPUTE_RESOLVE: {
-                    target: '#loadChange',
-                    actions: ['dispute', 'disputeResolve'],
-                    cond: 'isDisputeable',
-                  },
-                  DISPUTE_SHARES: {
-                    target: '#loadChange',
-                    actions: ['dispute', 'disputeShares'],
-                    cond: 'isDisputeable',
-                  },
-                  DISPUTE_REJECT: {
-                    target: '#loadChange',
-                    actions: ['dispute', 'disputeReject'],
-                    cond: 'isDisputeable',
-                  },
-                },
+              enactable: {
+                // once enacted, can trigger different actions
               },
             },
-          },
-        },
-      },
-      changes: {
-        description: `The stack of all changes can be navigated using the NEXT and PREV events.`,
-        initial: 'loadChange',
-        on: {
-          NEXT: {
-            target: '.loadChange',
-            cond: 'isNotLast',
-            actions: 'nextChange',
-          },
-          PREV: {
-            target: '.loadChange',
-            cond: 'isNotFirst',
-            actions: 'prevChange',
-          },
-        },
-        states: {
-          loadChange: {
-            id: 'loadChange',
-            always: { target: '#quality', cond: 'isChange' },
-          },
-          actions: {
-            id: 'actions',
-            initial: 'quality',
-            states: {
-              assets: {
-                states: {
-                  funding: {
-                    id: 'funding',
-                    description: 'Funding of the change',
-                  },
-                  fundTrading: {
-                    id: 'fundTrading',
-                    description: 'Trading of the funding shares of the change',
-                  },
-                  contentTrading: {
-                    id: 'contentTrading',
-                    description: 'Trading of the content shares of the change',
-                  },
-                  qaMedallionTrading: {
-                    id: 'qaMedallionTrading',
-                    description:
-                      'Trading of the QA medallion of the resolved packet',
-                  },
-                },
-              },
-              quality: {
-                initial: 'idle',
-                states: {
-                  idle: {
-                    id: 'quality',
-                    always: [{ target: 'judging', cond: 'isNotPacket' }],
-                  },
-                  judging: {
-                    always: [
-                      { target: 'pending.resolved', cond: 'isQaResolved' },
-                      { target: 'pending.rejected', cond: 'isQaRejected' },
-                      { target: 'pending.disputed', cond: 'isDisputed' },
-                    ],
-                  },
-                  pending: {
-                    always: { target: '#contentTrading', cond: 'isEnacted' },
-                    states: {
-                      resolved: {},
-                      rejected: {},
-                      disputed: {},
-                    },
-                  },
-                },
-              },
-            },
+            always: { target: '#trading', cond: 'isEnacted' },
           },
         },
       },

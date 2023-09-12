@@ -40,10 +40,6 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function proposeEdit(uint id, bytes32 editContents, bytes32 reason) external;
 
-  function claim(uint id) external;
-
-  function claimQa(uint id) external;
-
   function exit() external;
 
   function exitList(address holder) external view returns (Payment[] memory);

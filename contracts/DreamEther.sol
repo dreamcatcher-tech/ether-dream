@@ -100,14 +100,6 @@ contract DreamEther is IDreamcatcher {
     state.proposeEdit(id, editContents, reason);
   }
 
-  function claim(uint id) public {
-    state.claim(id);
-  }
-
-  function claimQa(uint id) external {
-    state.claimQa(id);
-  }
-
   function exitBurn(uint assetId) external {
     // used when the exit is problematic
     require(state.exits[msg.sender].contains(assetId), 'No exit for asset');
