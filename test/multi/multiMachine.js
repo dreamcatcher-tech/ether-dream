@@ -255,7 +255,7 @@ export const config = {
 
 export const multiMachine = createMachine(
   {
-    /** @xstate-layout N4IgpgJg5mDOIC5QBUAWYAEARATmAhgLYDG+ALsejgHSX4B2MsAxAIoCCA2gAwC6ioAA4B7WAEsyY4fQEgAHogCcAdgA0IAJ6IAjAFYAbN2q6AzNoBMugL5X1aTLgIlylMDTqM4zAGIBVAHJYAKIASjz8SCAi4pLSsgoIKupaiYr61AAcyta2IPbYeESkFFS0qAxMzMgh7MFhfLLRElIykQlJmjoZuhnU+lk5dugFTsWu7uWesNRkOPgQYozUAGYArvQQsMhzC0vraxuQzOGNos1xbYgmGQAs2tSKJso3iuZP3Ia6usmIyoo31Asgzyw0cRRcpQ8TBmO0WUBW60223mcIRhwgVRqwQA+uwADJ4k6RJqxVqgBI3czmIzmZQmSmKLIfbhfH4IDIWPqWGxDByFZwlNxlCpwGEopYHJGwiWIo7VWpBbEAZQA8gBZIJEoRnUnxRCU6nUWn08yM5TM1mdBDKfTmQHc3L5MEC8bCqZi3bwyVbaVe2UYrVRHUtPUIA00ukMpmfb5W5TadJAnkgvmjCFCqGi2bi+HEaRkMD0MjIz3UdaF-DEAsBhrE4MXclXDImRSAxSmbg3aMs2MpbQsoy24FO-ljSGTaHZ0t5ouF4u+j0EABGABswJiFbiCYGSSHLmHacpjN1XmaLb2dB9W0nHaDR+mJiLplPUTOC0WS6ip8u1xucaqNR3esyXkfVD2PXRT27S0+24bReiHZMRzTQVH3dF8ljfOdPyWb98FXdcgJiPdGwPZQjx6SDTWgi9EmUO1ENvVNwVQt1oWEQRC2OWttWIhtQIQMxzHuG5+meN5zRjNkTBk4wkLvFDXUzaYOK4zhtAiXjzhAhITHA7QuyjSSezZbpdEybJ5OYl1xyfahVPoNFPR8AIsGxIJkAACSI7TQwseMHg+Sw2UUOCuWHBSWKUidRQcpy4RcwJsSwdgAEkfN1fd-PuUKhxC3Q7RvXkRii2z3TiyUEr8JLtD0XQMpIgTssCvKrX7bgGIdYrnTHDMYpUzjHMqxhErc+jtAa-iEma3LgralkTHtCLrN6tD2MG+K9nobx-W4zSgz4nSdFMAFhO4R5sjZWq6Qs5aSpsvq7IqxFUUlSBqHoYQyCwMBhqgZhgmqtylWQdgQmQSajoQbRQoBDk5tg55qHou6eofNjYo2v6nPez7vt+l6RshvzYcyIErqBI0upTe7VoxgbC02v10WoCACY2BLAdc5VkBVAAFYmstJ+HaP7cxTup5DSse8qscJ5m2YgVn2ecrnAkF0jzH0XQARuILRb0+5GO6+9WOU+y5Y5mUWbZv6qlSgBhABpbFkFSwCeIO3z9ypG44cu+aXluqzafR83nqthX3tt+W9tOQ7Q0sbIjW11qUkUdtqE7BN9FzvO85DtGzf6i3GYAR3wOO6wTn2M-M65zBFq6DDtZQRcL03oqejaK+oAArVZoASjhsRCIJVTxAA1TVPd3KadDSe5tHjAYrq7I3Jcih61sx8v8H7weoGH9hR6CAApIIHYh2fgJJ-Ql5XgO+0+LOhNRzuyuhQbnI1gTm16Nu5MrTCXfopT+opv6ojwLAYQK4ABuRxf4JF0P2Yw3BAEI0QAVO0m8VphxLpApYeA+5gCrIgm+NdSJ6DUFaDIpojSgOljvaYhD4QLFgIIVY1Y2AnywKlJUfNfDIHHslfhap+FKiCFgJBiB-7IybnGZORUaZFy7u6VhrMxAcK4UcEeSpPJgxEb4Pmnkgh4mkRQ72pE5EYNonQ8yxsVEfxll-QspZ2GcO4SPYxpjzEyPZNceRQCUhZETA6XIn02bwEiFLbe8crFNTZAAWnFh3MBLi4DxMyqRF4bJ9CLUYdvemHo4RZMarpSk6QgovAkueNkOsl64NDsXOyGEFY+hzGU+egkdaLUMiYfQdJjIwUQLaBCTTVHgOfAub0OF4T7H9F0qGJhIIiVuAMoZdTFFGGUbEum5s2lOQ6aWN6EAlmhhbG3YwbwjJbJSORHZEznHMJKdbKUOZFxnOrgkik1xegZFysvd4Uk4z32oE8Qp+yS6HKwh+X05z9z0iRtU14wKTK0O6EtNJTDikwvzNhBc5Z6CVmrAi0iKyqRZ1tDUtFIzoYdXSI4vZ+DWkLlhfOD5eECJkoEpc1ss1KS0tFgy8K2KikHLZfiuFnKdiQB5RSG4PRwUWBpcM4Vy9g5MWaWo9ahZ5U6GXuZWatF+iFSeekl5cU4FiDAAAd1Kd87JvKLC9AMrcaiarm5gu4G-MVULu6Mz+vq6GVJFrGrZDaVsTKt7+tloG+WZZtqLMdeUnQes7SQQhRTTO7ZmwyXzQWv1LK41DQTac4NCZGSAjgi3WioUKJ3Hzk2-QRaWklqZjjJWeMfpBpTd05eolq16DTpeeiyNzU4vDpbE5-pla9q0k6hINyjUZDod0D4okVAmApgMzVJsLXFIjjOm20gwDBtpNrcFa7gmXnQcjRQOdm251bTq3ejkK4Vr+ACZe8En46BbN+id4qS5xV7gPIejAK3usBI-UWBUAQZxuH8R9edlAvqmaXd9+9iGkNJX2qGobzLXV-aLfQetkb0ghehjJDMsPUGgbAhBXyF2poQIRwEP7V5tRQUePS7ctWTJo9QVhFbzpshuDJajLyNEMfgXK-DFyH1oNsfUw0kLi2uMjvRsAJCyHMa9ou0ZOsgmYIQAVIw6m22afcVozx8mWPdMbrrdZf7rQmAs1J4pGiPE6KVg5JUqxOI4GDTJKN7Y36mXgp5823nbO+eoLAQLbglRgDIGQNc+m57LL0tQfprnQlyQE88rzbjUQVirPhNcIW7hZ10OghRKRdB-BsDYIAA */
+    /** @xstate-layout N4IgpgJg5mDOIC5QBUAWYAEARATmAhgLYDG+ALsejgHSX4B2MsAxAIoCCA2gAwC6ioAA4B7WAEsyY4fQEgAHogDMAVgBs1booCMAJgAs+5QA49i1QE5VAGhABPRLp1HqqzXu6q9yrQHZzixQBfQJs0TFwCEnJKMBo6RjhmADEAVQA5LABRACUefiQQEXFJaVkFBBV1TV0DLxMzSxt7BF0-ai03LXNzP3M9Hy1g0PRsPCJSCipaVAYmZmRs9izcvlkiiSkZAvLKjW19Q3qLaztEH25nI2VFJ389VqGQMNHIiZi4mYSWAGUcgDUAJIAYUyAH0AOoAeWyAGkcnk1qINqVtko1HsaodTMcmogdIofOobuYjCYDFduIMQk8RhFxtEpvE5t8UgAFHKgjgIgrrEpbUA7dHVA51bGNU4tYkuNwBZQXDpU4bhMZRSaxaazRJYAHfVkpZDw1Y8pF8spoqr7WrGMUnZpaVSKbjSm4DXyeHSqHSPZ501XvDVfajCQRgejMblCE2bM0IUw6HTUa7mZSWVQWSl6XEIeOuDS9FPcSxaK7e2kqt6Mz5MIMh+jUABuYjAAHdqLBhDgyOGjZHitHUbHC07lP0tDcjFpTISfFm6tQfHLJ8ZzNxzv09KXla8GeqmXAa6GG03W+3O+GtPle8j+fJEO4V4nR+PJwTVDOJd4fNQdHLuNxlOcqjKEmm4vPSaofJqsAHnWjYtm2HZdpwOiXoUUYogKd5Do+AzPlOb6zn+36LjcZg-t4XrUj65Y7pBgbBoecEnoh4aKKhvL9phg4PiOuFOC+05ZgByjznoJJAco8buNooG+hWu5VvuDGwceCFnpwejsehN7lPew5Pvx+Hvs0Dp6N+YlGH4-7-moRiyTREEBtWynUAAZgArvQEBiIwyTpFgoKZMgAASEZoX2GG3tmihGBak4LoSHoqFmPipdQVzaBc5wDKoXT2dujl7tBLkeV5PlQH5GSglg7AAmFHGReU+KxRi-QAZ6DrKFmRhONQKj7PG-VaMY+Xgf6RUwW5nneb5qRVVow3KPV2kxs1cVtYlnXdT4lzXGO7WKHoFjKKNfqVlBk2lTNFVzQFPg6Foy0RTpeIxetCUdclErmDo5h9XtYm-fa+IblRZYFeNinFbWU1lYw1CeUk02QN2WnPatnjOAEuU+EdaYTmoWYdHK7TVGoNnnJop3yXRzkw1d5WwxAkDUKgwgADbXcwWS3aC3zIOw2TIE916rcmzg-Q9Fz+A9RjcJm332s6w2uMBlNBGDW5jed9H09NjNXSzbOc+VqOIujA6-cY1CSx0Rgy8W8tZpYX4dNox1GDFI7U7RTlKXrcNQEzLPMwzvk8-5fPIJCrIi6aA6OjtLjjm+1x6CYI7dWmpPaAYkkLkdoNKmBZ0KRdJX6-DhsQNQoeVxVEcZHHnFRQEhYuGoR3nJ793GQ49pEtcMWkroHWUcXcm+xNFeB8HNd14H8zAjCoLIACACymTN41SiGOZ+iHZoGXdQS1BeNopLZT+uU+4VUOTQAjvgZvGhbXFmCTDqJ64HoLQREptXMt0B0f4sqeBOprEuNM-bQ0PE-agAArdy0BTYcFBNkTI3xIQABk-hbx7OFUWltzBKz0F4d0H8xKEwAQ9DQR0AL21qPaT2t9IblxhvApBKDfJoIwQAKUyECYWBCGovWzCQ9QZDO74iAlQ20iBPxn26HLHqOg-CdVYTrOmh5YDuRDDgVgz92DYOwdVHUeoDTfDMd8deOpfhYG3mIj+Tov6rh-rle0fcWi-WcKlP8llriFlUCwyBk877sJ0Xo2IhjubmP1GCNkwVMjYIcSIlaCcgIuLboSbgv9PFEzME6bEqU+hXHxASTRZddaRP0YYtsMw8AsEcatRh84xyEgpNoAkXUJTtJEm7FQnj7Y9DsqEhybDql1l0bU-A1BGkc3rCjZpCd7ROkpCYQCahFB9HkZKBcOdBlvmGTtSptN9y1i5ssrirQswehTOlHxPRkxpmAhrCe4ytHnNDJci85siFcR0LkrQNt0zDX0Cuf8XiHr3ETH4T2-hKie1UKcmB1ALmM28rAQQ7kyBgCXkCFea9N5XKimCrJjobjuCcD1Lxw02gdQGAYH8pgxIoomui+GmLsW4rmXABZKNtS6niXzYKgtMEkqakCkFK4wViT-ABImfgvzEk9unEhYl05svvhyoOXKcVgF5e2dmiyICxKFQadBmCcF4IlXiKVlgZWSTlZComGyHkknTvcSw6dx40i1qXM50EdW1zEFi-Vhr+Wmttd43J-1nmTm6OohWdpUoJgGcWICDokVaousGvVPK8AILAMQXFprBUWLBPwwRa9IRpGjYC2hDrKROohQq3p9ssY+Nyn0HauSc2BnzUstJb8opkLfC4XwYlXSTk0LcycwKALdHtF0YsKhRnvIhp86CoZ8AlvwAAI3Zga2AsRGzEDAOCDsABrWIL8rzx3fkKS0WIGi7KcLQjKQ8GHAWAv26sZAcD4GukzWAyBAPAc8tXO9hCH2ktXMC1ZEkerp3zilUwOd3BdGkpJRUfqoFT3vgBoDBtpqgfAyRryKMFhLDBMY0xt1vjRpfH9MSX8bgOnjE4FKJD-oBFxguD0P4fB-v3ER4DV0yPEarsjU11Gsh80hJvUEDGmOmBY5YAI7GbjxiMGhp0GUzCODIQMcwInoJiYoxAST4mZPQdETGZjSi2NJU47piUFgzIZQMCQpwq5LJmeoBZ+GxBpC4voGQMDUmg6eR3SWodaN-lwYdLCjwpJVw-juc7bozo1Huy6bFALQWg4hfC6GCL5H4axdLfMRY8m6OgiBLWg0aRhEJdg+UBNwKiyOmLAtVKbm7Tyy-AZ4Blkcrrrw2EiZ-6KvFdC2VyLwGqtUdq2CLBSnGstcyC11TPHuvrL6ztLLyqh6xWGs8t5k2PlVJm1F2g83wuLcZstqNw7EsdbEl13KPWJy+CO99bwvHJxpi9q4ZFYzN03dE7N6gT916QHwOzdmmwnvw3oNITIchQ1haQm99rDh5ZmVxkJoegLFBCSVv1VcxI4y-UKzDuHCOkco5hzF+gu7qtMcdH9f8Fk-EH08BTweicafadMxD7WUPzMM-wPDiAiPkfSFR0HF7NWaOgk3jVExAJa1MdsvOICfRriEnihTsybsM2-VXP0DW1J0fM3gAUaikOcB-Pxy0AbiAAC0rgzNu5buUNMtyvy-g8Aw-EK4xKXed5LwNMF-c72zFb1qH0ko9JTRLbofR5aSR+hAjdsfUUuSYgnpx9tFA4Q6BCxlb7s6h48PiPav6JcBqLzDJiakyCl5jNsmFvEq9-hr7OBafUAjebVcPYTLfoHT3b6pQQu6b1d9fu9u8TgK84xt46e4PgvrNC8F+UBxNJ3Ifz1dl3bfGKqUHd3gc5IN+Tt39v3we+FHDUTH+BallckjN9TH1vs+V+8E6AQGsQt+XE9+E6-GbcO+r+FQJIH+f4EieM3cZ+-+M+98xeqkkAEg4Bo66+UBW+8sL+6eCiu+Nsyi+gcsQEOYAWWB8ERqOKLc9md+BBm+T+xBu+pBCAHGSiJIMUY+b4QEdBAc10eBTUAQzg1QG0n03BOMNsgS3S+0bsIhh4Yc0W9ASMlGEA4heI3g6gJmzC9oPQHQyaBO6I2IrghczaqhdY6hc8uh2YqU6gksFwFEGqPQaGf0yYA0P06cmathTMlmRsHMYhK+7u76ZkrhVwNQfQnhEolkURO0S4K44saB4MhegBdh9cc8tcYA6hjhgh-0agf2I4Nw3BfhZ8TeuMbhdKgRT8jhai8YbSPmD0coO04ozQmmj4wSgK1onUzeBeABmBHCsyXCUA5UjRfiLRjgw0fmnRd4Kg34u+WUC46y3gRc5+mRIxcCsy8yxqkAhRq4IkRuY6FwgKvgs46GuWXQnsKYR0PQ6R-qGBESdY8ChaxapaRx+ypxR05xlIXiSY84HoBghIXglInggR0y0S+AUxaibSBIY6yYK4tKzU6UacuSh8JSU+QxLxkybYUSBisysADScAUx+yuEuMDxBYtKBIFe-UhcqcTKf+GRwxrxBJMyEaBxOh4RAeSgxBGgxYY6JgyBBS5BDJngTJnGUJhJdSHxcWPJ96fJFQ2+34JCJCqUkkP4Yp9JackpBc0p0+BGua3ykxvJieJIJ2PhhIeeQEtKcYvGZCuS90f2OJWxbJgYwaTEZpSpieugk4FBnou+k49wWURM3gf0n6HgvOtkLJzxxpnpppnKoa3KYAjhbsIkKg1pFg18badoJR3476qxrguM0erJeJ1YeaKZ4a+xJq6ZFwup2ZtpeZDgmMwJNKXg-RmqRp4SiZs8g6vKRaCp6Zh06gribhzykkiq5wvGaifg7gcoNwAWL2jhmafUZC-paYksuUtyLyfUPi9xyYKBAWg6ipMGypmmCYlKUe-GZCOgc62y7qASbUyY1wy57Oe6h6aZ5pYiC0Zh2YFgw2Pijo-42+JyPZ02+4VWB6R6R4LYPp55fpbQ3g5MMs5M2gweVwo+uSmgHof4-Qbp6BCZ1Y0FX5bYp6Yg56l6OAN6ruP5Dmnoty9Q6UjoD0RyPUEJ9OUWq5gK659wbFOZv8weCYGUvgwyPqKghF5ZxF0Od2Emyujhqa841unsmgKYC4chq4vGZgY+tkPUXFNmXk1mjMkGMmjhHFyluMqlWZGlKUXQByGxhYJIyYBllmxl0m2h6ZgKX4uMmanoPU4knuCAJmDlM6yiLlEFW6gWMO8lMOYmhx9FA4niCYqsb4uFDoHQXi5wupAQjxpkw0rlwWD25W3FiVXEFgzgpgcs2yO0csgMWcFeBmpIvmJSmxRFvZt2wGJWOOyuCM9AK5ZVUUvlZ8MUmgIydVP0zs+yrgfGpkcocsTx+GHVslXVxVvVA1vpv5gKZk-EnoXQ2yf4uyjxzor4h081-4hVc2pWj2cV4GCVm1Dmw1z5gKyiGy-5yJ6J7GlksUFx4OuJMl0ud2jO8uzOSus2q5wSfFm5glO5AC8s6JVsFVKslgl1sOsuTOiu9AvV6O9AmO2OZWillOG5Al25Wgs4P0vGuSaiDolglIqNwNCuLOd2bOHO91iFv5f2H+E4v1Ta3BGxysP1KJ-QcZS1kFgNwGDNoNWNMOG17NDmZCf0hIKYbRwSopH4AZM1luQt909N6NINmNvV8VZ5LB1yzh0q1QFgjoJZFOOVXQO0QMmgU+wQQAA */
     id: 'The Dreamcatcher',
     type: 'parallel',
 
@@ -390,147 +390,85 @@ export const multiMachine = createMachine(
       //     },
       //   },
       // },
+
       changes: {
-        description: `The stack of all changes can be navigated using the NEXT and PREV events.`,
+        description:
+          'The stack of all changes can be navigated using the NEXT and PREV events.',
         initial: 'open',
-        on: {
-          // NEXT: {
-          //   target: '#quality',
-          //   cond: 'isNotLast',
-          //   actions: 'nextChange',
-          // },
-          // PREV: {
-          //   target: '#quality',
-          //   cond: 'isNotFirst',
-          //   actions: 'prevChange',
-          // },
-          QA: '#qa',
-          FUNDER: { target: '#funding' },
-          TRADER: { target: '#trading' },
-        },
         states: {
-          trading: {
-            id: 'trading',
-            type: 'parallel',
-            on: {
-              // TRADE_CONTENT: {
-              //   target: '#contentTrading',
-              //   cond: 'isEnacted',
-              // },
-              // TRADE_FUNDING: { target: '#fundTrading' },
-              // TRADE_QA_MEDALLION: { target: '#qaMedallionTrading' },
-            },
-            states: {
-              fundsTrading: {
-                initial: 'unfunded',
-                states: {
-                  unfunded: {
-                    description: `No funding is available for trading`,
-                    always: { target: 'funded', cond: 'isFunded' },
-                  },
-
-                  funded: {
-                    description: `Funding is available for trading`,
-                    always: { target: 'traded', cond: 'isFundsTraded' },
-                    on: {
-                      TRADE_ALL: 'traded',
-                      TRADE_SOME: 'traded',
-                    },
-                  },
-
-                  traded: {
-                    type: 'final',
-                  },
-                },
-              },
-              contentTrading: {
-                states: {
-                  unenacted: {
-                    description: `Nothing to trade until the change is resolved`,
-
-                    always: {
-                      target: 'tradeable',
-                      cond: 'isEnacted',
-                    },
-                  },
-
-                  tradeable: {
-                    on: {
-                      TRADE_ALL: 'traded',
-                      TRADE_SOME: 'traded',
-                    },
-
-                    always: {
-                      target: 'traded',
-                      cond: 'isContentTraded',
-                    },
-
-                    description: `Content Shares are available for trading`,
-                  },
-
-                  traded: {
-                    type: 'final',
-                  },
-                },
-
-                initial: 'unenacted',
-              },
-            },
-          },
           open: {
-            id: 'quality',
-            initial: 'viewing',
-            always: [
-              { target: '#pending', cond: 'isPending' },
-              { target: '#trading', cond: 'isPacket' },
-            ],
+            id: 'open',
+            initial: 'view',
             states: {
-              viewing: {
-                // show what type of change this is
-                // hold the focus of the statechart
-                // always: { target: 'qa', cond: 'isQaActed'}
+              view: {
+                description:
+                  'View states are informative only. Transitions must start from an account.',
+                initial: 'sort',
+                states: {
+                  sort: {
+                    always: [
+                      {
+                        target: 'packet',
+                        cond: 'isPacket',
+                      },
+                      {
+                        target: 'dispute',
+                        cond: 'isDispute',
+                      },
+                      {
+                        target: 'header',
+                        cond: 'isHeader',
+                      },
+                      {
+                        target: 'edit',
+                        cond: 'isEdit',
+                      },
+                      {
+                        target: 'solution',
+                        cond: 'isSolution',
+                      },
+                    ],
+                  },
+                  packet: {},
+                  dispute: {},
+                  header: {},
+                  edit: {},
+                  solution: {},
+                },
               },
-
               funding: {
-                id: 'funding',
                 description: 'Manage the funding of the change',
                 initial: 'unFunded',
                 states: {
                   unFunded: {
+                    id: 'unFunded',
                     always: {
                       target: 'funded',
                       cond: 'isFunded',
-                      description: '(state restoration)',
                     },
                   },
                   funded: {
-                    initial: 'notDefunding',
+                    initial: 'holding',
                     states: {
-                      notDefunding: {
+                      holding: {
                         always: {
                           target: 'defunding',
                           cond: 'isDefunding',
-                          description: '(state restoration)',
                         },
                         on: {
                           DEFUND_START: {
                             target: 'defunding',
+                            cond: 'isDefundable',
                           },
                         },
                       },
                       defunding: {
-                        always: {
-                          target: 'done',
-                          cond: 'isDefundedOnce',
-                          description: 'Prevent infinite loops',
-                        },
                         on: {
                           DEFUND_STOP: {
-                            target: 'notDefunding',
-                            cond: 'isNotDefundStopLoop',
+                            target: 'holding',
                           },
                           DEFUND: {
-                            target: '#funding.unFunded',
+                            target: '#unFunded',
                             cond: 'isDefundWindowPassed',
                           },
                           TICK_TIME: {
@@ -540,9 +478,6 @@ export const multiMachine = createMachine(
                             internal: true,
                           },
                         },
-                      },
-                      done: {
-                        type: 'final',
                       },
                     },
                   },
@@ -570,70 +505,279 @@ export const multiMachine = createMachine(
                   },
                 },
               },
-
               qa: {
-                id: 'qa',
-                always: { target: 'viewing', cond: 'isPacket' },
+                initial: 'judging',
                 states: {
                   judging: {
+                    exit: {
+                      type: 'qaDisputeWindowStart',
+                      params: {},
+                    },
                     on: {
                       QA_RESOLVE: {
                         target: 'resolved',
-                        cond: 'isResolveable',
-                        actions: ['qaDisputeWindowStart', 'qaResolve'],
+                        actions: {
+                          type: 'qaResolve',
+                          params: {},
+                        },
                       },
                       QA_REJECT: {
                         target: 'rejected',
-                        cond: 'isResolveable',
-                        actions: ['qaDisputeWindowStart', 'qaReject'],
+                        actions: {
+                          type: 'qaReject',
+                          params: {},
+                        },
                       },
                     },
                   },
-                  rejected: { type: 'final' },
-                  resolved: { type: 'final' },
+                  resolved: {
+                    type: 'final',
+                  },
+                  rejected: {
+                    type: 'final',
+                  },
                 },
-
-                initial: 'judging',
+                always: {
+                  target: 'view',
+                  cond: 'isPacketOrDispute',
+                },
               },
+              superQa: {
+                exit: {
+                  type: 'focusUplink',
+                  params: {},
+                },
+                initial: 'shares',
+                states: {
+                  shares: {
+                    always: {
+                      target: 'resolved',
+                      cond: 'isResolved',
+                    },
+                  },
+                  resolved: {
+                    always: {
+                      target: 'rejected',
+                      cond: 'isRejected',
+                    },
+                  },
+                  rejected: {},
+                },
+                on: {
+                  ALL_DISPUTES_DISMISSED: {
+                    target: '#open',
+                  },
+                  DISPUTE_UPHELD: {
+                    target: '#open',
+                  },
+                },
+              },
+            },
+            always: {
+              target: 'pending',
+              cond: 'isNotOpen',
             },
           },
           pending: {
             id: 'pending',
-            initial: 'resolved',
-
+            initial: 'viewing',
             states: {
-              resolved: {
-                always: { target: 'rejected', cond: 'isRejected' },
-              },
-              rejected: {
-                always: { target: 'disputed', cond: 'isDisputed' },
-              },
-              disputed: {
-                id: 'super',
-                on: {
-                  QA_DISPUTES_DISMISSED: {
-                    target: '#quality',
-                    cond: 'isSuperable',
-                  },
-                  QA_SHARES_UPHELD: {
-                    target: '#quality',
-                    cond: 'isShareDispute',
-                  },
-                  QA_UPHELD: {
-                    target: '#quality',
-                    cond: 'isNotShareDispute',
-                  },
-                },
+              viewing: {},
+              dispute: {
+                initial: 'resolved',
                 states: {
-                  openSuper: {},
-                  superSettled: {},
+                  resolved: {
+                    always: {
+                      target: 'rejected',
+                      cond: 'isRejected',
+                    },
+                    on: {
+                      DISPUTE_SHARES: {
+                        target: '#open',
+                      },
+                      DISPUTE_RESOLVE: {
+                        target: '#open',
+                      },
+                    },
+                  },
+                  rejected: {
+                    on: {
+                      DISPUTE_REJECTION: {
+                        target: '#open',
+                      },
+                    },
+                  },
                 },
-              },
-              enactable: {
-                // once enacted, can trigger different actions
+                on: {
+                  TICK_TIME: {
+                    target: '#pending',
+                    actions: {
+                      type: 'tickTime',
+                      params: {},
+                    },
+                    description:
+                      'Move time forwards so dispute resolution is possible',
+                  },
+                },
               },
             },
-            always: { target: '#trading', cond: 'isEnacted' },
+            always: [
+              {
+                target: 'enacted',
+                cond: 'isPacketOrDispute',
+              },
+              {
+                target: 'disputed',
+                cond: 'isDisputeWindowPassed',
+              },
+            ],
+          },
+          enacted: { id: 'enacted' },
+          disputed: {
+            always: {
+              target: 'enactable',
+              cond: 'isUnDisputed',
+            },
+          },
+          enactable: {
+            initial: 'viewing',
+            states: {
+              viewing: {},
+              serviceWorker: {
+                always: {
+                  target: '#enacted',
+                  actions: {
+                    type: 'enact',
+                    params: {},
+                  },
+                },
+              },
+            },
+          },
+          trading: {
+            description: 'Trading is always available to all changes',
+            states: {
+              fundsTrading: {
+                initial: 'unfunded',
+                states: {
+                  unfunded: {
+                    description: 'No funding is available for trading',
+                    always: {
+                      target: 'funded',
+                      cond: 'isFunded',
+                    },
+                  },
+                  funded: {
+                    description: 'Funding is available for trading',
+                    always: {
+                      target: 'traded',
+                      cond: 'isFundsTraded',
+                    },
+                    on: {
+                      TRADE_ALL_FUNDS: {
+                        target: 'traded',
+                      },
+                      TRADE_SOME_FUNDS: {
+                        target: 'traded',
+                      },
+                    },
+                  },
+                  traded: {
+                    type: 'final',
+                  },
+                },
+              },
+              contentTrading: {
+                initial: 'unenacted',
+                states: {
+                  unenacted: {
+                    description:
+                      'Nothing to trade until the change is resolved',
+                    always: {
+                      target: 'enacted',
+                      cond: 'isEnacted',
+                    },
+                  },
+                  enacted: {
+                    description: 'Content Shares are available for trading',
+                    always: {
+                      target: 'traded',
+                      cond: 'isContentTraded',
+                    },
+                    on: {
+                      TRADE_ALL_CONTENT: {
+                        target: 'traded',
+                      },
+                      TRADE_SOME_CONTENT: {
+                        target: 'traded',
+                      },
+                    },
+                  },
+                  traded: {
+                    type: 'final',
+                  },
+                },
+              },
+              qaMedallionTrading: {
+                initial: 'nonExistent',
+                states: {
+                  nonExistent: {
+                    description:
+                      'If not a packet, there can never be a medallion',
+                    always: {
+                      target: 'unenacted',
+                      cond: 'isPacket',
+                    },
+                  },
+                  unenacted: {
+                    always: {
+                      target: 'enacted',
+                      cond: 'isEnacted',
+                    },
+                  },
+                  enacted: {
+                    on: {
+                      TRADE_MEDALLION: {
+                        target: 'traded',
+                      },
+                    },
+                  },
+                  traded: {
+                    type: 'final',
+                  },
+                },
+              },
+            },
+            type: 'parallel',
+          },
+        },
+        on: {
+          QA: {
+            target: '.open.qa',
+            internal: false,
+          },
+          FUNDER: {
+            target: '.open.funding',
+            internal: false,
+          },
+          TRADER: {
+            target: '.trading',
+            internal: false,
+          },
+          SERVICE_WORKER: {
+            target: '.enactable.serviceWorker',
+            cond: 'isEnactable',
+            internal: true,
+          },
+          SUPER_QA: {
+            target: '.open.superQa',
+            cond: 'isDispute',
+            internal: true,
+          },
+          DISPUTER: {
+            target: '.pending.dispute',
+            cond: 'isDisputable',
+            internal: true,
           },
         },
       },
