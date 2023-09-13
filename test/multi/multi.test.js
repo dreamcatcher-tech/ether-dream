@@ -5,7 +5,7 @@ describe('multiMachine', () => {
   const model = createTestModel(multiMachine)
   const paths = model.getShortestPaths({
     toState: (state) => {
-      return state.context.changeId === 1
+      return state.context.selectedChange === 1
     },
     // filter,
   })

@@ -14,6 +14,11 @@ function isTime(ticks) {
     return time > ticks
   }
 }
+function isPos(index) {
+  return function pos({ selectedChange }) {
+    return selectedChange === index
+  }
+}
 const make = (params = {}) => {
   const base = {
     type: '',
@@ -101,24 +106,12 @@ export const config = {
       }
       return false
     },
-    isNotPacket: (context) => !config.guards.isPacket(context),
-    isSolution: (context) => getChange(context).type === 'SOLUTION',
-    isDispute: (context) => getChange(context).type === 'DISPUTE',
+    isHeader: is({ type: 'HEADER' }),
+    isHeaderOrSolution: (context) =>
+      config.guards.isHeader(context) || config.guards.isSolution(context),
+    isSolution: is({ type: 'SOLUTION' }),
+    isDispute: is({ type: 'DISPUTE' }),
     isEdit: is({ type: 'EDIT' }),
-    isMerge: (context) => getChange(context).type === 'MERGE',
-    isEditable: (context) =>
-      config.guards.isChange(context) &&
-      !config.guards.isPacket(context) &&
-      !config.guards.isEdit(context),
-    isEmpty: (context) => {
-      // const change = getChange(context)
-      // if (!change.type) {
-      //   return true
-      // }
-      return true
-      // check if any asset is in the change at all
-    },
-    isNotEmpty: (context) => !config.guards.isEmpty(context),
     isFunded: (context) => {
       return false
     },
@@ -128,57 +121,26 @@ export const config = {
     isTime3: isTime(3),
     isTime4: isTime(4),
     isTime5: isTime(5),
-    isQaResolved: (context) => getChange(context).qaResolved,
-    isQaRejected: (context) => getChange(context).qaRejected,
-    isQaApplied: (context) =>
-      getChange(context).qaResolved || getChange(context).qaRejected,
+    isPos0: isPos(0),
+    isPos1: isPos(1),
+    isPos2: isPos(2),
+    isPos3: isPos(3),
+    isPos4: isPos(4),
+    isPos5: isPos(5),
+    isPos6: isPos(6),
+    isPos7: isPos(7),
+    isPos8: isPos(8),
+    isPos9: isPos(9),
     isEnacted: (context) => getChange(context).enacted,
     isEnactable: (context) => {
       // if no disputes, enough time has passed, then enact
       const change = getChange(context)
-      if (!config.guards.isQaApplied(context)) {
+      if (!change.qaResolved && !change.qaRejected) {
+        // TODO use safe functions
         return false
       }
       // get the current time tick, see if enough time passed
       return !change.disputed
-    },
-    isDisputed: (context) => getChange(context).disputed,
-    isSuperable: (context) => {
-      const change = getChange(context)
-      if (!config.guards.isDisputed(context)) {
-        return false
-      }
-      // get the current time tick, see if enough time passed
-
-      return true
-    },
-    isSharesUpholdable: (context) => {
-      const change = getChange(context)
-      if (!config.guards.isSuperable(context)) {
-        return false
-      }
-      // check if this is a dispute for shares
-      return true
-    },
-    isDisputeUpheld: (context) => !config.guards.isSharesUpholdable(context),
-    isResolveable: is({ qaResolved: false, qaRejected: false }),
-    isDisputeable: (context) =>
-      config.guards.isQaApplied(context) &&
-      config.guards.isDisputeWindowOpen(context),
-    isDisputeWindowOpen: (context) => {
-      const change = getChange(context)
-      const { time } = context
-      if (!config.guards.isQaApplied(context)) {
-        return false
-      }
-      if (time - change.qaTickStart < DISPUTE_WINDOW_TICKS) {
-        return false
-      }
-      return true
-    },
-    isExitable: (context) => {
-      // get the current balance of the account, see if we can exit anything
-      return false
     },
     isNotOpen: not({ qaResolved: false, qaRejected: false }),
     isFundableEth: (context, event) => false,
@@ -211,17 +173,13 @@ export const config = {
 
     isRejected: (context, event) => false,
 
-    isHeader: (context, event) => false,
-
     isResolved: (context, event) => false,
-
-    isHeaderOrSolution: (context, event) => false,
   },
   actions: {
-    nextChange: assign({
+    next: assign({
       selectedChange: ({ selectedChange }) => selectedChange + 1,
     }),
-    prevChange: assign({
+    prev: assign({
       selectedChange: ({ selectedChange }) => selectedChange - 1,
     }),
     proposePacket: assign({
@@ -236,7 +194,7 @@ export const config = {
       changes: ({ changes }) => [...changes, make({ type: 'SOLUTION' })],
       selectedChange: (context) => context.changes.length,
     }),
-    tick: assign({
+    tickTime: assign({
       time: (context) => {
         return context.time + 1
       },
@@ -272,183 +230,145 @@ export const config = {
 
     focusUplink: (context, event) => {},
 
-    tickTime: (context, event) => {},
-
     enact: (context, event) => {},
   },
 }
 
 export const multiMachine = createMachine(
   {
-    /** @xstate-layout N4IgpgJg5mDOIC5QDswA8AuA6AhgYwwEsB7ZWAYgCEBRAfQBUAlAQQBFrGBtABgF1FQAB2KxCRUgJBpEAdgBMAGhABPRAEZuAVgAcWAGwBmA2r1q1Mg-L0AWAL62lqTLgIkyVOgAVGAeU8+AZQ4efiQQYVFxZElpBHklVQQ1ORt9AzkATm1rGQyNA21te0d0bHwoihpaIMYANQBJAGFqEMkIsTcY2UUVdRM1NINuZO45HT0MmWKQJzLXUkq6AJ8AGVrgvjaRDokw2PjepIM9GTS5bQNNG2NtNSKHGdKXCo9aalZ6+h8uTbD2qK6cR6iTUmgsZxkt3Mlzk01mzzci1oHwCngAqvQNqEhNsAXtugl1DluGdtNxsuTLmY4U9yojXgBFZitP64zr4oGEpInPSkmQ6TTmNQ5GnOOkLV4AMTRADl2D9seE2btQPtgeoZLlSdZtKY9IVjqK5i8qgE0Z4OLQmSycZF2aqCYc7to5GcMtZ0hlNNxIQYjQiJTLqAANeg2pV2lVSR2JPRXLDWDJJ-UZMbWUwZf3i9zeai1cP-e3RzmHGTcXlJrLjUFqAzWNRZ+ZkZ7EABOFBDnwLyuiHOOrpd3CGhU0k3d2i5cmG1iwBUyxNuMgbD3h2dgLfb5E79Gq9RlAHEVi1fradr2HQh+1hB8PtKPcjrJ+WZwbyVpJh7Lo2KhvKmjGDK3aRuexZXje5J3mOj6HHIZiaLOLpWOmGiaNYmjfoiv7kIweY+AA0nQfgcMwXwKlswGAmBU63ve46TiY8GFOco6TCckLoSutJNuu5RthQzCeN4PjrLQREykEzInhGZ6UXoA7URBtHQYkciwbyc4yImejaWh5IYQsWECUJIlESwpFATJfZydeCkjlBE4wSkvJMQadywZpUycWK3FYThtT4YRFridQkmKoWUaxFRQ6KfZXJqBkhjXhcWgWKmQ6avpza8e2WCCK2xARGArbkKwPgWXiF4aHIpzGGMExDi6OgyHF1WnEhVx1poX5ecamHZeuABmACuyAQEVJVlVJ4UgbEVU1ckVwZA1YzaM1Tp5OpmgpJkmTJDqmU8QQfFYLAxAADYAG7jaV5VFrNozzXVS1zk1cWWDO5heho6YvQdv5YAAjjgE23RF6gPbOC31S9q1xfqM45HJYKWF6dV-f1J1DYIRUMsDN1TT2gJzZDT3La9ME6iSeijKmXWpvqho9QGWVHTlGCtjgY3FfjYWExyxO1YtZOw4ciFYJpSZjJYmQJejrPrpAYhtiDBMUfzEOC9DjUiyCOi6KM6RDikKHLiU3k-hjECELAghDRg12TbzauVRrUPPdra0gsSpLktYlKCqbjzm318snUVF2EHgYAq07lku9VJNCzDnt9LcWDVcYOh++Scgen9sAYPgADWWAFWAyDkKDM2IMc7rXixVbxat2STltvJ3IY1h+5oW1LhxZu9QZBfF6X2PIFgEdgAA7idbYYJXqtx6BxhtdorE6P0H5w9wGTi4mtxGOkqFjPnhd4CXZfj5PM+na28+cGoscVcv5ji2vMhxrcGaaXD+rp4mZYhiqVgvtJma4TpnwvmPCehBp6zzvpXOQT87o1xXm-deX94o-ydD3AYucEq5C-rcTMYCfLD3PqPcuMC4G33vgYZBYNLxoMhBgze2CQRWD3pMYUclEy1lPiPS+1Cb5z0rtYBh1cmGvxYR-De39rBxXYv-LIOphTlmOJ5AezN1zkKgVQ4ao1CDICgOQaUco3j0AABJVyJqYAw6cLCjkyHeNeow4qpl0HebaqY8i51uAIihQiDFW2MaY2UrBkTMHqDY-mdiHGXB8S4pa6okhjlnL3OSZIJhLk0UHQezZdGUPHsEoxJizERLgpoGJlU4kZycVWVxKSpyZHrikLaWkbB2FIT+QpQSRohLKeE2g8g1DVOLP0exdTEk6GSU+Mk6SnJ+yTHWWE3TMK9OgSU4xWARqSn6ZABeEiiarXgmCXUYIciCj9gYScU4BhVW0kmbg5Ylq5NXGQyBRSsBbKgN8-ZEAsAAAtzoDJKtQcp1R6DMEYGGRez9YiwV1FgEwP1EZLJuTBcspxqbVTyAfJccYAl6OKf00pfzRqQCBSC0phzyJLwRR3ZFNhO4f3RfRO4yLRgeg-pqIwbyuI9M+X0wx2zgmUrGj8sFEKAhfE8GMhFQxGL8m0qlZiCjMWvweToTIuQPFEq+T88lY0AUStJaE9g5T5WICls5JMTclqmDkEYScaCYQMy0AYL0fo1lDyFZss1vyxUmrAJK+gTQ8IMHqAAWWPEcjkud5AJjvFVBJ8guruMKAmXuFIJg5DQvqoRQNaWsmdsWc4mprzKrjCw2Cxw4YpGUdDGwVhvVaPARsqhQMsAACshrQBpUyWgOFlhrFjXS+F1rhT2P1JCF0QwcVqDimCV03B0zjGON6es-c8naIgYI6BXbe39tCYOnCAApagjRYVxovCA6dzc53llGIup02ldCJgSn7HUVI9AFugbALGONgbMBWCsZE9RUQYmoAEcDAQo0QaCKwK1CBy2nBOdpM5qZax6EnF3XeH8vWXHSJ66wqy20fP3VQgD2NWy4xKhB9EmJaDmksdQFYSG4UoJQ6tNDVbMO1pwzBAOCZjgrzGDqsjO721+qo4B2jOATqApwK2OAxbTwTpQ8kAYXpDB3EVQSwTKk26cvnRoT6hQ-2yZo7jLAKnTqXQOchp1q107Uy9IuCwlhW4NvyOWMzhD7jkcFSPMeoLkOI0mWYNCNY5LJFw0mLAeRM4mH1N6QLUmKMUNCzSh+N7iwRfTlFwUgpYtNIKFTQwvs8jPl-T6gpnzsvbKtjbO20cw2NAjWGmN4WVmFfMHJNSXd1UqTQrvL0Y4yxuS6vqxrvzmu23trZuA50roQHo5BpjARLHQug+Fj+kXhTFZMLBJpo5dDaSMPqCYqlqbbvecFrL5cBlYHm61pb9nVvrcY3QYdqx1h7cSrBQ7MWTuThsLvEwQxDs90KIHe76yGtPbJa9xbdmVuOc44wv2TrEsFHikYLaBDDPWrjK6D0NgNAH1rK2jLD2S6zZe9bBbYAlvdrAAQA5KJvtDuoBeq99QfCAUx5IgrQPosldBzBCYu8LvCjJAS1d+qUcY7y7NAovITjxSyM4zpKdLzJF5PWHVGghz1i6UFhHI9y7lBwAAIzOiz2A4dI5gAAOptiLuNZDtcXwN2TVkSEw2a7khl+c4YPKMiev1ezTmZLgmwHoBzZ7I0g1qekhp+KiUQ9JcTE6neGLEhLl0BLWRdisipmj0nuP-SE9V9Ff88gTA2B0BA2B8pAQnNGAGKR0cRh0y6jjFyD+FYkz8lXVOnjlfY-19GrX6fgaG9N-YNUHwMbaDt878YBMYxI91iu4P0sJgExJl1D6BNoJze08txQmPz34+J-n0alX46uNOq3z33f-eMNchOCSD9kJyRaxRwd4p9ns8BSB7ZkAMAH9k9UBkByhn8S16V1AvR4IP0PwxhawywHJEhJh4J8Fbgd5pclpL94dfUR5b8yVwCoDy5oC69flrcOc1sl8W9QNaBGhBdMQZRr0X9GFnN7FXELgLhPUFo4oDZj87UP4Lgzd+Vg5yCb96CsBqDIC6DH9GD7ZmCWBl9lg18ODuDqBuDO8LhrwlohCjBfFNAuRJhXRKxA8TACMQC6sdFPlKDtllDaCYCyV1DED1NX8CgBDTD-CRCxgrCG1bDV06orgbBQCyUgYo1IAcAzozo3BPDtlkBSBqA0BrYVC09poiZI8Nd5Ad5+R+Q0IcDEA+FEtKwvotBvR4oYjtk4iEikiUjFCRpvC1snMpwSQVEN16xZ0MguRKjqiaie5hgSELd5CS5XDfkmiIBEjkjSBUiGD4CmDG8tC6AY1WBW8BchdVdrV0wqYvU8Uu5PUtAhi15xZvQd5n0Bt-EmYjEBo2wABbHAKILAIgZ4lnIgc+bgXIvmW9OsXQWmaQpqMwd0LkT1bSJlPlJyHhWQ7AR4l4t4twD4wgL4tE8+NQcga2egdEsAOQJzUcF8HIMsLqeQL9YnS8BKexJLTqSCewmneEJE1sV494z474yOIuOQHEhPfEgwJzYQ2cJcY7c4YYXOSEmkxLanMo0cRk+wFcYgMaeAMIWYXgyRAAWglMOA1MhCwGeQNMNINOpCcPVMBG1NwKwGuOeWMHG133kDlgwD4jNL7GFBsmijsgfHKIQBIKSkzl7n5Gp0dOOjygKhECKhdIvA9BXUASGG-WeRyBalIz9IN2SHOHOHSzIJZidJyjFVbEjPy1gn0GGCuH5GMHTAfEUTBCSnOH1CHCuB1EkyzMOhzJ0XR3zKQI03en1NBFi3dHdFyD11rDQhrNYg-GsKZIFRDlbMBhwALNiH6PFhu2plyDFJ1EsNfVQhrN5UuE0i6juynIMgxmoyA3nIqI5VXQmDuASkyB9CpI7hJCYhvKXAKDzicP+lvwjM7K4yiholiidCHGcguDuHfHwT0nfIxkVhzLPMvHmR1A9lhw9EGJwUFBrJOF1FXL1mDJymVw7N8MYX8NnENjkm1zMGGDii7k8RdEQkQjgkzMPOzOOid1bAjijhgt-Jii9LilrF3lfHLK7k7mwvXEBWyLbESHwskSXARh1U9UHLz2QpUh3ldA0gJQznOCJRgup3OyXBPx1y7j10mH1MNMMDyCyCu0sxAjyP5kFFOCmWcRmTcSdE9CqKyB9EsGHAdPfI7SvlgSnnYpGHQTJAbN7iDySEXP-y0ihgyi8pkx8poTnn8r-hYSCpsBCqXWskPh9GFFeQmEnLkPq0ozipnkEGLjAAwHYsFEfOpgaiBK9ETNfR9Bcp0lMBGU0gsuEUZxa3tgqo0GvGqv8J1DqqHO0kN1HyyFrHnBNMmIKsCWgWviBTAE5i-Iksokqr6ptOkLXlQiHNQl3n-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 */
+    /** @xstate-layout N4IgpgJg5mDOIC5QDswA8AuA6AhgYwwEsB7ZWAYgCEBRAfQBUAlAQQBFrGBtABgF1FQAB2KxCRUgJBpEAdgBMAGhABPRHIAsARgCsWAJzaAzJrndte7uoBs2gL62lqTLgIkyVOgAVGAeU8+AZQ4efiQQYVFxZElpBHklVQRDbkNDfW05PUy5GWTNGSt7R3RsfCiKGlogxgA1AEkAYWoQyQixNxjZRRU1bU0ADnTDOQGZbk0rQytChxAnUtdSCroAnwAZGuC+VpF2iTDY+J6kzSn0uX69XP6rGQL1IrmSl3KPWmpWOvofLm2wtqinTi3USw0MenOegM6iuenU-Ue8xebmWtE+AU8AFV6FtQkJdoCDl0EmorCMhmYrP18np+nI7LMkWUUW8AIrMFr-AkdInAkkIHIaCkaPTGGRaQyI57MpZvABimIAcuxfnjwtz9qBDiC1HSZJDRZZtAzis4Ze5KgFMZ4OLR2Zz8ZEeVricdMslIVZNDosuYpWbFu5FdQABr0B3qp2aqSuxKaUWDDLDbT9SyGfrGf0LV7eag1CMA50xvnHQwyPr6AqpbRUmH9ApZ5FLF7EABOFFDXwLGuivKmciwdJSfR0Rgm-NSMk0WDGF1us+4F0b5tgLfb5E79CqdUVAHE1s0-o69r2XUkyYPTIYR8bjFYJ+o5APTHPLjZjKLl4HV2U2xVMYwirdlGp7Fv2l7Dt6t7jqW6jyDOi71ouc6aNwMhfuUa4UIweY+AA0nQfgcMw3yqjsIFAuBQ7XlBY73qWSZYC+9aaDC8aLg8jLSt+WHkMwnjeD4my0ERipBByR6RielEXtRN50RO2i5AhFzyOWfSipKXEBphv7rvxgnCURLCkcB0l9rJV7yXeE5kuoTGIeK4z9PCJpPDpKK8ThNT4YRNpidQElqoW0axFRVm0TZpbDNOzHTOo6a5GSGGeXpq6CK2xARGArbkKwPhmYSZ6ofkWDGHIXrGqhqZWOoE7jNwla1dwNhKcacgpc2aVYAAZgArsgEA5XlBWSSFoGxCV+rlZVfTcDVdVunqBrJOoxqdWQWFYLAxAADYAG7DflhVFpN4zTSYs3VS1i2gt6aRXJM4q3KcqEzKa2apQQf5YAAjjgI0naFiBTWVl2jtdtX8oK9kGMkIpihKG0-t97bbX1gg5ayAPHWNPZAqDM0Q-NN3Q4anpQb6ejI1tGCtjgQ25bjwX47yhPg1VJNQ26Wi6HDJhmBY1huUyPHdZAYhtoDeMUWz51gxVxMLROIxWE1Iw5PWNjTDT3UQIQsCCH1GBHaNLOy8V8tE5zytumS05w5S1IyLS9K66jq6wDl+2EHgYDS+b5mW6V1tzbbiQinz9zXlCpxrTTsAYPgADWWA+2AADuWAYMomPbW2GDkEDE2IMkGZYPNIw1t6mRjPRiQZIMIpQpMcLXhmCdJ3gqfp1nOd5ztraF5wmiB0VYHzWklc6F6JhXC1-Ipmr5bcNwBijmMWSdynaeEJn2e52A+dD0Xchj6dpeTxXdIzzX8-14g1gQuKULr8YLW1tv3e7-v-dH4Pw9DDn2BkkK+09q5zzrvyWquh6TjAuHoAY150xfx7nvPuh9j7D3UMAkuoDy7gNnrXBexwxhpBXhMCqqYoT9BFtxTCicd69ywONLAYAAC2ggc5FxlkHMC3p9RyHTOCdMGYny3UQFkRqcC0LqDQpYKwi5UE-yzqwjhXDlBF1HuRPhYUBFMWEQmMRGh+SoQMDOGEiCjCTBrP0BE2lPrNkYd-ZhajOHcM4GfHR489GlSERmIxwwTHHBuNOChZCzBPhcso1xPY2HuM0ZwIB3iL4nD8YY0RQSJEIBMFOJiMIrCIJsC7MY6EHFNk2s4tB+83EaKLjglJIDjDpICZk8RpjhjPxhPIbQj4WqjhieglhcT1EeO0Lgyi+j-EiLsVk-kVxBgvyuDIDMNYsiaEGTUkZCSi5WAmX2KZGTZntOOKhMs+SoTCxbqtTZqjtl1M4DIfZZ5mmCKOcY7JJgTAWKuFEuEKQKq3OGSBeJDz+jPP4S0mZHyOl2IueWRBYj3ruUcZUru1S7kgtGYkvQELfFvNacc4JcYdD2RFNSRBFxUxoWUSuLAWUwDIB4Xi0uUx9QrIsHY6Y2tuaginBCU4cMDD0kKWYWlPEGXIF6gNfWyAoDkAVMqd49AAASxcCZUibklbQgtFGnEMBOL5g5+lfOmDcBK4rMKSulYNQgcqFVKlYGiZgdR1Vs01UxbVurxipENfBZIs9DAJXGMaZFosGHooqaua1-VbX2sVU62ibrioepyFMHV5g9W+tLE+AcNVvRPyDXBTiH0o3bUjXSmNMq7XyoTbQeQmhk3FgmHCtNNhvX6pVspANlMazXDKaWulVSy1VrjVALAA05QysgMyxpeD4w6qwEpDMkwBjTBdg-JI4J7KUm9DYWZLkw30M8sOytmMpWxtleOy9kAsAAAs9pXrytQOtAR6DMEYOGXhPi1CKywBMR8UiMjGnFCrRRS7q4wnmncFB5Sh0Voleem1V7kO3ofbtJ9TbYhPi9P+2q2RIkgeyakb0Fdq50loSkDucGeKnsQ4y5DNbUMQCwENS9Nbn2vu+J4LDah0yNXrDqteRgrjwk3TFRqu6dDJjXqkS1nlR0oZvSxtj1b7XsATbxgUs9By0megi6lxG5plX6cGzItV7GDtowhq1SH2NyuY6xsA9n5X0EaHhBgdQACyh4WUCl6fqeEa07ypgAwa0sAxpxyK9LQska94QDpRWWujtmGP-VnVyC2xZMgZEHOWeMfSpzJHCxHClDlMh2Iqu1T8NGI07zPWlnAWAABWfVoAcfZLQHCqwNi+bnUCJ8AwsBUgKLkMxuRcjQ3uPoKEKyCjcvpIl8NJ6bMKaQ-9FrbWoAdeYF16gAApagDQv1+cG4MEbtx35XDLCV3UuG1pzipIol8Jakvwfq-RqVsAMZYwBswNYaw0R1AxNiagAQgcBC88DoIrAtM5bzfluEpgispFso+GcUSEq0iDSs+TzZrXfcxq2bGeVgdYhxLQa0KrqBrFh9+1J8O8saUK6cVHpYxj2XTMK1MxpaTWDx5tAnP3idNdgHenArY4AZePD+gU8Y1YGCXi+DIxH+VkcmKYaw1gC0C+jUhwnv2sCS52gdGdcPrDPkUeCZ6b5jQTjV5SYYCjtesV1ywxlmH6cgPUE-Jdq8nzzxcgUe3KRhvghE8B0VdCPJONW82c9mHtGZd0Y-X3QmA9jCD+JlMnPbcVS0CspRtWVsfcwgnpjvcmN-2l1JWXZZxiDluIrc6tx+iKRamVN8qlW-imj6iz2cfNrl4c5Xhz1eR5+fr9OG48gvQt5WYpWqg5LhGHpCRlqbvh-jtH+O8fXjk917GNPpvc-8it4fHBZfcJ21oWdlpKzdXv50q36xg2RsTbkDcw0DzbmfNabkfCH7ouEGhYLHKcA+HCP+jcNMGhL0rcLcJvh7kxvrIbMbEfMbntIdBAKTiDhTgECqh+mDv-q7EunZHcKJtQvyGtAlGHtjisnBLVDoIgWOq-qgSbEbnAJgTOuiOTnQN1usJsMQXSKQRoOQeKJQccGtJAYKixHPnOMwShige-ugZwabtgVpjdhCMaAlr0vxiIhOC5LoFzrcCGsWtTMXrHqXp5C-koWgRwc1mAAQNwWTqDntodsdnUD4EBF7ngnWAODWKISUvCGvFQbVPZK3BYEYPIDVg-iXk-jxLYSbOoT4QTNrsNg2mvDkI+FrlQcYIMIKsuoUlCH0G7oymUDgAAEa7T-zey+xgAADqbYycw0GhbKM4lw800BPK2Sj41IWAWgxClKM+budMDMTGl6sA9A9MKGA0ymNe40A2VG18UI9IqkZCeg0Mq8iyliqE2RpgCBFhaKVhzYoxSmMqkx0x4x062BTAbAdA-2gOCaAQ5uHej4SkeQdw8YmgmxNYM2lyb4VIqsIxlxDmExUxYxoJ1xn+LA7AVQPgPmtATxLxasbxuQ50-K3xboq8KJr8Ogmu+QuQwJEJ165x4JZxg0ZuKRvIGgrxi2HxGJpieg4GliLEdiPoJgRJKGeApAJsyAGAZJTGA0ZRThyRp2KQjUQmi4kwCUKyOoAoVWFyxR+q66nJTG3JfJjK-JIJ46wpSR0JdxtADxtADQXhOIioJ2-W1Ja0gwHRSUq8vSMI0MxgaQkpqQ8BFwQiqpDm6pvJWpxJbCyAZQM6txsJqwCJJp5p1A5p5uKYumaEUw9pPuGxboFUA4r86Zpwkwlmb21mxxm0pxapPJmpApDmuplJp21pcZdpZgSZ0MqsfxBgNgiCkSXp46-0XmkAOAu0u0bgJZ46yApA1AaABsvp8xrMZ4pgpGTeQiOQhSNw2acYKyDsNCaaKQuSHUhxA+eZq4BZDm7ZnZ3ZvZ2pE6qAgZIpY5WW2GOQfMh6OQBgcIrEpiS5fxeoxW65rZf0OAHZEAXZPZpAfZAZQZNxMJdAPmrADxnh3hp2RgughSURcEMUOQMgT5LsPyYik8a8uO5SRA7CR8PZ7CFRxAF5Ke-mkwFcq8Jg1gLsTJaEVBcIEIrcqQcI5gomfe2chAuFWA+FhFWi0FZFq88CVFLctFxwOqhS-64e+QT44oWgjYOFeFHFPFnifFU8FFGgtwwlyFkhlw04gqyQayuQmQclHFClBFRFSSKl5FglGlNFWlDcuStBxoa8Fg80r2SI8lXFil5lDSB+DONYql1l1FiidliAfQNwElBgQeGQ8g2Z7lJlnlZlRc4ylpE5-lVllFNlwVi8q8EIXOvRQa9e9ijIxAQ08AYQ8wKVxYAAtMSogFVSslZQJU1QJUejHmQJVdhtkhCJYtdqEimBkK1f3lhB1aXKxBBDRKOFFBHKmQ5MYHBBzqxOYbEV1B7CwplNlK2CNQgAlAOPIgVS2lkDcPVN8i+EyaYKJl6O7BgD9Deptb5d7uSHql6BYJOZhdDDVLNYuEvJcnJpuVtCbodHdTLqkmWDujPAUNBn0GtIajoOVoaCMF8kyVdT9P9FtQXhjhVJSguqTG6GQp9UpOWDFvHH9d1AbiLmjUNgokLPNlkLWGTGvHDaKHQUXstZtN1KcTlFteFJBJNTBBHNurNdJloFBnSMjWjBLNdUDbXiDamP0bMiYBVOIeATmkNsxNjiKPQWLauIkZzfdXgsImVE7nXLOPOdDIotIuKW+HsSmFrdtLUX7FzZZDzdBJuhrYLVXI9ktseitZLauHeiOW2IkMDSAlOPZIBkVgmDAcRkmSpBmC2n8qgltZmbBRkVkOKOpV1Qrq-KmLmkmC7LcltR6c+MIj7sjjXCFQKIAT1beOCLSIUl7W1VuS4kMn-IXVytfCMDdFMLQlcAYY1D1aKE5c5Rsn9cOswn-FgoXaKDujfF3VSOYBXcEYOKkM0q-DOYNclpGuPZgoICnGABgFzbOf+irs0gmYYYvBVEARRfkDtYgkChPTrYfQUMfRoKfYoufaJbQo1SAVMNdhve9s3b-JgnemAAzLrcHfrUfXiQlPdO-dDZIbcA2bcFoC2j7vfZghLU-WrNA2-a5doNAjQZKU9i3AMBuazU3RigfAPHtMbEWAsX2FAyfbA3g-yLOOlRxGSKmUtTmY-pQ-QxAwNkhAYhmKXWhOXaw-BEJpmeIhYOWECrUjnFParSXSzrkvyIJjODqgMHYlcOxCPeQ+WkwkMqwrANwIfYgjNs9W6SmMMPMkNlIwlC5IgqDfI3ErAJoOY8uVY+mmIqYrJg2bQqxOIjbaPVvcY243IJ45Y-GNY74yEuBgJTSZPJEWxQA3w244YFEyQ5pPurY6cpjf0S3EyTKQ+f-bmYA5iieNtOoFk0yTEz43k3GMMPqK-GiaYGYPOa4yCrANoLU947k3Kcso1QwaxL-W5d7UcRU8ClU7AFYH0-UwM349eIU0qWWDRfozw3Eek90zIPMzkzY3KV8o1K07TWpGvGU7wyotM1ENtP0Hs7E40yDOmDiY9OCBrgGl0zM3oPcw04c3iSs3YrafNQ3UNSliiEnRKOkZ3WndkbyiDGtMc7NssvSIJuM43YY-EalqBPw82uYM+F6pmj6rdv5pcC+bIj7qhGQ5s5YZi2tgxr3IfacO0VkLSLSI3PNO9aVA9lCKtOtKE9ufSnZmplAEnc1J6umh2guWoHU-oC1PsZYDcJYGi6C4Pnrgxi5ieVOhSRAEndSIMHUxoHNBNr3QxGYExFEpYC1FInI-y7S-jkKywcpoXWhAKvho+GWGEeJv4xYPbPkOYFMNeG7oplcdq-eo+jWoXQ5QBhoEIvcNYCrENqKDXB621Gg7a6nA1hesK45qpmOoXRZkugsvGBVpPGBoMNFtA81BxEG+tjgM60KHUwuiAfyhXYrYFjQqcDzpa6k+Uxm59p+Ztu1nKs6-BI23DN0vGK2+Qea5MOMKxAwdw8tjS321iwOxgWoYXWWPkVrAUCKoYdkprIIhVOmMBi5BMDW41vYY4UkZuw1aMO6bYtQe9eXBpeYD7jCHIj25c5m+jETtjPWxCIrtSEImxFSopMIfmqNlkNkCC5vQK0Ln+6LuLsbiOy08aMByAXPPbiHP0sKnBBMHCBe19sLtjBwQDZAJuzQRVCkPNYdb0th9NLhyrlOIUsq3B3a4LvriR01pLg4SKfmx3kYNFumj7pVAxyZs9cxwR2x2k2WlvlzQwY3g2nHODcS807peHk+DdF6HcAoRXughG3rZRCrkpwjUGqpxOO3LQTCHi3FvftS5Myu9YUgSPgZ2PofFzUpHmk3vdLzJdg+MaDOGEbKRcEmXp655nExuu1gVzZcFoRRbQkIumO3uEeHsODqjtTJ723Jy59vm5+Orx9exR0Z32HF0AQMEmMlwxGRQUTdqzqNuF3l5Fw5jrTqyVy8mV1I4l6kG3rBNYBFU-HNisrFRMxQzlywY-e12BF5xBvCIts9aF7ZEGkuqxAETYi1JYI16wcoWR1wW1wIxZKYLN3SEpAty5Pbk+BXKt1MAUjAhc1s+N4oW-nYYV-x1N2FLMpeBRpQixAYTQa3A6aKGiQcQY2C82GWft9LU0n0N58p+Z32sSwi2kDo2SE463vZ0u452Wq12jQUImGSJqu6EmOBwOK3J8dJ-WKUWeUnFUWAJG7DQlGJf5bfr14kI+LDSj+c0glMFT+UbTyooZwdxOQMMc2JWWNeUHrkbhij1JW8SDw52N3SrqZUdUXba2D7H7I0a2M0VLTi9hhMGkIzy1Mz8N7kaHlzjY3BCsRs5j4rzxLuSK+9yDCmIIgS+s1KzkkYOW7NvWBmEVoSem2Wg78hhccSUnbkAxVPpFormYKYvWGmTQrSIuC1R+WCcebMdceH-WGHkftH05fg6cnzmhSL+VPGan6SceU6073LuKOkSmEq3cHBCQnGEXy-Hq2ucjhj6Nxi05ycZXxX-6RzZD3r6SOCEuteIuLkNXMVoyVSA2U+L0lRiUYH3SsHz6cWdqaKzYGVE3tRQ6TjtDHPCs67NEVRR+ev3yQBUKdT8V0L82kVjv2pMUT7gfymVoExEJs0-xtSOf0WZf8eRD0jZ5JoWIja8J3QPYaBYon-NNKmB-4r97ex5C-n6RQxD9C6D-VMHBDxYax42KZekMf0fD0h7oSNeAZhGD77kfyh5f8pv2r4G9YEbvLNMSwmBjAAW1HOCCKCy7fsEB-pcgb+SPL+kByyAIciOU1Kity4baDNO70YHlgWmSLKEJ0SDT3dl2QfY8jwMoHIAr+p5ICpGx9z9F+MLrWZKvCkGy1yUgeEXo+A-KqC-y6ggATf2H7jlssWgNWHBX6pmBXKhzQvBckuCZ4zBVLW3j32UHcCvyB5KwQBVQHV8siyPbHHYiUhMkqQKFfVjQi0C2UdAsHeSpu1+JNUV4S-KgtIM7yxCF+SOVIfFW4rEBC6ABRqlkJPZ0VQ8elBfsgjsTGVOKGAMxuEJkpMRLg9IAvFjk3Qft9QOjItEIkuRsUPKGADxq0J0EIJOhN9N5tlUQYW8tOsib0I0KPgYBIm4wslB0N6TTCmSVBHRnkPfjzU8gyw7OJk3WHtDfQXQmYaJRMC6AdGxoAmvaWGHxUMANTM4ZMK2Higrh9lFyHkJTBwwcgxwjAL0zeGbDLhOw0StiX2GF4vqlwewPYCAA */
     id: 'next',
     context: {
       selectedChange: undefined,
       changes: [],
       time: 0,
     },
+    initial: 'actors',
     states: {
-      actions: {
-        initial: 'actors',
+      actors: {
+        id: 'actors',
+        description: 'The selected account that actions will be applied to',
+        initial: 'proposer',
+
         states: {
-          actors: {
-            description: 'The selected account that actions will be applied to',
-            initial: 'proposer',
-
-            states: {
-              proposer: {
-                description: 'Proposes new Packets',
-                on: {
-                  DO: {
-                    target: '#stack',
-                    actions: 'proposePacket',
-                  },
-                },
-              },
-
-              funder: {
-                description: 'Funds the current Change',
-                on: {
-                  DO: {
-                    target: '#stack.open.funding',
-                  },
-                },
-              },
-
-              solver: {
-                description: 'Proposes a Solution to the current Packet',
-                on: {
-                  DO: {
-                    target: '#stack',
-                    cond: 'isPacket',
-                    actions: 'proposeSolution',
-                  },
-                },
-              },
-
-              qa: {
-                description: 'Judges the current Change',
-                on: {
-                  DO: {
-                    target: '#stack.open.qa',
-                  },
-                },
-              },
-
-              superQa: {
-                description: 'Judges the current Dispute',
-                on: {
-                  DO: {
-                    target: '#stack.open.superQa',
-                    cond: 'isDispute',
-                  },
-                },
-              },
-
-              trader: {
-                description: 'Trades any of the NFTs in the current Change',
-                on: {
-                  DO: {
-                    target: '#stack.trading',
-                  },
-                },
-              },
-
-              editor: {
-                description: 'Proposes an Edit to the current Change',
-                on: {
-                  DO: {
-                    target: '#stack',
-                    cond: 'isHeaderOrSolution',
-                    actions: 'proposeEdit',
-                  },
-                },
-              },
-
-              disputer: {
-                description: 'Disputes the QA in the current Change',
-                on: {
-                  DO: {
-                    target: '#stack.pending.dispute',
-                    cond: 'isDisputable',
-                  },
-                },
-              },
-
-              service: {
-                description: 'Enacts the current Change because Ethereum',
-                on: {
-                  DO: {
-                    target: '#stack.enactable.serviceWorker',
-                    cond: 'isEnactable',
-                    actions: 'enact',
-                  },
-                },
-              },
-
-              history: {
-                type: 'history',
-                description: 'go back to the last selected account',
-              },
-            },
-
+          proposer: {
+            description: 'Proposes new Packets',
             on: {
-              EXIT: '.history',
-              EXIT_SINGLE: '.history',
-              BURN: '.history',
-              REVOKE_OPERATOR: '.history',
-
-              APPROVE_OPENSEA: '.history',
-
-              APPROVE_OPERATOR: '.history',
-              REVOKE_OPENSEA: '.history',
+              DO: {
+                target: '#stack',
+                actions: 'proposePacket',
+              },
             },
           },
-          stack: {
-            id: 'stack',
-            description:
-              'The stack of all changes can be navigated using the NEXT and PREV events.',
+
+          funder: {
+            description: 'Funds the current Change',
+            on: {
+              DO: {
+                target: '#open.funding',
+              },
+            },
+          },
+
+          solver: {
+            description: 'Proposes a Solution to the current Packet',
+            on: {
+              DO: {
+                target: '#stack',
+                cond: 'isPacket',
+                actions: 'proposeSolution',
+              },
+            },
+          },
+
+          qa: {
+            description: 'Judges the current Change',
+            on: {
+              DO: {
+                target: '#open.qa',
+              },
+            },
+          },
+
+          superQa: {
+            description: 'Judges the current Dispute',
+            on: {
+              DO: {
+                target: '#open.superQa',
+                cond: 'isDispute',
+              },
+            },
+          },
+
+          trader: {
+            description: 'Trades any of the NFTs in the current Change',
+            on: {
+              DO: {
+                target: '#trading',
+              },
+            },
+          },
+
+          editor: {
+            description: 'Proposes an Edit to the current Change',
+            on: {
+              DO: {
+                target: '#stack',
+                cond: 'isHeaderOrSolution',
+                actions: 'proposeEdit',
+              },
+            },
+          },
+
+          disputer: {
+            description: 'Disputes the QA in the current Change',
+            on: {
+              DO: {
+                target: '#pending.dispute',
+                cond: 'isDisputable',
+              },
+            },
+          },
+
+          service: {
+            description: 'Enacts the current Change because Ethereum',
+            on: {
+              DO: {
+                target: '#enactable.serviceWorker',
+                cond: 'isEnactable',
+                actions: 'enact',
+              },
+            },
+          },
+
+          exited: {},
+          approvalSet: {},
+        },
+
+        on: {
+          EXIT: '.exited',
+          EXIT_SINGLE: '.exited',
+          BURN: '.exited',
+          REVOKE_OPERATOR: '.approvalSet',
+          APPROVE_OPENSEA: '.approvalSet',
+          APPROVE_OPERATOR: '.approvalSet',
+          REVOKE_OPENSEA: '.approvalSet',
+        },
+      },
+      stack: {
+        id: 'stack',
+        description:
+          'The stack of all changes can be navigated using the NEXT and PREV events.',
+        type: 'parallel',
+        states: {
+          actions: {
             initial: 'open',
             states: {
               open: {
+                id: 'open',
                 initial: 'view',
                 states: {
-                  view: {
-                    description:
-                      'View states are informative only. Transitions must start from an account.',
-                    initial: 'sort',
-                    states: {
-                      sort: {
-                        always: [
-                          {
-                            target: 'packet',
-                            cond: 'isPacket',
-                          },
-                          {
-                            target: 'dispute',
-                            cond: 'isDispute',
-                          },
-                          {
-                            target: 'header',
-                            cond: 'isHeader',
-                          },
-                          {
-                            target: 'edit',
-                            cond: 'isEdit',
-                          },
-                          {
-                            target: 'solution',
-                            cond: 'isSolution',
-                          },
-                        ],
-                      },
-                      packet: {},
-                      dispute: {},
-                      header: {},
-                      edit: {},
-                      solution: {},
-                    },
-                  },
+                  view: {},
                   funding: {
                     description: 'Manage the funding of the change',
                     initial: 'unFunded',
@@ -488,7 +408,6 @@ export const multiMachine = createMachine(
                                 cond: 'isDefundWaiting',
                                 description:
                                   'Move time forwards so defunding is possible',
-                                internal: true,
                               },
                             },
                           },
@@ -499,22 +418,18 @@ export const multiMachine = createMachine(
                       FUND_ETH: {
                         target: '.funded',
                         cond: 'isFundableEth',
-                        internal: true,
                       },
                       FUND_DAI: {
                         target: '.funded',
                         cond: 'isFundableDai',
-                        internal: true,
                       },
                       FUND_1155: {
                         target: '.funded',
                         cond: 'isFundable1155',
-                        internal: true,
                       },
                       FUND_721: {
                         target: '.funded',
                         cond: 'isFundable721',
-                        internal: true,
                       },
                     },
                   },
@@ -529,17 +444,11 @@ export const multiMachine = createMachine(
                         on: {
                           QA_RESOLVE: {
                             target: 'resolved',
-                            actions: {
-                              type: 'qaResolve',
-                              params: {},
-                            },
+                            actions: 'qaResolve',
                           },
                           QA_REJECT: {
                             target: 'rejected',
-                            actions: {
-                              type: 'qaReject',
-                              params: {},
-                            },
+                            actions: 'qaReject',
                           },
                         },
                       },
@@ -556,10 +465,7 @@ export const multiMachine = createMachine(
                     },
                   },
                   superQa: {
-                    exit: {
-                      type: 'focusUplink',
-                      params: {},
-                    },
+                    exit: 'focusUplink',
                     initial: 'shares',
                     states: {
                       shares: {
@@ -578,10 +484,10 @@ export const multiMachine = createMachine(
                     },
                     on: {
                       ALL_DISPUTES_DISMISSED: {
-                        target: '#stack.open',
+                        target: '#open',
                       },
                       DISPUTE_UPHELD: {
-                        target: '#stack.open',
+                        target: '#open',
                       },
                     },
                   },
@@ -592,9 +498,24 @@ export const multiMachine = createMachine(
                 },
               },
               pending: {
+                id: 'pending',
                 initial: 'viewing',
                 states: {
-                  viewing: {},
+                  viewing: {
+                    initial: 'type',
+                    states: {
+                      type: {
+                        always: [
+                          { target: 'resolved', cond: 'isResolved' },
+                          { target: 'rejected', cond: 'isRejected' },
+                          { target: 'disputed', cond: 'isDisputed' },
+                        ],
+                      },
+                      resolved: {},
+                      rejected: {},
+                      disputed: {},
+                    },
+                  },
                   dispute: {
                     initial: 'resolved',
                     states: {
@@ -622,11 +543,8 @@ export const multiMachine = createMachine(
                     },
                     on: {
                       TICK_TIME: {
-                        target: '#stack.pending',
-                        actions: {
-                          type: 'tickTime',
-                          params: {},
-                        },
+                        target: '#pending',
+                        actions: 'tickTime',
                         description:
                           'Move time forwards so dispute resolution is possible',
                       },
@@ -644,7 +562,9 @@ export const multiMachine = createMachine(
                   },
                 ],
               },
-              enacted: {},
+              enacted: {
+                id: 'enacted',
+              },
               disputed: {
                 always: {
                   target: 'enactable',
@@ -652,21 +572,20 @@ export const multiMachine = createMachine(
                 },
               },
               enactable: {
+                id: 'enactable',
                 initial: 'viewing',
                 states: {
                   viewing: {},
                   serviceWorker: {
                     always: {
-                      target: '#stack.enacted',
-                      actions: {
-                        type: 'enact',
-                        params: {},
-                      },
+                      target: '#enacted',
+                      actions: 'enact',
                     },
                   },
                 },
               },
               trading: {
+                id: 'trading',
                 description: 'Trading is always available to all changes',
                 states: {
                   fundsTrading: {
@@ -764,109 +683,156 @@ export const multiMachine = createMachine(
               },
             },
           },
-        },
-
-        on: {
-          BE_TRADER: {
-            target: '.actors.trader',
-            cond: 'isChange',
-            internal: true,
-          },
-
-          BE_PROPOSER: '.actors.proposer',
-
-          BE_SERVICE: {
-            target: '.actors.service',
-            cond: 'isChange',
-          },
-
-          BE_SOLVER: {
-            target: '.actors.solver',
-            cond: 'isChange',
-          },
-
-          BE_EDITOR: {
-            target: '.actors.editor',
-            cond: 'isChange',
-          },
-
-          BE_DISPUTER: {
-            target: '.actors.disputer',
-            cond: 'isChange',
-          },
-
-          BE_QA: {
-            target: '.actors.qa',
-            cond: 'isChange',
-          },
-
-          BE_FUNDER: {
-            target: '.actors.funder',
-            cond: 'isChange',
-          },
-
-          BE_SUPER_QA: {
-            target: '.actors.superQa',
-            cond: 'isChange',
-          },
-          NEXT: {
-            target: '.stack',
-            cond: 'isNotLast',
-          },
-          PREV: {
-            target: '.stack',
-            cond: 'isNotFirst',
-          },
-        },
-      },
-      information: {
-        description: 'Informational views of the state of the system',
-        type: 'parallel',
-        states: {
-          stack: {
+          view: {
             type: 'parallel',
+            description:
+              'View states are informative only. Transitions must start from an account.',
             states: {
-              size: {
+              type: {
+                initial: 'sort',
+                states: {
+                  sort: {
+                    always: [
+                      {
+                        target: 'packet',
+                        cond: 'isPacket',
+                      },
+                      {
+                        target: 'dispute',
+                        cond: 'isDispute',
+                      },
+                      {
+                        target: 'header',
+                        cond: 'isHeader',
+                      },
+                      {
+                        target: 'edit',
+                        cond: 'isEdit',
+                      },
+                      {
+                        target: 'solution',
+                        cond: 'isSolution',
+                      },
+                    ],
+                  },
+                  packet: {},
+                  dispute: {},
+                  header: {},
+                  edit: {},
+                  solution: {},
+                },
+              },
+              position: {
                 initial: 'empty',
                 states: {
-                  empty: {},
-                },
-              },
-              position: {},
-            },
-          },
-          time: {
-            initial: 'tick0',
-            states: {
-              tick0: {
-                always: {
-                  target: 'tick1',
-                  cond: 'isTime1',
-                },
-              },
-              tick1: {
-                on: {
-                  isTime2: {
-                    target: 'tick2',
+                  empty: {
+                    always: [
+                      { target: 's0', cond: 'isPos0' },
+                      { target: 's1', cond: 'isPos1' },
+                      { target: 's2', cond: 'isPos2' },
+                      { target: 's3', cond: 'isPos3' },
+                      { target: 's4', cond: 'isPos4' },
+                      { target: 's5', cond: 'isPos5' },
+                      { target: 's6', cond: 'isPos6' },
+                      { target: 's7', cond: 'isPos7' },
+                      { target: 's8', cond: 'isPos8' },
+                      { target: 's9', cond: 'isPos9' },
+                    ],
                   },
+                  s0: {},
+                  s1: {},
+                  s2: {},
+                  s3: {},
+                  s4: {},
+                  s5: {},
+                  s6: {},
+                  s7: {},
+                  s8: {},
+                  s9: {},
                 },
               },
-              tick2: {
-                on: {
-                  isTime3: {
-                    target: 'tick3',
+              time: {
+                description: 'Informational time position of the system',
+                initial: 'limbo',
+                on: { TICK_TIME: '.limbo' },
+                states: {
+                  limbo: {
+                    always: [
+                      { target: 't0', cond: 'isTime0' },
+                      { target: 't1', cond: 'isTime1' },
+                      { target: 't2', cond: 'isTime2' },
+                      { target: 't3', cond: 'isTime3' },
+                      { target: 't4', cond: 'isTime4' },
+                      { target: 't5', cond: 'isTime5' },
+                    ],
                   },
+                  t0: {},
+                  t1: {},
+                  t2: {},
+                  t3: {},
+                  t4: {},
+                  t5: { type: 'final' },
                 },
-              },
-              tick3: {
-                type: 'final',
               },
             },
           },
         },
       },
     },
-    type: 'parallel',
+
+    on: {
+      BE_TRADER: {
+        target: '#actors.trader',
+        cond: 'isChange',
+      },
+
+      BE_PROPOSER: '#actors.proposer',
+
+      BE_SERVICE: {
+        target: '#actors.service',
+        cond: 'isChange',
+      },
+
+      BE_SOLVER: {
+        target: '#actors.solver',
+        cond: 'isChange',
+      },
+
+      BE_EDITOR: {
+        target: '#actors.editor',
+        cond: 'isChange',
+      },
+
+      BE_DISPUTER: {
+        target: '#actors.disputer',
+        cond: 'isChange',
+      },
+
+      BE_QA: {
+        target: '#actors.qa',
+        cond: 'isChange',
+      },
+
+      BE_FUNDER: {
+        target: '#actors.funder',
+        cond: 'isChange',
+      },
+
+      BE_SUPER_QA: {
+        target: '#actors.superQa',
+        cond: 'isChange',
+      },
+      NEXT: {
+        target: '.stack',
+        cond: 'isNotLast',
+        actions: 'next',
+      },
+      PREV: {
+        target: '.stack',
+        cond: 'isNotFirst',
+        actions: 'prev',
+      },
+    },
     predictableActionArguments: true,
     preserveActionOrder: true,
   },
