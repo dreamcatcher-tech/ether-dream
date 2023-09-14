@@ -10,7 +10,7 @@
     "watch": "nodemon --exec \"hardhat --emoji test\"",
     "watch:check": "nodemon --exec \"npm run check\"",
     "watch:coverage": "nodemon --exec \"npm run coverage\"",
-    "multi": "nodemon --exec \"npx mocha test/multi/multi.test.js\""
+    "multi": "nodemon --exec \"timeout 5s npx mocha test/multi/multi.test.js\""
   },
   "devDependencies": {
     "@ipld/dag-pb": "^4.0.5",

@@ -1,9 +1,10 @@
-import { multiMachine } from './multiMachine.js'
+import { machine } from './multiMachine.js'
 import test from '../testFactory.js'
+import { and } from '../conditions.js'
 
 const skipActors = (...actors) => {
   for (const actor of actors) {
-    if (multiMachine.states.actors.states[actor] === undefined) {
+    if (machine.states.actors.states[actor] === undefined) {
       throw new Error(`Actor ${actor} not found`)
     }
   }
@@ -23,15 +24,21 @@ describe.only('multiMachine', () => {
       return state.context.selectedChange === 1
     },
     dry: true,
-    filter: skipActors(
-      'funder',
-      'disputer',
-      'trader',
-      'service',
-      'editor',
-      'superQa',
-      'qa',
-      'solver'
+    filter: and(
+      skipActors(
+        'funder',
+        'disputer',
+        'trader',
+        'service',
+        'editor',
+        'superQa',
+        'qa',
+        'solver'
+      ),
+      (state, event) => {
+        // console.log('state', state.toStrings(), 'event', event.type)
+        return true
+      }
     ),
   })
   // test({

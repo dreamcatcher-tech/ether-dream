@@ -1,8 +1,7 @@
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-// import { machine } from './machine.js'
-import { multiMachine, options } from './multi/multiMachine.js'
+import { machine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
 import Debug from 'debug'
 
@@ -38,8 +37,8 @@ export default function createSuite({ toState, filter, verify, ...config }) {
   }
   const start = Date.now()
   let states = 0
-  const machine = createTestMachine(multiMachine.config, options)
-  const model = createTestModel(machine)
+  const testMachine = createTestMachine(machine.config, options)
+  const model = createTestModel(testMachine)
   const paths = model.getShortestPaths({
     toState: (state) => {
       states++
