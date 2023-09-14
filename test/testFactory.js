@@ -1,6 +1,8 @@
+import { createTestModel, createTestMachine } from '@xstate/test'
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { machine } from './machine.js'
+// import { machine } from './machine.js'
+import { multiMachine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
 import Debug from 'debug'
 
@@ -14,12 +16,14 @@ import Debug from 'debug'
  * enforcing a repeated pattern.
  * @param {*} param0
  */
-export default function createSuite({ toState, filter, verify, ...options }) {
-  expect(toState).to.be.a('function')
-  expect(filter).to.be.a('function')
-  expect(verify).to.be.a('function')
+export default function createSuite({ toState, filter, verify, ...config }) {
+  filter = filter || (() => true)
+  verify = verify || (() => {})
+  expect(toState, 'toState').to.be.a('function')
+  expect(filter, 'filter').to.be.a('function')
+  expect(verify, 'verify').to.be.a('function')
 
-  const { dry, debug, last, first, pathAt } = options
+  const { dry, debug, last, first, pathAt } = config
 
   if (pathAt !== undefined) {
     it(`pathAt ${pathAt}`, () => {
@@ -34,7 +38,9 @@ export default function createSuite({ toState, filter, verify, ...options }) {
   }
   const start = Date.now()
   let states = 0
-  const paths = machine.getShortestPaths({
+  const machine = createTestMachine(multiMachine.config, options)
+  const model = createTestModel(machine)
+  const paths = model.getShortestPaths({
     toState: (state) => {
       states++
       return toState(state)
