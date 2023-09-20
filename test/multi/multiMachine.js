@@ -60,7 +60,7 @@ const is =
   (params) =>
   ({ context }) =>
     isDirect(context, params)
-const isDirect = (context, params) => {
+export const isDirect = (context, params) => {
   const change = getChange(context)
   return isChange(change, params)
 }
@@ -114,6 +114,7 @@ const guards = {
   isHeader: is({ type: 'HEADER' }),
   isHeaderOrSolution: ({ context }) =>
     guards.isHeader({ context }) || guards.isSolution({ context }),
+
   isSolution: is({ type: 'SOLUTION' }),
   isDispute: is({ type: 'DISPUTE' }),
   isEdit: is({ type: 'EDIT' }),
@@ -130,7 +131,11 @@ const guards = {
     // get the current time tick, see if enough time passed
     return !change.disputed
   },
-  isNotOpen: not({ qaResolved: false, qaRejected: false }),
+  isNotOpen: not({
+    // TODO handle packets being not open too
+    qaResolved: false,
+    qaRejected: false,
+  }),
   isPacketOrDispute: (opts) => guards.isPacket(opts) || guards.isDispute(opts),
   isDisputable: ({ context }) => {
     const change = getChange(context)
@@ -151,6 +156,9 @@ const guards = {
       return true
     }
     return false
+  },
+  isPacketOpen: ({ context }) => {
+    // how is this different to
   },
 
   // BUT what about stopping a dispute loop ?
@@ -252,33 +260,16 @@ export const options = {
         }
         const changes = [...context.changes]
         changes[context.selectedChange] = setDirect(change, { enacted: true })
-        if (isChange(change, { qaRejected: true })) {
-          return changes
-        }
-        if (guards.isHeader({ context })) {
-          const packet = make({
-            type: 'PACKET',
-            uplink: context.selectedChange,
-          })
-          // TODO link the header to the packet
-          changes.push(packet)
-          const uplink = changes.length - 1
-          changes[context.selectedChange] = setDirect(change, { uplink })
-          return changes
-        }
-        if (guards.isSolution({ context })) {
-          /**
-           * An enacted solution should
-           *  - wait for any other open solutions to close
-           *  - close the packet if they are the only one
-           *
-           * If a solution is rejected, then it still might close off
-           * the packet if someone else was waiting for it
-           */
-        }
-        throw new Error('cannot enact')
+        return changes
       },
     }),
+    makePacket: assign({
+      changes: ({ context: { changes, selectedChange } }) => [
+        ...changes,
+        make({ type: 'PACKET', uplink: selectedChange }),
+      ],
+    }),
+
     // focusUplink: ({ context, event }) => {},
   },
 }
@@ -311,7 +302,7 @@ export const machine = createMachine(
           funder: {
             description: 'Funds the current Change',
             on: {
-              DO: '#stack.actions.open.funding',
+              DO: '#stack.open.funding',
             },
           },
           solver: {
@@ -327,14 +318,14 @@ export const machine = createMachine(
           qa: {
             description: 'Judges the current Change',
             on: {
-              DO: '#stack.actions.open.qa',
+              DO: '#stack.open.qa',
             },
           },
           superQa: {
             description: 'Judges the current Dispute',
             on: {
               DO: {
-                target: '#stack.actions.open.superQa',
+                target: '#stack.open.superQa',
                 guard: 'isDispute',
               },
             },
@@ -342,7 +333,7 @@ export const machine = createMachine(
           trader: {
             description: 'Trades any of the NFTs in the current Change',
             on: {
-              DO: '#stack.actions.trading',
+              DO: '#stack.trading',
             },
           },
           editor: {
@@ -359,7 +350,7 @@ export const machine = createMachine(
             description: 'Disputes the QA in the current Change',
             on: {
               DO: {
-                target: '#stack.actions.pending.dispute',
+                target: '#stack.pending.dispute',
                 guard: 'isDisputable',
               },
             },
@@ -368,7 +359,7 @@ export const machine = createMachine(
             description: 'Enacts the current Change because Ethereum',
             on: {
               DO: {
-                target: '#stack.actions.enactable.serviceWorker',
+                target: '#stack.enactable.serviceWorker',
                 guard: 'isEnactable',
               },
             },
@@ -388,411 +379,404 @@ export const machine = createMachine(
       },
       stack: {
         id: 'stack',
-        type: 'parallel',
         description:
           'The stack of all changes can be navigated using the NEXT and PREV events.',
+        initial: 'open',
         states: {
-          actions: {
-            initial: 'open',
+          open: {
+            initial: 'view',
             states: {
-              open: {
-                initial: 'view',
+              view: {},
+              funding: {
+                id: 'funding',
+                description: 'Manage the funding of the change',
+                initial: 'unFunded',
                 states: {
-                  view: {},
-                  funding: {
-                    description: 'Manage the funding of the change',
-                    initial: 'unFunded',
-                    states: {
-                      unFunded: {
-                        always: {
-                          target: 'funded',
-                          guard: 'isFunded',
-                        },
-                      },
-                      funded: {
-                        initial: 'holding',
-                        states: {
-                          holding: {
-                            always: {
-                              target: 'defunding',
-                              guard: 'isDefunding',
-                            },
-                            on: {
-                              DEFUND_START: {
-                                target: 'defunding',
-                                guard: 'isDefundable',
-                              },
-                            },
-                          },
-                          defunding: {
-                            on: {
-                              DEFUND_STOP: {
-                                target: 'holding',
-                              },
-                              DEFUND: {
-                                target: '#stack.actions.open.funding.unFunded',
-                                guard: 'isDefundWindowPassed',
-                              },
-                              TICK_TIME: {
-                                target: 'defunding',
-                                guard: 'isDefundWaiting',
-                                actions: {
-                                  type: 'tickTime',
-                                },
-                                description:
-                                  'Move time forwards so defunding is possible',
-                              },
-                            },
-                          },
-                        },
-                      },
-                    },
-                    on: {
-                      FUND_ETH: {
-                        target: '.funded',
-                        guard: 'isFundableEth',
-                      },
-                      FUND_DAI: {
-                        target: '.funded',
-                        guard: 'isFundableDai',
-                      },
-                      FUND_1155: {
-                        target: '.funded',
-                        guard: 'isFundable1155',
-                      },
-                      FUND_721: {
-                        target: '.funded',
-                        guard: 'isFundable721',
-                      },
-                    },
-                  },
-                  qa: {
-                    initial: 'judging',
-                    states: {
-                      judging: {
-                        exit: {
-                          type: 'qaDisputeWindowStart',
-                        },
-                        on: {
-                          QA_RESOLVE: {
-                            target: 'resolved',
-                            actions: {
-                              type: 'qaResolve',
-                            },
-                          },
-                          QA_REJECT: {
-                            target: 'rejected',
-                            actions: {
-                              type: 'qaReject',
-                            },
-                          },
-                        },
-                      },
-                      resolved: {
-                        type: 'final',
-                      },
-                      rejected: {
-                        type: 'final',
-                      },
-                    },
+                  unFunded: {
                     always: {
-                      target: 'view',
-                      guard: 'isPacketOrDispute',
+                      target: 'funded',
+                      guard: 'isFunded',
                     },
                   },
-                  superQa: {
-                    exit: {
-                      type: 'focusUplink',
-                    },
-                    initial: 'shares',
+                  funded: {
+                    initial: 'holding',
                     states: {
-                      shares: {
+                      holding: {
                         always: {
-                          target: 'resolved',
-                          guard: 'isResolved',
+                          target: 'defunding',
+                          guard: 'isDefunding',
+                        },
+                        on: {
+                          DEFUND_START: {
+                            target: 'defunding',
+                            guard: 'isDefundable',
+                          },
                         },
                       },
-                      resolved: {
-                        always: {
-                          target: 'rejected',
-                          guard: 'isRejected',
+                      defunding: {
+                        on: {
+                          DEFUND_STOP: {
+                            target: 'holding',
+                          },
+                          DEFUND: {
+                            target: '#funding.unFunded',
+                            guard: 'isDefundWindowPassed',
+                          },
+                          TICK_TIME: {
+                            target: 'defunding',
+                            guard: 'isDefundWaiting',
+                            actions: {
+                              type: 'tickTime',
+                            },
+                            description:
+                              'Move time forwards so defunding is possible',
+                          },
                         },
                       },
-                      rejected: {},
+                    },
+                  },
+                },
+                on: {
+                  FUND_ETH: {
+                    target: '.funded',
+                    guard: 'isFundableEth',
+                  },
+                  FUND_DAI: {
+                    target: '.funded',
+                    guard: 'isFundableDai',
+                  },
+                  FUND_1155: {
+                    target: '.funded',
+                    guard: 'isFundable1155',
+                  },
+                  FUND_721: {
+                    target: '.funded',
+                    guard: 'isFundable721',
+                  },
+                },
+              },
+              qa: {
+                initial: 'judging',
+                states: {
+                  judging: {
+                    exit: {
+                      type: 'qaDisputeWindowStart',
                     },
                     on: {
-                      ALL_DISPUTES_DISMISSED: {
-                        target: '#stack.actions.open',
-                      },
-                      DISPUTE_UPHELD: {
-                        target: '#stack.actions.open',
-                      },
-                    },
-                  },
-                },
-                always: {
-                  target: 'pending',
-                  guard: 'isNotOpen',
-                },
-              },
-              pending: {
-                initial: 'view',
-                states: {
-                  view: {},
-                  dispute: {
-                    initial: 'resolved',
-                    states: {
-                      resolved: {
-                        always: {
-                          target: 'rejected',
-                          guard: 'isRejected',
-                        },
-                        on: {
-                          DISPUTE_SHARES: {
-                            target: '#stack',
-                            actions: ['disputeShares', 'selectLast'],
-                          },
-                          DISPUTE_RESOLVE: {
-                            target: '#stack',
-                            actions: ['disputeResolve', 'selectLast'],
-                          },
-                        },
-                      },
-                      rejected: {
-                        on: {
-                          DISPUTE_REJECTION: {
-                            target: '#stack',
-                            actions: ['disputeRejection', 'selectLast'],
-                          },
-                        },
-                      },
-                    },
-                    on: {
-                      TICK_TIME: {
-                        target: '#stack.actions.pending',
-                        guard: 'isTimeLeft',
-                        actions: 'tickTime',
-                        description:
-                          'Move time forwards so dispute resolution is possible',
-                      },
-                    },
-                  },
-                },
-                always: [
-                  { target: 'enacted', guard: 'isDispute' },
-                  { target: 'disputed', guard: 'isDisputeWindowPassed' },
-                ],
-              },
-              enacted: {
-                always: {
-                  target: '#stack',
-                  guard: 'isHeader',
-                  actions: 'selectLast',
-                  description:
-                    'Because a header causes a packet to be made, focus the packet immediately.',
-                },
-              },
-              disputed: {
-                always: {
-                  target: 'enactable',
-                  guard: 'isUnDisputed',
-                },
-              },
-              enactable: {
-                initial: 'viewing',
-                states: {
-                  viewing: {},
-                  serviceWorker: {
-                    exit: {
-                      type: 'enact',
-                    },
-                    always: [
-                      { target: '#stack.actions.enacted', guard: 'isDispute' },
-                      {
-                        target: '#stack.actions.enactSolution',
-                        guard: 'isSolution',
-                      },
-                      { target: '#stack.actions.enacted', guard: 'isRejected' },
-                      {
-                        target: '#stack.actions.enacted',
-                        guard: 'isHeader',
-                        actions: 'makePacket',
-                      },
-                    ],
-                  },
-                },
-              },
-              trading: {
-                description: 'Trading is always available to all changes',
-                states: {
-                  fundsTrading: {
-                    initial: 'unfunded',
-                    states: {
-                      unfunded: {
-                        description: 'No funding is available for trading',
-                        always: {
-                          target: 'funded',
-                          guard: 'isFunded',
-                        },
-                      },
-                      funded: {
-                        description: 'Funding is available for trading',
-                        always: {
-                          target: 'traded',
-                          guard: 'isFundsTraded',
-                        },
-                        on: {
-                          TRADE_ALL_FUNDS: {
-                            target: 'traded',
-                          },
-                          TRADE_SOME_FUNDS: {
-                            target: 'traded',
-                          },
-                        },
-                      },
-                      traded: {
-                        type: 'final',
-                      },
-                    },
-                  },
-                  contentTrading: {
-                    initial: 'unenacted',
-                    states: {
-                      unenacted: {
-                        description:
-                          'Nothing to trade until the change is resolved',
-                        always: {
-                          target: 'enacted',
-                          guard: 'isEnacted',
-                        },
-                      },
-                      enacted: {
-                        description: 'Content Shares are available for trading',
-                        always: {
-                          target: 'traded',
-                          guard: 'isContentTraded',
-                        },
-                        on: {
-                          TRADE_ALL_CONTENT: {
-                            target: 'traded',
-                          },
-                          TRADE_SOME_CONTENT: {
-                            target: 'traded',
-                          },
-                        },
-                      },
-                      traded: {
-                        type: 'final',
-                      },
-                    },
-                  },
-                  qaMedallionTrading: {
-                    initial: 'nonExistent',
-                    states: {
-                      nonExistent: {
-                        description:
-                          'If not a packet, there can never be a medallion',
-                        always: {
-                          target: 'unenacted',
-                          guard: 'isPacket',
-                        },
-                      },
-                      unenacted: {
-                        always: {
-                          target: 'enacted',
-                          guard: 'isEnacted',
-                        },
-                      },
-                      enacted: {
-                        on: {
-                          TRADE_MEDALLION: {
-                            target: 'traded',
-                          },
-                        },
-                      },
-                      traded: {
-                        type: 'final',
-                      },
-                    },
-                  },
-                },
-                type: 'parallel',
-              },
-              enactSolution: {
-                initial: 'sort',
-                states: {
-                  sort: {
-                    always: [
-                      {
-                        target: 'openPacket',
-                        guard: 'isPacketOpen',
-                      },
-                      {
-                        target: 'closedPacket',
-                      },
-                    ],
-                  },
-                  openPacket: {
-                    always: [
-                      {
-                        target: 'closablePacket',
-                        guard: 'isResolved',
-                      },
-                      {
-                        target: 'rejectedMultiSolution',
-                        guard: 'isMultiSolution',
-                      },
-                      {
-                        target: 'enacted',
-                      },
-                    ],
-                  },
-                  closedPacket: {
-                    always: [
-                      {
-                        target: 'enacted',
-                        guard: 'isResolved',
+                      QA_RESOLVE: {
+                        target: 'resolved',
                         actions: {
-                          type: 'mergeShares',
+                          type: 'qaResolve',
                         },
                       },
-                      {
-                        target: 'enacted',
-                      },
-                    ],
-                  },
-                  closablePacket: {
-                    entry: 'pendingPacket',
-                    always: [
-                      {
-                        target: 'enacted',
-                        guard: 'isLastSolution',
-                        actions: 'enactPacket',
-                      },
-                      'enacted',
-                    ],
-                  },
-                  rejectedMultiSolution: {
-                    always: [
-                      {
-                        target: 'enacted',
-                        guard: 'isLastSolution',
+                      QA_REJECT: {
+                        target: 'rejected',
                         actions: {
-                          type: 'enactPacket',
+                          type: 'qaReject',
                         },
                       },
-                      'enacted',
-                    ],
+                    },
                   },
-                  enacted: {
-                    entry: 'enactChange',
+                  resolved: {
+                    type: 'final',
+                  },
+                  rejected: {
                     type: 'final',
                   },
                 },
-                onDone: {
-                  target: '#stack.actions.enacted',
+                always: {
+                  target: 'view',
+                  guard: 'isPacketOrDispute',
                 },
               },
+              superQa: {
+                exit: {
+                  type: 'focusUplink',
+                },
+                initial: 'shares',
+                states: {
+                  shares: {
+                    always: {
+                      target: 'resolved',
+                      guard: 'isResolved',
+                    },
+                  },
+                  resolved: {
+                    always: {
+                      target: 'rejected',
+                      guard: 'isRejected',
+                    },
+                  },
+                  rejected: {},
+                },
+                on: {
+                  ALL_DISPUTES_DISMISSED: {
+                    target: '#stack',
+                  },
+                  DISPUTE_UPHELD: {
+                    target: '#stack',
+                  },
+                },
+              },
+            },
+            always: {
+              target: 'pending',
+              guard: 'isNotOpen',
+            },
+          },
+          pending: {
+            initial: 'view',
+            states: {
+              view: {},
+              dispute: {
+                initial: 'resolved',
+                states: {
+                  resolved: {
+                    always: {
+                      target: 'rejected',
+                      guard: 'isRejected',
+                    },
+                    on: {
+                      DISPUTE_SHARES: {
+                        target: '#stack',
+                        actions: ['disputeShares', 'selectLast'],
+                      },
+                      DISPUTE_RESOLVE: {
+                        target: '#stack',
+                        actions: ['disputeResolve', 'selectLast'],
+                      },
+                    },
+                  },
+                  rejected: {
+                    on: {
+                      DISPUTE_REJECTION: {
+                        target: '#stack',
+                        actions: ['disputeRejection', 'selectLast'],
+                      },
+                    },
+                  },
+                },
+                on: {
+                  TICK_TIME: {
+                    target: '#stack.pending',
+                    guard: 'isTimeLeft',
+                    actions: 'tickTime',
+                    description:
+                      'Move time forwards so dispute resolution is possible',
+                  },
+                },
+              },
+            },
+            always: [
+              { target: 'enacted', guard: 'isDispute' },
+              { target: 'disputed', guard: 'isDisputeWindowPassed' },
+            ],
+          },
+          enacted: {
+            always: {
+              target: '#stack',
+              guard: 'isHeader',
+              actions: 'selectLast',
+              description:
+                'Because a header causes a packet to be made, focus the packet immediately.',
+            },
+          },
+          disputed: {
+            always: {
+              target: 'enactable',
+              guard: 'isUnDisputed',
+            },
+          },
+          enactable: {
+            initial: 'viewing',
+            states: {
+              viewing: {},
+              serviceWorker: {
+                exit: {
+                  type: 'enact',
+                },
+                always: [
+                  { target: '#stack.enacted', guard: 'isDispute' },
+                  {
+                    target: '#stack.enactSolution',
+                    guard: 'isSolution',
+                  },
+                  { target: '#stack.enacted', guard: 'isRejected' },
+                  {
+                    target: '#stack.enacted',
+                    guard: 'isHeader',
+                    actions: 'makePacket',
+                  },
+                ],
+              },
+            },
+          },
+          trading: {
+            description: 'Trading is always available to all changes',
+            states: {
+              fundsTrading: {
+                initial: 'unfunded',
+                states: {
+                  unfunded: {
+                    description: 'No funding is available for trading',
+                    always: {
+                      target: 'funded',
+                      guard: 'isFunded',
+                    },
+                  },
+                  funded: {
+                    description: 'Funding is available for trading',
+                    always: {
+                      target: 'traded',
+                      guard: 'isFundsTraded',
+                    },
+                    on: {
+                      TRADE_ALL_FUNDS: {
+                        target: 'traded',
+                      },
+                      TRADE_SOME_FUNDS: {
+                        target: 'traded',
+                      },
+                    },
+                  },
+                  traded: {
+                    type: 'final',
+                  },
+                },
+              },
+              contentTrading: {
+                initial: 'unenacted',
+                states: {
+                  unenacted: {
+                    description:
+                      'Nothing to trade until the change is resolved',
+                    always: {
+                      target: 'enacted',
+                      guard: 'isEnacted',
+                    },
+                  },
+                  enacted: {
+                    description: 'Content Shares are available for trading',
+                    always: {
+                      target: 'traded',
+                      guard: 'isContentTraded',
+                    },
+                    on: {
+                      TRADE_ALL_CONTENT: {
+                        target: 'traded',
+                      },
+                      TRADE_SOME_CONTENT: {
+                        target: 'traded',
+                      },
+                    },
+                  },
+                  traded: {
+                    type: 'final',
+                  },
+                },
+              },
+              qaMedallionTrading: {
+                initial: 'nonExistent',
+                states: {
+                  nonExistent: {
+                    description:
+                      'If not a packet, there can never be a medallion',
+                    always: {
+                      target: 'unenacted',
+                      guard: 'isPacket',
+                    },
+                  },
+                  unenacted: {
+                    always: {
+                      target: 'enacted',
+                      guard: 'isEnacted',
+                    },
+                  },
+                  enacted: {
+                    on: {
+                      TRADE_MEDALLION: {
+                        target: 'traded',
+                      },
+                    },
+                  },
+                  traded: {
+                    type: 'final',
+                  },
+                },
+              },
+            },
+            type: 'parallel',
+          },
+          enactSolution: {
+            initial: 'sort',
+            states: {
+              sort: {
+                always: [
+                  {
+                    target: 'openPacket',
+                    guard: 'isPacketOpen',
+                  },
+                  {
+                    target: 'closedPacket',
+                  },
+                ],
+              },
+              openPacket: {
+                always: [
+                  {
+                    target: 'closablePacket',
+                    guard: 'isResolved',
+                  },
+                  {
+                    target: 'rejectedMultiSolution',
+                    guard: 'isMultiSolution',
+                  },
+                  {
+                    target: 'enacted',
+                  },
+                ],
+              },
+              closedPacket: {
+                always: [
+                  {
+                    target: 'enacted',
+                    guard: 'isResolved',
+                    actions: {
+                      type: 'mergeShares',
+                    },
+                  },
+                  {
+                    target: 'enacted',
+                  },
+                ],
+              },
+              closablePacket: {
+                entry: 'pendingPacket',
+                always: [
+                  {
+                    target: 'enacted',
+                    guard: 'isLastSolution',
+                    actions: 'enactPacket',
+                  },
+                  'enacted',
+                ],
+              },
+              rejectedMultiSolution: {
+                always: [
+                  {
+                    target: 'enacted',
+                    guard: 'isLastSolution',
+                    actions: {
+                      type: 'enactPacket',
+                    },
+                  },
+                  'enacted',
+                ],
+              },
+              enacted: { type: 'final' },
+            },
+            onDone: {
+              target: '#stack.enacted',
             },
           },
         },
