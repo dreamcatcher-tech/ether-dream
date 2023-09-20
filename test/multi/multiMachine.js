@@ -2,31 +2,30 @@ import { assign } from 'xstate'
 
 // use https://stately.ai/viz to visualize the machine
 
+const MAX_TIME_TICKS = 5
 const DISPUTE_WINDOW_TICKS = 1
 const DEFUND_WINDOW_TICKS = 2
-const getChange = ({ changes, selectedChange }) => {
+const types = ['HEADER', 'PACKET', 'SOLUTION', 'DISPUTE', 'EDIT']
+export const getChange = ({ changes, selectedChange }) => {
   if (!Array.isArray(changes) || changes.length === 0) {
     return {}
   }
   return changes[selectedChange]
 }
-function isTime(ticks) {
-  return function time({ context: { time } }) {
-    return time === ticks
-  }
-}
-function isPos(index) {
-  return function pos({ context: { selectedChange } }) {
-    return selectedChange === index
-  }
-}
 const make = (params = {}) => {
+  if (!Object.keys(params).length) {
+    return base
+  }
   for (const key of Object.keys(params)) {
     if (!(key in base)) {
       throw new Error(`key ${key} is not in base key set`)
     }
   }
-  return { ...base, ...params }
+  const result = { ...base, ...params }
+  if (result.type && !types.includes(result.type)) {
+    throw new Error(`type ${result.type} is not in type set`)
+  }
+  return result
 }
 
 const setDirect = (change, params) => {
@@ -36,6 +35,9 @@ const setDirect = (change, params) => {
     if (!(key in base)) {
       throw new Error(`key ${key} is not in base key set`)
     }
+    if (key === 'type' && !types.includes(next[key])) {
+      throw new Error(`type ${next[key]} is not in type set`)
+    }
   }
   return next
 }
@@ -43,15 +45,8 @@ const setDirect = (change, params) => {
 const set = (params) =>
   assign({
     changes: ({ context }) => {
-      // get the currenct change
-      // update it with the given params
       const change = getChange(context)
-      const next = { ...change, ...params }
-      for (const key of Object.keys(next)) {
-        if (!(key in next)) {
-          throw new Error(`key ${key} is not in change key set`)
-        }
-      }
+      const next = setDirect(change, params)
       const changes = [...context.changes]
       changes[context.selectedChange] = next
       return changes
@@ -67,9 +62,9 @@ const is =
     isDirect(context, params)
 const isDirect = (context, params) => {
   const change = getChange(context)
-  return isSingle(change, params)
+  return isChange(change, params)
 }
-const isSingle = (change, params) => {
+const isChange = (change, params) => {
   const base = make()
   for (const key of Object.keys(params)) {
     if (!(key in base)) {
@@ -92,10 +87,11 @@ const base = Object.freeze({
   disputed: false,
   qaTickStart: undefined,
   funded: false,
+  // TODO add rounds limits for super qa
 })
 
 const guards = {
-  isChange: ({ context }) => !!getChange(context).type,
+  isChange: ({ context: { changes } }) => changes.length > 0,
   isNotLast: ({ context }) =>
     context.selectedChange < context.changes.length - 1,
   isNotFirst: ({ context }) => context.selectedChange > 0,
@@ -106,10 +102,10 @@ const guards = {
     }
     for (const solutionIndex of getChange(context).downlinks) {
       const change = context.changes[solutionIndex]
-      if (!isSingle(change, { type: 'SOLUTION' })) {
+      if (!isChange(change, { type: 'SOLUTION' })) {
         throw new Error('downlink is not a solution')
       }
-      if (isSingle(change, { qaResolved: true, enacted: true })) {
+      if (isChange(change, { qaResolved: true, enacted: true })) {
         return true
       }
     }
@@ -135,6 +131,31 @@ const guards = {
     return !change.disputed
   },
   isNotOpen: not({ qaResolved: false, qaRejected: false }),
+  isPacketOrDispute: (opts) => guards.isPacket(opts) || guards.isDispute(opts),
+  isDisputable: ({ context }) => {
+    const change = getChange(context)
+    if (isChange(change, { qaResolved: false, qaRejected: false })) {
+      return false
+    }
+    if (!guards.isDisputeWindowPassed({ context })) {
+      return false
+    }
+    if (isChange(change, { enacted: true })) {
+      throw new Error('enacted should not be true')
+    }
+    return true
+  },
+  isDisputeWindowPassed: ({ context }) => {
+    const change = getChange(context)
+    if (change.qaTickStart + DISPUTE_WINDOW_TICKS <= context.time) {
+      return true
+    }
+    return false
+  },
+
+  // BUT what about stopping a dispute loop ?
+  isUnDisputed: is({ disputed: false }),
+
   isFundableEth: (context, event) => false,
 
   isFundableDai: (context, event) => false,
@@ -155,33 +176,10 @@ const guards = {
 
   isDefundable: (context, event) => false,
 
-  isPacketOrDispute: (context, event) => false,
-
-  isDisputeWindowPassed: (context, event) => false,
-
-  isUnDisputed: (context, event) => false,
-
-  isDisputable: (context, event) => false,
-
   isRejected: (context, event) => false,
 
   isResolved: (context, event) => false,
-  isTime0: isTime(0),
-  isTime1: isTime(1),
-  isTime2: isTime(2),
-  isTime3: isTime(3),
-  isTime4: isTime(4),
-  isTime5: isTime(5),
-  isPos0: isPos(0),
-  isPos1: isPos(1),
-  isPos2: isPos(2),
-  isPos3: isPos(3),
-  isPos4: isPos(4),
-  isPos5: isPos(5),
-  isPos6: isPos(6),
-  isPos7: isPos(7),
-  isPos8: isPos(8),
-  isPos9: isPos(9),
+  isTimeLeft: ({ context }) => context.time < MAX_TIME_TICKS,
 }
 export const options = {
   guards,
@@ -192,36 +190,33 @@ export const options = {
     prev: assign({
       selectedChange: ({ context: { selectedChange } }) => selectedChange - 1,
     }),
+    selectLast: assign({
+      selectedChange: ({ context }) => context.changes.length - 1,
+    }),
     proposePacket: assign({
       changes: ({ context: { changes } }) => [
         ...changes,
         make({ type: 'HEADER' }),
       ],
-      // TODO make this a standalone action called in sequence
-      selectedChange: ({ context }) => context.changes.length,
     }),
     proposeEdit: assign({
-      changes: ({ context: { changes } }) => [
+      changes: ({ context: { changes, selectedChange } }) => [
         ...changes,
-        make({ type: 'EDIT' }),
+        make({ type: 'EDIT', uplink: selectedChange }),
       ],
-      selectedChange: ({ context }) => context.changes.length,
     }),
     proposeSolution: assign({
-      changes: ({ context: { changes } }) => [
+      changes: ({ context: { changes, selectedChange } }) => [
         ...changes,
-        make({ type: 'SOLUTION' }),
+        make({ type: 'SOLUTION', uplink: selectedChange }),
       ],
-      selectedChange: ({ context }) => context.changes.length,
     }),
     tickTime: assign({
-      time: ({ context }) => {
-        return context.time + 1
-      },
+      time: ({ context }) => context.time + 1,
     }),
     qaReject: set({ qaRejected: true }),
     qaResolve: set({ qaResolved: true }),
-    qaStartDisputeWindow: assign({
+    qaDisputeWindowStart: assign({
       changes: ({ context }) => {
         const change = getChange(context)
         const next = setDirect(change, { qaTickStart: context.time })
@@ -232,28 +227,59 @@ export const options = {
     }),
     dispute: set({ disputed: true }),
     disputeShares: assign({
-      changes: ({ context: { changes } }) => [
+      changes: ({ context: { changes, selectedChange } }) => [
         ...changes,
-        make({ type: 'DISPUTE' }),
+        make({ type: 'DISPUTE', uplink: selectedChange }),
       ],
-      selectedChange: ({ context }) => context.changes.length,
     }),
     disputeResolve: assign({
-      changes: ({ context: { changes } }) => [
+      changes: ({ context: { changes, selectedChange } }) => [
         ...changes,
-        make({ type: 'DISPUTE' }),
+        make({ type: 'DISPUTE', uplink: selectedChange }),
       ],
-      selectedChange: ({ context }) => context.changes.length,
     }),
     disputeReject: assign({
-      changes: ({ context: { changes } }) => [
+      changes: ({ context: { changes, selectedChange } }) => [
         ...changes,
-        make({ type: 'DISPUTE' }),
+        make({ type: 'DISPUTE', uplink: selectedChange }),
       ],
-      selectedChange: ({ context }) => context.changes.length,
+    }),
+    enact: assign({
+      changes: ({ context }) => {
+        const change = getChange(context)
+        if (isChange(change, { enacted: true })) {
+          throw new Error('already enacted')
+        }
+        const changes = [...context.changes]
+        changes[context.selectedChange] = setDirect(change, { enacted: true })
+        if (isChange(change, { qaRejected: true })) {
+          return changes
+        }
+        if (guards.isHeader({ context })) {
+          const packet = make({
+            type: 'PACKET',
+            uplink: context.selectedChange,
+          })
+          // TODO link the header to the packet
+          changes.push(packet)
+          const uplink = changes.length - 1
+          changes[context.selectedChange] = setDirect(change, { uplink })
+          return changes
+        }
+        if (guards.isSolution({ context })) {
+          /**
+           * An enacted solution should
+           *  - wait for any other open solutions to close
+           *  - close the packet if they are the only one
+           *
+           * If a solution is rejected, then it still might close off
+           * the packet if someone else was waiting for it
+           */
+        }
+        throw new Error('cannot enact')
+      },
     }),
     // focusUplink: ({ context, event }) => {},
-    // enact: ({ context, event }) => {},
   },
 }
 
@@ -262,9 +288,9 @@ import { createMachine } from 'xstate'
 export const machine = createMachine(
   {
     context: {
+      time: 0,
       changes: [],
       selectedChange: '',
-      time: 0,
     },
     id: 'next',
     initial: 'actors',
@@ -277,77 +303,55 @@ export const machine = createMachine(
             description: 'Proposes new Packets',
             on: {
               DO: {
-                target: '#next.stack',
-                actions: {
-                  type: 'proposePacket',
-                  params: {},
-                },
-                reenter: false,
+                target: '#stack',
+                actions: ['proposePacket', 'selectLast'],
               },
             },
           },
           funder: {
             description: 'Funds the current Change',
             on: {
-              DO: {
-                target: '#next.stack.actions.open.funding',
-                reenter: false,
-              },
+              DO: '#stack.actions.open.funding',
             },
           },
           solver: {
             description: 'Proposes a Solution to the current Packet',
             on: {
               DO: {
-                target: '#next.stack',
+                target: '#stack',
                 guard: 'isPacket',
-                actions: {
-                  type: 'proposeSolution',
-                  params: {},
-                },
-                reenter: false,
+                actions: ['proposeSolution', 'selectLast'],
               },
             },
           },
           qa: {
             description: 'Judges the current Change',
             on: {
-              DO: {
-                target: '#next.stack.actions.open.qa',
-                reenter: false,
-              },
+              DO: '#stack.actions.open.qa',
             },
           },
           superQa: {
             description: 'Judges the current Dispute',
             on: {
               DO: {
-                target: '#next.stack.actions.open.superQa',
+                target: '#stack.actions.open.superQa',
                 guard: 'isDispute',
-                reenter: false,
               },
             },
           },
           trader: {
             description: 'Trades any of the NFTs in the current Change',
             on: {
-              DO: {
-                target: '#next.stack.actions.trading',
-                reenter: false,
-              },
+              DO: '#stack.actions.trading',
             },
           },
           editor: {
             description: 'Proposes an Edit to the current Change',
             on: {
               DO: {
-                target: '#next.stack',
+                target: '#stack',
                 guard: 'isHeaderOrSolution',
-                actions: {
-                  type: 'proposeEdit',
-                  params: {},
-                },
-                reenter: false,
+                actions: ['proposeEdit', 'selectLast'],
               },
             },
           },
@@ -355,9 +359,8 @@ export const machine = createMachine(
             description: 'Disputes the QA in the current Change',
             on: {
               DO: {
-                target: '#next.stack.actions.pending.dispute',
+                target: '#stack.actions.pending.dispute',
                 guard: 'isDisputable',
-                reenter: false,
               },
             },
           },
@@ -365,13 +368,8 @@ export const machine = createMachine(
             description: 'Enacts the current Change because Ethereum',
             on: {
               DO: {
-                target: '#next.stack.actions.enactable.serviceWorker',
+                target: '#stack.actions.enactable.serviceWorker',
                 guard: 'isEnactable',
-                actions: {
-                  type: 'enact',
-                  params: {},
-                },
-                reenter: false,
               },
             },
           },
@@ -379,37 +377,18 @@ export const machine = createMachine(
           approvalSet: {},
         },
         on: {
-          EXIT: {
-            target: '.exited',
-            reenter: false,
-          },
-          EXIT_SINGLE: {
-            target: '.exited',
-            reenter: false,
-          },
-          BURN: {
-            target: '.exited',
-            reenter: false,
-          },
-          REVOKE_OPERATOR: {
-            target: '.approvalSet',
-            reenter: false,
-          },
-          APPROVE_OPENSEA: {
-            target: '.approvalSet',
-            reenter: false,
-          },
-          APPROVE_OPERATOR: {
-            target: '.approvalSet',
-            reenter: false,
-          },
-          REVOKE_OPENSEA: {
-            target: '.approvalSet',
-            reenter: false,
-          },
+          EXIT: { target: '.exited' },
+          EXIT_SINGLE: { target: '.exited' },
+          BURN: { target: '.exited' },
+          REVOKE_OPERATOR: { target: '.approvalSet' },
+          APPROVE_OPENSEA: { target: '.approvalSet' },
+          APPROVE_OPERATOR: { target: '.approvalSet' },
+          REVOKE_OPENSEA: { target: '.approvalSet' },
         },
       },
       stack: {
+        id: 'stack',
+        type: 'parallel',
         description:
           'The stack of all changes can be navigated using the NEXT and PREV events.',
         states: {
@@ -428,7 +407,6 @@ export const machine = createMachine(
                         always: {
                           target: 'funded',
                           guard: 'isFunded',
-                          reenter: false,
                         },
                       },
                       funded: {
@@ -438,13 +416,11 @@ export const machine = createMachine(
                             always: {
                               target: 'defunding',
                               guard: 'isDefunding',
-                              reenter: false,
                             },
                             on: {
                               DEFUND_START: {
                                 target: 'defunding',
                                 guard: 'isDefundable',
-                                reenter: false,
                               },
                             },
                           },
@@ -452,20 +428,19 @@ export const machine = createMachine(
                             on: {
                               DEFUND_STOP: {
                                 target: 'holding',
-                                reenter: false,
                               },
                               DEFUND: {
-                                target:
-                                  '#next.stack.actions.open.funding.unFunded',
+                                target: '#stack.actions.open.funding.unFunded',
                                 guard: 'isDefundWindowPassed',
-                                reenter: false,
                               },
                               TICK_TIME: {
                                 target: 'defunding',
                                 guard: 'isDefundWaiting',
+                                actions: {
+                                  type: 'tickTime',
+                                },
                                 description:
                                   'Move time forwards so defunding is possible',
-                                reenter: false,
                               },
                             },
                           },
@@ -476,22 +451,18 @@ export const machine = createMachine(
                       FUND_ETH: {
                         target: '.funded',
                         guard: 'isFundableEth',
-                        reenter: false,
                       },
                       FUND_DAI: {
                         target: '.funded',
                         guard: 'isFundableDai',
-                        reenter: false,
                       },
                       FUND_1155: {
                         target: '.funded',
                         guard: 'isFundable1155',
-                        reenter: false,
                       },
                       FUND_721: {
                         target: '.funded',
                         guard: 'isFundable721',
-                        reenter: false,
                       },
                     },
                   },
@@ -501,24 +472,19 @@ export const machine = createMachine(
                       judging: {
                         exit: {
                           type: 'qaDisputeWindowStart',
-                          params: {},
                         },
                         on: {
                           QA_RESOLVE: {
                             target: 'resolved',
                             actions: {
                               type: 'qaResolve',
-                              params: {},
                             },
-                            reenter: false,
                           },
                           QA_REJECT: {
                             target: 'rejected',
                             actions: {
                               type: 'qaReject',
-                              params: {},
                             },
-                            reenter: false,
                           },
                         },
                       },
@@ -532,13 +498,11 @@ export const machine = createMachine(
                     always: {
                       target: 'view',
                       guard: 'isPacketOrDispute',
-                      reenter: false,
                     },
                   },
                   superQa: {
                     exit: {
                       type: 'focusUplink',
-                      params: {},
                     },
                     initial: 'shares',
                     states: {
@@ -546,26 +510,22 @@ export const machine = createMachine(
                         always: {
                           target: 'resolved',
                           guard: 'isResolved',
-                          reenter: false,
                         },
                       },
                       resolved: {
                         always: {
                           target: 'rejected',
                           guard: 'isRejected',
-                          reenter: false,
                         },
                       },
                       rejected: {},
                     },
                     on: {
                       ALL_DISPUTES_DISMISSED: {
-                        target: '#next.stack.actions.open',
-                        reenter: false,
+                        target: '#stack.actions.open',
                       },
                       DISPUTE_UPHELD: {
-                        target: '#next.stack.actions.open',
-                        reenter: false,
+                        target: '#stack.actions.open',
                       },
                     },
                   },
@@ -573,39 +533,12 @@ export const machine = createMachine(
                 always: {
                   target: 'pending',
                   guard: 'isNotOpen',
-                  reenter: false,
                 },
               },
               pending: {
-                initial: 'viewing',
+                initial: 'view',
                 states: {
-                  viewing: {
-                    initial: 'type',
-                    states: {
-                      type: {
-                        always: [
-                          {
-                            target: 'resolved',
-                            guard: 'isResolved',
-                            reenter: false,
-                          },
-                          {
-                            target: 'rejected',
-                            guard: 'isRejected',
-                            reenter: false,
-                          },
-                          {
-                            target: 'disputed',
-                            guard: 'isDisputed',
-                            reenter: false,
-                          },
-                        ],
-                      },
-                      resolved: {},
-                      rejected: {},
-                      disputed: {},
-                    },
-                  },
+                  view: {},
                   dispute: {
                     initial: 'resolved',
                     states: {
@@ -613,61 +546,56 @@ export const machine = createMachine(
                         always: {
                           target: 'rejected',
                           guard: 'isRejected',
-                          reenter: false,
                         },
                         on: {
                           DISPUTE_SHARES: {
-                            target: '#next.stack',
-                            reenter: false,
+                            target: '#stack',
+                            actions: ['disputeShares', 'selectLast'],
                           },
                           DISPUTE_RESOLVE: {
-                            target: '#next.stack',
-                            reenter: false,
+                            target: '#stack',
+                            actions: ['disputeResolve', 'selectLast'],
                           },
                         },
                       },
                       rejected: {
                         on: {
                           DISPUTE_REJECTION: {
-                            target: '#next.stack',
-                            reenter: false,
+                            target: '#stack',
+                            actions: ['disputeRejection', 'selectLast'],
                           },
                         },
                       },
                     },
                     on: {
                       TICK_TIME: {
-                        target: '#next.stack.actions.pending',
-                        actions: {
-                          type: 'tickTime',
-                          params: {},
-                        },
+                        target: '#stack.actions.pending',
+                        guard: 'isTimeLeft',
+                        actions: 'tickTime',
                         description:
                           'Move time forwards so dispute resolution is possible',
-                        reenter: false,
                       },
                     },
                   },
                 },
                 always: [
-                  {
-                    target: 'enacted',
-                    guard: 'isPacketOrDispute',
-                    reenter: false,
-                  },
-                  {
-                    target: 'disputed',
-                    guard: 'isDisputeWindowPassed',
-                    reenter: false,
-                  },
+                  { target: 'enacted', guard: 'isDispute' },
+                  { target: 'disputed', guard: 'isDisputeWindowPassed' },
                 ],
               },
-              enacted: {},
+              enacted: {
+                always: {
+                  target: '#stack',
+                  guard: 'isHeader',
+                  actions: 'selectLast',
+                  description:
+                    'Because a header causes a packet to be made, focus the packet immediately.',
+                },
+              },
               disputed: {
                 always: {
                   target: 'enactable',
                   guard: 'isUnDisputed',
-                  reenter: false,
                 },
               },
               enactable: {
@@ -675,14 +603,22 @@ export const machine = createMachine(
                 states: {
                   viewing: {},
                   serviceWorker: {
-                    always: {
-                      target: '#next.stack.actions.enacted',
-                      actions: {
-                        type: 'enact',
-                        params: {},
-                      },
-                      reenter: false,
+                    exit: {
+                      type: 'enact',
                     },
+                    always: [
+                      { target: '#stack.actions.enacted', guard: 'isDispute' },
+                      {
+                        target: '#stack.actions.enactSolution',
+                        guard: 'isSolution',
+                      },
+                      { target: '#stack.actions.enacted', guard: 'isRejected' },
+                      {
+                        target: '#stack.actions.enacted',
+                        guard: 'isHeader',
+                        actions: 'makePacket',
+                      },
+                    ],
                   },
                 },
               },
@@ -697,7 +633,6 @@ export const machine = createMachine(
                         always: {
                           target: 'funded',
                           guard: 'isFunded',
-                          reenter: false,
                         },
                       },
                       funded: {
@@ -705,16 +640,13 @@ export const machine = createMachine(
                         always: {
                           target: 'traded',
                           guard: 'isFundsTraded',
-                          reenter: false,
                         },
                         on: {
                           TRADE_ALL_FUNDS: {
                             target: 'traded',
-                            reenter: false,
                           },
                           TRADE_SOME_FUNDS: {
                             target: 'traded',
-                            reenter: false,
                           },
                         },
                       },
@@ -732,7 +664,6 @@ export const machine = createMachine(
                         always: {
                           target: 'enacted',
                           guard: 'isEnacted',
-                          reenter: false,
                         },
                       },
                       enacted: {
@@ -740,16 +671,13 @@ export const machine = createMachine(
                         always: {
                           target: 'traded',
                           guard: 'isContentTraded',
-                          reenter: false,
                         },
                         on: {
                           TRADE_ALL_CONTENT: {
                             target: 'traded',
-                            reenter: false,
                           },
                           TRADE_SOME_CONTENT: {
                             target: 'traded',
-                            reenter: false,
                           },
                         },
                       },
@@ -767,21 +695,18 @@ export const machine = createMachine(
                         always: {
                           target: 'unenacted',
                           guard: 'isPacket',
-                          reenter: false,
                         },
                       },
                       unenacted: {
                         always: {
                           target: 'enacted',
                           guard: 'isEnacted',
-                          reenter: false,
                         },
                       },
                       enacted: {
                         on: {
                           TRADE_MEDALLION: {
                             target: 'traded',
-                            reenter: false,
                           },
                         },
                       },
@@ -793,243 +718,138 @@ export const machine = createMachine(
                 },
                 type: 'parallel',
               },
-            },
-          },
-          view: {
-            description:
-              'View states are informative only. Transitions must start from an account.',
-            states: {
-              type: {
+              enactSolution: {
                 initial: 'sort',
                 states: {
                   sort: {
                     always: [
                       {
-                        target: 'packet',
-                        guard: 'isPacket',
-                        reenter: false,
+                        target: 'openPacket',
+                        guard: 'isPacketOpen',
                       },
                       {
-                        target: 'dispute',
-                        guard: 'isDispute',
-                        reenter: false,
-                      },
-                      {
-                        target: 'header',
-                        guard: 'isHeader',
-                        reenter: false,
-                      },
-                      {
-                        target: 'edit',
-                        guard: 'isEdit',
-                        reenter: false,
-                      },
-                      {
-                        target: 'solution',
-                        guard: 'isSolution',
-                        reenter: false,
+                        target: 'closedPacket',
                       },
                     ],
                   },
-                  packet: {},
-                  dispute: {},
-                  header: {},
-                  edit: {},
-                  solution: {},
-                },
-              },
-              position: {
-                initial: 'empty',
-                states: {
-                  empty: {
+                  openPacket: {
                     always: [
                       {
-                        target: 's0',
-                        guard: 'isPos0',
-                        reenter: false,
+                        target: 'closablePacket',
+                        guard: 'isResolved',
                       },
                       {
-                        target: 's1',
-                        guard: 'isPos1',
-                        reenter: false,
+                        target: 'rejectedMultiSolution',
+                        guard: 'isMultiSolution',
                       },
                       {
-                        target: 's2',
-                        guard: 'isPos2',
-                        reenter: false,
-                      },
-                      {
-                        target: 's3',
-                        guard: 'isPos3',
-                        reenter: false,
-                      },
-                      {
-                        target: 's4',
-                        guard: 'isPos4',
-                        reenter: false,
-                      },
-                      {
-                        target: 's5',
-                        guard: 'isPos5',
-                        reenter: false,
-                      },
-                      {
-                        target: 's6',
-                        guard: 'isPos6',
-                        reenter: false,
-                      },
-                      {
-                        target: 's7',
-                        guard: 'isPos7',
-                        reenter: false,
-                      },
-                      {
-                        target: 's8',
-                        guard: 'isPos8',
-                        reenter: false,
-                      },
-                      {
-                        target: 's9',
-                        guard: 'isPos9',
-                        reenter: false,
+                        target: 'enacted',
                       },
                     ],
                   },
-                  s0: {},
-                  s1: {},
-                  s2: {},
-                  s3: {},
-                  s4: {},
-                  s5: {},
-                  s6: {},
-                  s7: {},
-                  s8: {},
-                  s9: {},
-                },
-              },
-              time: {
-                description: 'Informational time position of the system',
-                initial: 'limbo',
-                states: {
-                  limbo: {
+                  closedPacket: {
                     always: [
                       {
-                        target: 't0',
-                        guard: 'isTime0',
-                        reenter: false,
+                        target: 'enacted',
+                        guard: 'isResolved',
+                        actions: {
+                          type: 'mergeShares',
+                        },
                       },
                       {
-                        target: 't1',
-                        guard: 'isTime1',
-                        reenter: false,
-                      },
-                      {
-                        target: 't2',
-                        guard: 'isTime2',
-                        reenter: false,
-                      },
-                      {
-                        target: 't3',
-                        guard: 'isTime3',
-                        reenter: false,
-                      },
-                      {
-                        target: 't4',
-                        guard: 'isTime4',
-                        reenter: false,
-                      },
-                      {
-                        target: 't5',
-                        guard: 'isTime5',
-                        reenter: false,
+                        target: 'enacted',
                       },
                     ],
                   },
-                  t0: {},
-                  t1: {},
-                  t2: {},
-                  t3: {},
-                  t4: {},
-                  t5: {
+                  closablePacket: {
+                    entry: 'pendingPacket',
+                    always: [
+                      {
+                        target: 'enacted',
+                        guard: 'isLastSolution',
+                        actions: 'enactPacket',
+                      },
+                      'enacted',
+                    ],
+                  },
+                  rejectedMultiSolution: {
+                    always: [
+                      {
+                        target: 'enacted',
+                        guard: 'isLastSolution',
+                        actions: {
+                          type: 'enactPacket',
+                        },
+                      },
+                      'enacted',
+                    ],
+                  },
+                  enacted: {
+                    entry: 'enactChange',
                     type: 'final',
                   },
                 },
-                on: {
-                  TICK_TIME: {
-                    target: '.limbo',
-                    reenter: false,
-                  },
+                onDone: {
+                  target: '#stack.actions.enacted',
                 },
               },
             },
-            type: 'parallel',
           },
         },
-        type: 'parallel',
       },
     },
     on: {
       BE_TRADER: {
         target: '.actors.trader',
         guard: 'isChange',
-        reenter: true,
       },
       BE_PROPOSER: {
         target: '.actors.proposer',
-        reenter: true,
       },
       BE_SERVICE: {
         target: '.actors.service',
         guard: 'isChange',
-        reenter: true,
       },
       BE_SOLVER: {
         target: '.actors.solver',
         guard: 'isChange',
-        reenter: true,
       },
       BE_EDITOR: {
         target: '.actors.editor',
         guard: 'isChange',
-        reenter: true,
       },
       BE_DISPUTER: {
         target: '.actors.disputer',
         guard: 'isChange',
-        reenter: true,
       },
       BE_QA: {
         target: '.actors.qa',
         guard: 'isChange',
-        reenter: true,
       },
       BE_FUNDER: {
         target: '.actors.funder',
         guard: 'isChange',
-        reenter: true,
       },
       BE_SUPER_QA: {
         target: '.actors.superQa',
         guard: 'isChange',
-        reenter: true,
       },
       NEXT: {
         target: '.stack',
         guard: 'isNotLast',
         actions: {
           type: 'next',
-          params: {},
         },
-        reenter: false,
       },
       PREV: {
         target: '.stack',
         guard: 'isNotFirst',
-        actions: {
-          type: 'prev',
-          params: {},
-        },
-        reenter: false,
+        actions: 'prev',
+      },
+      MANUAL_TICK_TIME: {
+        target: '.stack',
+        guard: 'isTimeLeft',
+        actions: 'tickTime',
       },
     },
   },

@@ -11,16 +11,15 @@ export const hash = (value) => {
 }
 
 export const description = (path, index) => {
-  let state = path.state.value
-  if (typeof state !== 'string') {
-    const strings = path.state.toStrings()
+  let stateString = path.state.value
+  if (typeof stateString !== 'string') {
     if (path.state.matches('actors')) {
-      state = longest(strings, 'actors.')
-      state = state.replace('actors.', '')
+      stateString = longest(path.state, 'actors.')
+      stateString = stateString.replace('actors.', '')
     }
     if (path.state.matches('stack.actions')) {
-      state = longest(strings, 'stack.actions.')
-      state = state.replace('stack.actions.', '')
+      stateString = longest(path.state, 'stack.actions.')
+      stateString = stateString.replace('stack.actions.', '')
     }
   }
   const allEvents = path.steps.map((step) => step.event.type)
@@ -43,13 +42,17 @@ export const description = (path, index) => {
     return count > 1 ? `${event} (x${count})` : event
   })
   const prefix = index !== undefined ? `[${index}] ` : ''
-  return prefix + `Reaches: '${state}' via: ${condensed.join(' > ')}`
+  return prefix + `Reaches: '${stateString}' via: ${condensed.join(' > ')}`
 }
 
-const longest = (strings, prefix) => {
+export const longest = (state, prefix) => {
+  const strings = state.toStrings()
   let longest = ''
   for (const string of strings) {
-    if (string.startsWith(prefix) && string.length > longest.length) {
+    if (string.length > longest.length) {
+      if (prefix && !string.startsWith(prefix)) {
+        continue
+      }
       longest = string
     }
   }

@@ -15,7 +15,7 @@ import Debug from 'debug'
  * enforcing a repeated pattern.
  * @param {*} param0
  */
-export default function createSuite({ toState, filter, verify, ...config }) {
+function _createSuite({ toState, filter, verify, ...config }) {
   filter = filter || (() => true)
   verify = verify || (() => {})
   expect(toState, 'toState').to.be.a('function')
@@ -44,7 +44,12 @@ export default function createSuite({ toState, filter, verify, ...config }) {
       states++
       return toState(state)
     },
-    filter,
+    filter: (state, event) => {
+      if (event.type === 'MANUAL_TICK_TIME') {
+        return false
+      }
+      return filter(state, event)
+    },
   })
   const time = Date.now() - start
   if (dry) {
@@ -82,4 +87,20 @@ export default function createSuite({ toState, filter, verify, ...config }) {
       await verify(sut)
     })
   })
+}
+
+export default function createSuite(config) {
+  if (isOnly) {
+    return
+  }
+  return _createSuite(config)
+}
+let isOnly = false
+createSuite.only = function (config) {
+  isOnly = true
+  return _createSuite(config)
+}
+
+createSuite.skip = function () {
+  return
 }

@@ -10,7 +10,9 @@
     "watch": "nodemon --exec \"hardhat --emoji test\"",
     "watch:check": "nodemon --exec \"npm run check\"",
     "watch:coverage": "nodemon --exec \"npm run coverage\"",
-    "multi": "nodemon --exec \"timeout 5s npx mocha test/multi/multi.test.js\""
+    "multi": "nodemon --exec \"npx mocha test/multi/multi.test.js\"",
+    "timed": "nodemon --exec \"timeout 5s npx mocha test/multi/multi.test.js\"",
+    "reinstall": "rm -rf node_modules package-lock.json && npm install"
   },
   "devDependencies": {
     "@ipld/dag-pb": "^4.0.5",
@@ -33,7 +35,7 @@
     "sinon": "^16.0.0",
     "sinon-chai": "^3.7.0",
     "uint8arrays": "^4.0.6",
-    "xstate": "^5.0.0-beta.28"
+    "xstate": "^5.0.0-beta.29"
   },
   "nodemonConfig": {
     "ignore": [

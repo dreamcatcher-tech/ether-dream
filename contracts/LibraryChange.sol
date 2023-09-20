@@ -17,6 +17,7 @@ library LibraryChange {
   }
 
   function isOpen(Change storage change) internal view returns (bool) {
+    // TODO extend this to handle packets
     return change.createdAt != 0 && change.disputeWindowStart == 0;
   }
 
