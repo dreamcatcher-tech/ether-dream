@@ -128,8 +128,8 @@ describe('machine scripted testing', () => {
     const proposeSolution = ['BE_SOLVER', 'DO']
     send(actor, proposeSolution, resolveChange)
 
-    expect(current.matches('stack.actions.open')).to.be.true
-    expect(current.matches('stack.view.type.packet')).to.be.true
+    expect(current.matches('stack.enacted')).to.be.true
+    expect(isDirect(current.context, { type: 'PACKET' })).to.be.true
 
     done()
   })

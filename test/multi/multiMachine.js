@@ -96,25 +96,9 @@ const guards = {
     context.selectedChange < context.changes.length - 1,
   isNotFirst: ({ context }) => context.selectedChange > 0,
   isPacket: is({ type: 'PACKET' }),
-  isPacketResolved: ({ context }) => {
-    if (!isDirect(context, { type: 'PACKET' })) {
-      return false
-    }
-    for (const solutionIndex of getChange(context).downlinks) {
-      const change = context.changes[solutionIndex]
-      if (!isChange(change, { type: 'SOLUTION' })) {
-        throw new Error('downlink is not a solution')
-      }
-      if (isChange(change, { qaResolved: true, enacted: true })) {
-        return true
-      }
-    }
-    return false
-  },
   isHeader: is({ type: 'HEADER' }),
   isHeaderOrSolution: ({ context }) =>
     guards.isHeader({ context }) || guards.isSolution({ context }),
-
   isSolution: is({ type: 'SOLUTION' }),
   isDispute: is({ type: 'DISPUTE' }),
   isEdit: is({ type: 'EDIT' }),
@@ -122,32 +106,49 @@ const guards = {
   isFunded: is({ funded: true }),
   isEnacted: is({ enacted: true }),
   isEnactable: ({ context }) => {
-    // if no disputes, enough time has passed, then enact
-    const change = getChange(context)
-    if (!change.qaResolved && !change.qaRejected) {
-      // TODO use safe functions
-      return false
-    }
-    // get the current time tick, see if enough time passed
-    return !change.disputed
-  },
-  isNotOpen: not({
-    // TODO handle packets being not open too
-    qaResolved: false,
-    qaRejected: false,
-  }),
-  isPacketOrDispute: (opts) => guards.isPacket(opts) || guards.isDispute(opts),
-  isDisputable: ({ context }) => {
+    // if no disputes outstanding, enough time has passed, then is enactable
     const change = getChange(context)
     if (isChange(change, { qaResolved: false, qaRejected: false })) {
       return false
     }
-    if (!guards.isDisputeWindowPassed({ context })) {
+    if (isChange(change, { disputed: true })) {
+      return isChange(change, { disputeSettled: true })
+    }
+    return guards.isDisputeWindowPassed({ context })
+  },
+  isNotOpen: not({ qaResolved: false, qaRejected: false }),
+  isPacketPending: ({ context }) => {
+    // pending if packet not enacted but a solution has passed qa
+    // even if that solution may yet be disputed
+    const packet = getChange(context)
+    if (!isChange(packet, { type: 'PACKET' })) {
       return false
     }
-    if (isChange(change, { enacted: true })) {
-      throw new Error('enacted should not be true')
+    if (isChange(packet, { enacted: true })) {
+      return false
     }
+    for (const solutionIndex of packet.downlinks) {
+      const solution = context.changes[solutionIndex]
+      check(solution, { type: 'SOLUTION' })
+      if (isChange(solution, { qaResolved: true })) {
+        return true
+      }
+    }
+    return false
+  },
+  isPacketOrDispute: (opts) => guards.isPacket(opts) || guards.isDispute(opts),
+  isDisputable: ({ context }) => {
+    const change = getChange(context)
+    if (guards.isPacketOrDispute({ context })) {
+      return false
+    }
+    if (isChange(change, { qaResolved: false, qaRejected: false })) {
+      return false
+    }
+    if (guards.isDisputeWindowPassed({ context })) {
+      return false
+    }
+    check(change, { enacted: true })
     return true
   },
   isDisputeWindowPassed: ({ context }) => {
@@ -157,36 +158,70 @@ const guards = {
     }
     return false
   },
-  isPacketOpen: ({ context }) => {
-    // how is this different to
+  isTargetPacketOpen: ({ context }) => {
+    const solution = getChange(context)
+    check(solution, { type: 'SOLUTION' })
+    const packet = context.changes[solution.uplink]
+    check(packet, { type: 'PACKET' })
+    if (isChange(packet, { enacted: true })) {
+      return false
+    }
+    for (const solutionIndex of packet.downlinks) {
+      const change = context.changes[solutionIndex]
+      check(change, { type: 'SOLUTION' })
+      if (isChange(change, { qaResolved: true, enacted: false })) {
+        return false
+      }
+    }
+    return true
+  },
+  isMultiSolution: ({ context }) => {
+    const solution = getChange(context)
+    check(solution, { type: 'SOLUTION' })
+    const packet = context.changes[solution.uplink]
+    check(packet, { type: 'PACKET' })
+    let count = 0
+    for (const solutionIndex of packet.downlinks) {
+      const change = context.changes[solutionIndex]
+      check(change, { type: 'SOLUTION' })
+      if (isChange(change, { qaResolved: true, enacted: true })) {
+        count++
+      }
+    }
+    return count > 1
+  },
+  isResolved: is({ qaResolved: true }),
+
+  isRejected: is({ qaRejected: true }),
+
+  isLastSolution: ({ context }) => {
+    const solution = getChange(context)
+    check(solution, { type: 'SOLUTION', qaResolved: true })
+    const packet = context.changes[solution.uplink]
+    check(packet, { type: 'PACKET' })
+    for (const solutionIndex of packet.downlinks) {
+      const change = context.changes[solutionIndex]
+      if (change === solution) {
+        continue
+      }
+      check(change, { type: 'SOLUTION' })
+      // if the solution is not enacted, then it is possible
+      if (isChange(change, { enacted: false })) {
+        return false
+      }
+    }
+    return true
+  },
+  // BUT what about stopping a dispute loop ?
+  // TODO needs to handle a settled dispute too
+  isUnDisputed: ({ context }) => {
+    const change = getChange(context)
+    if (isChange(change, { disputed: true })) {
+      return isChange(change, { disputeSettled: true })
+    }
+    return true
   },
 
-  // BUT what about stopping a dispute loop ?
-  isUnDisputed: is({ disputed: false }),
-
-  isFundableEth: (context, event) => false,
-
-  isFundableDai: (context, event) => false,
-
-  isFundable1155: (context, event) => false,
-
-  isFundable721: (context, event) => false,
-
-  isDefunding: (context, event) => false,
-
-  isDefundWindowPassed: (context, event) => false,
-
-  isDefundWaiting: (context, event) => false,
-
-  isFundsTraded: (context, event) => false,
-
-  isContentTraded: (context, event) => false,
-
-  isDefundable: (context, event) => false,
-
-  isRejected: (context, event) => false,
-
-  isResolved: (context, event) => false,
   isTimeLeft: ({ context }) => context.time < MAX_TIME_TICKS,
 }
 export const options = {
@@ -214,10 +249,18 @@ export const options = {
       ],
     }),
     proposeSolution: assign({
-      changes: ({ context: { changes, selectedChange } }) => [
-        ...changes,
-        make({ type: 'SOLUTION', uplink: selectedChange }),
-      ],
+      changes: ({ context: { changes, selectedChange } }) => {
+        const next = [
+          ...changes,
+          make({ type: 'SOLUTION', uplink: selectedChange }),
+        ]
+        const packet = getChange({ changes, selectedChange })
+        check(packet, { type: 'PACKET' })
+        const downlinks = [...packet.downlinks, next.length - 1]
+        const nextPacket = setDirect(packet, { downlinks })
+        next[selectedChange] = nextPacket
+        return next
+      },
     }),
     tickTime: assign({
       time: ({ context }) => context.time + 1,
@@ -255,9 +298,7 @@ export const options = {
     enact: assign({
       changes: ({ context }) => {
         const change = getChange(context)
-        if (isChange(change, { enacted: true })) {
-          throw new Error('already enacted')
-        }
+        check(change, { enacted: false })
         const changes = [...context.changes]
         changes[context.selectedChange] = setDirect(change, { enacted: true })
         return changes
@@ -269,9 +310,56 @@ export const options = {
         make({ type: 'PACKET', uplink: selectedChange }),
       ],
     }),
-
-    // focusUplink: ({ context, event }) => {},
+    // TODO ensure there is a limit to the number of solutions we can do
+    mergeShares: assign({
+      changes: ({ context }) => {
+        const solution = getChange(context)
+        check(solution, { type: 'SOLUTION' })
+        const changes = [...context.changes]
+        const packet = changes[solution.uplink]
+        check(packet, { type: 'PACKET' })
+        packet.downlinks.push(context.selectedChange)
+        changes[solution.uplink] = packet
+        return changes
+      },
+    }),
+    enactPacket: assign({
+      changes: ({ context }) => {
+        const solution = getChange(context)
+        check(solution, { type: 'SOLUTION', enacted: true })
+        const changes = [...context.changes]
+        const packet = changes[solution.uplink]
+        check(packet, { type: 'PACKET' })
+        checkIsSolved(packet, changes)
+        changes[solution.uplink] = setDirect(packet, { enacted: true })
+        return changes
+      },
+    }),
+    focusUplink: assign({
+      selectedChange: ({ context }) => {
+        const change = getChange(context)
+        return change.uplink
+      },
+    }),
   },
+}
+const checkIsSolved = (packet, changes) => {
+  check(packet, { type: 'PACKET' })
+  let firstSolution
+  for (const solutionIndex of packet.downlinks) {
+    const solution = changes[solutionIndex]
+    check(solution, { type: 'SOLUTION' })
+    if (isChange(solution, { enacted: true })) {
+      firstSolution = solution
+      break
+    }
+  }
+  check(firstSolution, { enacted: true })
+}
+const check = (change, params) => {
+  if (!isChange(change, params)) {
+    throw new Error(`change is not ${JSON.stringify(params)}`)
+  }
 }
 
 import { createMachine } from 'xstate'
@@ -490,25 +578,7 @@ export const machine = createMachine(
                 },
               },
               superQa: {
-                exit: {
-                  type: 'focusUplink',
-                },
-                initial: 'shares',
-                states: {
-                  shares: {
-                    always: {
-                      target: 'resolved',
-                      guard: 'isResolved',
-                    },
-                  },
-                  resolved: {
-                    always: {
-                      target: 'rejected',
-                      guard: 'isRejected',
-                    },
-                  },
-                  rejected: {},
-                },
+                exit: 'focusUplink',
                 on: {
                   ALL_DISPUTES_DISMISSED: {
                     target: '#stack',
@@ -519,10 +589,10 @@ export const machine = createMachine(
                 },
               },
             },
-            always: {
-              target: 'pending',
-              guard: 'isNotOpen',
-            },
+            always: [
+              { target: 'pending', guard: 'isNotOpen' },
+              { target: 'pending', guard: 'isPacketPending' },
+            ],
           },
           pending: {
             initial: 'view',
@@ -714,10 +784,10 @@ export const machine = createMachine(
                 always: [
                   {
                     target: 'openPacket',
-                    guard: 'isPacketOpen',
+                    guard: 'isTargetPacketOpen',
                   },
                   {
-                    target: 'closedPacket',
+                    target: 'necroPacket',
                   },
                 ],
               },
@@ -736,27 +806,22 @@ export const machine = createMachine(
                   },
                 ],
               },
-              closedPacket: {
+              necroPacket: {
                 always: [
                   {
                     target: 'enacted',
                     guard: 'isResolved',
-                    actions: {
-                      type: 'mergeShares',
-                    },
+                    actions: 'mergeShares',
                   },
-                  {
-                    target: 'enacted',
-                  },
+                  'enacted',
                 ],
               },
               closablePacket: {
-                entry: 'pendingPacket',
                 always: [
                   {
                     target: 'enacted',
                     guard: 'isLastSolution',
-                    actions: 'enactPacket',
+                    actions: ['enactPacket', 'focusUplink'],
                   },
                   'enacted',
                 ],
@@ -766,9 +831,7 @@ export const machine = createMachine(
                   {
                     target: 'enacted',
                     guard: 'isLastSolution',
-                    actions: {
-                      type: 'enactPacket',
-                    },
+                    actions: ['enactPacket', 'focusUplink'],
                   },
                   'enacted',
                 ],
