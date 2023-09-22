@@ -1,4 +1,4 @@
-import { assign } from 'xstate'
+import { assign, createMachine } from 'xstate'
 
 // use https://stately.ai/viz to visualize the machine
 
@@ -64,7 +64,7 @@ export const isDirect = (context, params) => {
   const change = getChange(context)
   return isChange(change, params)
 }
-const isChange = (change, params) => {
+export const isChange = (change, params) => {
   const base = make()
   for (const key of Object.keys(params)) {
     if (!(key in base)) {
@@ -108,6 +108,9 @@ const guards = {
   isEnactable: ({ context }) => {
     // if no disputes outstanding, enough time has passed, then is enactable
     const change = getChange(context)
+    if (isChange(change, { enacted: true })) {
+      return false
+    }
     if (isChange(change, { qaResolved: false, qaRejected: false })) {
       return false
     }
@@ -148,11 +151,13 @@ const guards = {
     if (guards.isDisputeWindowPassed({ context })) {
       return false
     }
-    check(change, { enacted: true })
     return true
   },
   isDisputeWindowPassed: ({ context }) => {
     const change = getChange(context)
+    if (Number.isInteger(change.qaTickStart) === false) {
+      throw new Error('qaTickStart is not an integer')
+    }
     if (change.qaTickStart + DISPUTE_WINDOW_TICKS <= context.time) {
       return true
     }
@@ -223,6 +228,8 @@ const guards = {
   },
 
   isTimeLeft: ({ context }) => context.time < MAX_TIME_TICKS,
+  isDisputeWindowOpen: (opts) =>
+    guards.isTimeLeft(opts) && !guards.isDisputeWindowPassed(opts),
 }
 export const options = {
   guards,
@@ -358,11 +365,10 @@ const checkIsSolved = (packet, changes) => {
 }
 const check = (change, params) => {
   if (!isChange(change, params)) {
-    throw new Error(`change is not ${JSON.stringify(params)}`)
+    const string = JSON.stringify(change, null, 2)
+    throw new Error(`change is not ${JSON.stringify(params)}\n${string}`)
   }
 }
-
-import { createMachine } from 'xstate'
 
 export const machine = createMachine(
   {
@@ -512,10 +518,9 @@ export const machine = createMachine(
                           },
                           TICK_TIME: {
                             target: 'defunding',
+                            // TODO use isTimeLeft check too
                             guard: 'isDefundWaiting',
-                            actions: {
-                              type: 'tickTime',
-                            },
+                            actions: 'tickTime',
                             description:
                               'Move time forwards so defunding is possible',
                           },
@@ -547,21 +552,14 @@ export const machine = createMachine(
                 initial: 'judging',
                 states: {
                   judging: {
-                    exit: {
-                      type: 'qaDisputeWindowStart',
-                    },
                     on: {
                       QA_RESOLVE: {
                         target: 'resolved',
-                        actions: {
-                          type: 'qaResolve',
-                        },
+                        actions: ['qaResolve', 'qaDisputeWindowStart'],
                       },
                       QA_REJECT: {
                         target: 'rejected',
-                        actions: {
-                          type: 'qaReject',
-                        },
+                        actions: ['qaReject', 'qaDisputeWindowStart'],
                       },
                     },
                   },
@@ -629,7 +627,7 @@ export const machine = createMachine(
                 on: {
                   TICK_TIME: {
                     target: '#stack.pending',
-                    guard: 'isTimeLeft',
+                    guard: 'isDisputeWindowOpen',
                     actions: 'tickTime',
                     description:
                       'Move time forwards so dispute resolution is possible',
@@ -662,20 +660,26 @@ export const machine = createMachine(
             states: {
               viewing: {},
               serviceWorker: {
-                exit: {
-                  type: 'enact',
-                },
                 always: [
-                  { target: '#stack.enacted', guard: 'isDispute' },
+                  {
+                    target: '#stack.enacted',
+                    guard: 'isDispute',
+                    actions: 'enact',
+                  },
                   {
                     target: '#stack.enactSolution',
                     guard: 'isSolution',
+                    actions: 'enact',
                   },
-                  { target: '#stack.enacted', guard: 'isRejected' },
+                  {
+                    target: '#stack.enacted',
+                    guard: 'isRejected',
+                    actions: 'enact',
+                  },
                   {
                     target: '#stack.enacted',
                     guard: 'isHeader',
-                    actions: 'makePacket',
+                    actions: ['enact', 'makePacket'],
                   },
                 ],
               },

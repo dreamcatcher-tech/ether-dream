@@ -1,0 +1,15 @@
+diff --git a/node_modules/@xstate/graph/dist/xstate-graph.cjs.js b/node_modules/@xstate/graph/dist/xstate-graph.cjs.js
+index d5a8631..29940c2 100644
+--- a/node_modules/@xstate/graph/dist/xstate-graph.cjs.js
++++ b/node_modules/@xstate/graph/dist/xstate-graph.cjs.js
+@@ -212,8 +212,8 @@ function getAdjacencyMap(logic, options) {
+     }
+     const events = typeof getEvents === 'function' ? getEvents(state) : getEvents;
+     for (const nextEvent of events) {
+-      const nextState = transition(state, nextEvent, actorContext);
+-      if (!options.filter || options.filter(nextState, nextEvent)) {
++      if (!options.filter || options.filter(state, nextEvent)) {
++        const nextState = transition(state, nextEvent, actorContext);
+         adj[serializedState].transitions[serializeEvent(nextEvent)] = {
+           event: nextEvent,
+           state: nextState

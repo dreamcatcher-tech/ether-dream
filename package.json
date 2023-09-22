@@ -11,8 +11,9 @@
     "watch:check": "nodemon --exec \"npm run check\"",
     "watch:coverage": "nodemon --exec \"npm run coverage\"",
     "multi": "nodemon --exec \"npx mocha test/multi/multi.test.js\"",
-    "timed": "nodemon --exec \"timeout 5s npx mocha test/multi/multi.test.js\"",
-    "reinstall": "rm -rf node_modules package-lock.json && npm install"
+    "timed": "nodemon --exec \"timeout 5s npm run multi\"",
+    "reinstall": "rm -rf node_modules package-lock.json && npm install",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "@ipld/dag-pb": "^4.0.5",
@@ -32,6 +33,7 @@
     "mocha": "^10.2.0",
     "multiformats": "^12.1.1",
     "nodemon": "^3.0.1",
+    "patch-package": "^8.0.0",
     "sinon": "^16.0.0",
     "sinon-chai": "^3.7.0",
     "uint8arrays": "^4.0.6",

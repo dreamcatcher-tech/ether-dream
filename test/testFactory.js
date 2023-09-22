@@ -1,4 +1,5 @@
 import { createTestModel, createTestMachine } from '@xstate/test'
+import { assign } from 'xstate'
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
 import { machine, options } from './multi/multiMachine.js'
@@ -37,7 +38,8 @@ function _createSuite({ toState, filter, verify, ...config }) {
   }
   const start = Date.now()
   let states = 0
-  const testMachine = createTestMachine(machine.config, options)
+  const wrappedOptions = debug ? logConfig(options) : options
+  const testMachine = createTestMachine(machine.config, wrappedOptions)
   const model = createTestModel(testMachine)
   const paths = model.getShortestPaths({
     toState: (state) => {
@@ -103,4 +105,34 @@ createSuite.only = function (config) {
 
 createSuite.skip = function () {
   return
+}
+
+const debug = Debug('tests')
+export const logConfig = (options, dbg = debug) => {
+  expect(dbg).to.be.a('function')
+  const { guards, actions } = options
+  const nextOptions = { guards: {}, actions: {} }
+
+  const guarder = debug.extend('guard')
+  for (const key in guards) {
+    nextOptions.guards[key] = ({ context, event }) => {
+      const result = guards[key]({ context, event })
+      guarder(key, event.type, !!result)
+      return result
+    }
+  }
+  const actioner = debug.extend('action')
+  for (const key in actions) {
+    const assignAction = actions[key]
+    expect(assignAction.type).to.equal('xstate.assign')
+    const assignments = {}
+    for (const assign in assignAction.assignment) {
+      assignments[assign] = (...args) => {
+        actioner(key, assign)
+        return assignAction.assignment[assign](...args)
+      }
+    }
+    nextOptions.actions[key] = assign(assignments)
+  }
+  return nextOptions
 }

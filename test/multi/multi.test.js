@@ -1,40 +1,11 @@
-import { isDirect, getChange, machine, options } from './multiMachine.js'
-import test from '../testFactory.js'
+import { isChange, isDirect, machine, options } from './multiMachine.js'
+import test, { logConfig } from '../testFactory.js'
 import { longest } from '../utils.js'
 import { and } from '../conditions.js'
 import { createActor, createMachine, assign } from 'xstate'
 import { expect } from 'chai'
 import Debug from 'debug'
 const debug = Debug('tests')
-
-const loggingMachine = (dbg) => {
-  expect(dbg).to.be.a('function')
-  const { guards, actions } = options
-  const nextOptions = { guards: {}, actions: {} }
-
-  const guarder = debug.extend('guard')
-  for (const key in guards) {
-    nextOptions.guards[key] = ({ context, event }) => {
-      const result = guards[key]({ context, event })
-      guarder(key, event.type, !!result)
-      return result
-    }
-  }
-  const actioner = debug.extend('action')
-  for (const key in actions) {
-    const assignAction = actions[key]
-    expect(assignAction.type).to.equal('xstate.assign')
-    const assignments = {}
-    for (const assign in assignAction.assignment) {
-      assignments[assign] = (...args) => {
-        actioner(key, assign)
-        return assignAction.assignment[assign](...args)
-      }
-    }
-    nextOptions.actions[key] = assign(assignments)
-  }
-  return createMachine(machine.config, nextOptions)
-}
 
 const skipActors = (...actors) => {
   for (const actor of actors) {
@@ -61,20 +32,35 @@ const skipAccountMgmt = (...groups) => {
   }
   return skipActors(...groups)
 }
+const skipNavigation = (state, event) => {
+  if (event.type === 'NEXT' || event.type === 'PREV') {
+    return false
+  }
+  return true
+}
 
-const maxHeaders = (maxHeaders) => (state, event) => {
-  let headerCount = 0
+const max = (limit, params) => (state) => {
+  let count = 0
   for (const change of state.context.changes) {
-    if (change.type === 'HEADER') {
-      headerCount++
+    if (isChange(change, params)) {
+      count++
     }
-    if (headerCount > maxHeaders) {
+    if (count > limit) {
       return false
     }
   }
   return true
 }
-
+const globalEvents = new Set(Object.keys(machine.config.on))
+const skipJitter = (state, event) => {
+  const localEvents = state.nextEvents.filter((e) => {
+    return !globalEvents.has(e)
+  })
+  if (!localEvents.length) {
+    return true
+  }
+  return localEvents.includes(event.type)
+}
 const SKIPS = [
   'NEXT',
   'PREV',
@@ -90,7 +76,8 @@ const SKIPS = [
 
 describe('machine scripted testing', () => {
   it('gets to enacted', (done) => {
-    const logging = loggingMachine(debug)
+    const loggingOptions = logConfig(options)
+    const logging = createMachine(machine.config, loggingOptions)
     const actor = createActor(logging).start()
     let current
     actor.subscribe({
@@ -150,17 +137,18 @@ const send = (actor, ...actions) => {
   }
 }
 
-describe('multiMachine', () => {
-  test.skip({
+describe.only('multiMachine', () => {
+  Debug.enable('tests:action')
+  test({
     toState: (state) => {
-      const change = getChange(state.context)
-      // console.log('change', change)
-      // return change.type === 'PACKET'
-      return state.matches('stack.actions.enacted')
-      // return state.context.selectedChange === 1
-      // how to get a packet ?
+      return (
+        isDirect(state.context, { type: 'PACKET' }) &&
+        state.matches('stack.enacted')
+      )
     },
     dry: true,
+    // debug: true,
+    first: true,
     filter: and(
       skipActors(
         'funder',
@@ -173,16 +161,22 @@ describe('multiMachine', () => {
         // 'solver'
       ),
       skipAccountMgmt(),
-      maxHeaders(1),
-      (state, event) => {
-        // console.log('state', longest(state), 'event', event.type)
-        // console.log('changeCount', state.context.changes.length)
-        // console.log(
-        //   'changes',
-        //   state.context.changes.map((c) => c.type)
-        // )
-        return true
-      }
+      max(1, { type: 'HEADER' }),
+      max(1, { type: 'SOLUTION' }),
+      max(0, { type: 'DISPUTE' }),
+      skipNavigation,
+      skipJitter
+      // (state, event) => {
+      //   // console.log('state', longest(state), 'event', event.type)
+      //   // console.log('changeCount', state.context.changes.length)
+      //   console.log(
+      //     'changes',
+      //     state.context.changes.map((c) => c.type),
+      //     state.toStrings(),
+      //     event.type
+      //   )
+      //   return true
+      // }
     ),
   })
 })
