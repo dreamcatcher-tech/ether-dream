@@ -38,7 +38,15 @@ const skipNavigation = (state, event) => {
   }
   return true
 }
-
+const count = (params) => (state) => {
+  let count = 0
+  for (const change of state.context.changes) {
+    if (isChange(change, params)) {
+      count++
+    }
+  }
+  return count
+}
 const max = (limit, params) => (state) => {
   let count = 0
   for (const change of state.context.changes) {
@@ -51,20 +59,10 @@ const max = (limit, params) => (state) => {
   }
   return true
 }
-const globalEvents = new Set(Object.keys(machine.config.on))
-const skipJitter = (state, event) => {
-  const localEvents = state.nextEvents.filter((e) => {
-    return !globalEvents.has(e)
-  })
-  if (!localEvents.length) {
-    return true
-  }
-  return localEvents.includes(event.type)
-}
+
 const SKIPS = [
   'NEXT',
   'PREV',
-  'MANUAL_TICK_TIME',
   'EXIT',
   'EXIT_SINGLE',
   'BURN',
@@ -97,14 +95,16 @@ describe('machine scripted testing', () => {
         debug('DONE')
       },
     })
-    const proposePacket = ['BE_PROPOSER', 'DO']
+    const proposePacket = ['BE_PROPOSER', 'PROPOSE_PACKET']
     const resolveChange = [
       'BE_QA',
       'DO',
       'QA_RESOLVE',
-      'MANUAL_TICK_TIME',
-      'BE_SERVICE',
+      'BE_DISPUTER',
       'DO',
+      'TICK_TIME',
+      'BE_SERVICE',
+      'ENACT',
     ]
     Debug.enable('tests*')
     send(actor, proposePacket, resolveChange)
@@ -112,7 +112,7 @@ describe('machine scripted testing', () => {
     expect(current.matches('stack.open')).to.be.true
     expect(isDirect(current.context, { type: 'PACKET' })).to.be.true
 
-    const proposeSolution = ['BE_SOLVER', 'DO']
+    const proposeSolution = ['BE_SOLVER', 'PROPOSE_SOLUTION']
     send(actor, proposeSolution, resolveChange)
 
     expect(current.matches('stack.enacted')).to.be.true
@@ -137,13 +137,14 @@ const send = (actor, ...actions) => {
   }
 }
 
-describe.only('multiMachine', () => {
+describe('multiMachine', () => {
   Debug.enable('tests:action')
   test({
     toState: (state) => {
       return (
         isDirect(state.context, { type: 'PACKET' }) &&
-        state.matches('stack.enacted')
+        state.matches('stack.enacted') &&
+        count({ type: 'SOLUTION' })(state) === 2
       )
     },
     dry: true,
@@ -162,27 +163,25 @@ describe.only('multiMachine', () => {
       ),
       skipAccountMgmt(),
       max(1, { type: 'HEADER' }),
-      max(1, { type: 'SOLUTION' }),
+      max(2, { type: 'SOLUTION' }),
       max(0, { type: 'DISPUTE' }),
-      skipNavigation,
-      skipJitter
-      // (state, event) => {
-      //   // console.log('state', longest(state), 'event', event.type)
-      //   // console.log('changeCount', state.context.changes.length)
-      //   console.log(
-      //     'changes',
-      //     state.context.changes.map((c) => c.type),
-      //     state.toStrings(),
-      //     event.type
-      //   )
-      //   return true
-      // }
+      // skipNavigation
+
+      // next and prev should not be able to dither
+      // they can only go to the end directly if they make no changes
+      (state, event) => {
+        // console.log('state', longest(state), 'event', event.type)
+        // console.log('changeCount', state.context.changes.length)
+        console.log(
+          'changes',
+          state.context.changes.map((c) => c.type),
+          state.toStrings(),
+          event.type
+        )
+        return true
+      }
     ),
   })
 })
-
-// provide a limits object that has a set of predefined fields
-// which limit the machine traversal, like number of changes allowed,
-// number of defund cycles, number of dispute cycles, etc.
 
 it('can survive multiple dispute rounds')

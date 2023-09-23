@@ -17,9 +17,9 @@ export const description = (path, index) => {
       stateString = longest(path.state, 'actors.')
       stateString = stateString.replace('actors.', '')
     }
-    if (path.state.matches('stack.actions')) {
-      stateString = longest(path.state, 'stack.actions.')
-      stateString = stateString.replace('stack.actions.', '')
+    if (path.state.matches('stack')) {
+      stateString = longest(path.state, 'stack.')
+      stateString = stateString.replace('stack.', '')
     }
   }
   const allEvents = path.steps.map((step) => step.event.type)

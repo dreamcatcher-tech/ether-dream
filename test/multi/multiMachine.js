@@ -201,7 +201,7 @@ const guards = {
 
   isLastSolution: ({ context }) => {
     const solution = getChange(context)
-    check(solution, { type: 'SOLUTION', qaResolved: true })
+    check(solution, { type: 'SOLUTION', enacted: true })
     const packet = context.changes[solution.uplink]
     check(packet, { type: 'PACKET' })
     for (const solutionIndex of packet.downlinks) {
@@ -387,7 +387,7 @@ export const machine = createMachine(
           proposer: {
             description: 'Proposes new Packets',
             on: {
-              DO: {
+              PROPOSE_PACKET: {
                 target: '#stack',
                 actions: ['proposePacket', 'selectLast'],
               },
@@ -402,7 +402,7 @@ export const machine = createMachine(
           solver: {
             description: 'Proposes a Solution to the current Packet',
             on: {
-              DO: {
+              PROPOSE_SOLUTION: {
                 target: '#stack',
                 guard: 'isPacket',
                 actions: ['proposeSolution', 'selectLast'],
@@ -433,7 +433,7 @@ export const machine = createMachine(
           editor: {
             description: 'Proposes an Edit to the current Change',
             on: {
-              DO: {
+              PROPOSE_EDIT: {
                 target: '#stack',
                 guard: 'isHeaderOrSolution',
                 actions: ['proposeEdit', 'selectLast'],
@@ -452,7 +452,7 @@ export const machine = createMachine(
           service: {
             description: 'Enacts the current Change because Ethereum',
             on: {
-              DO: {
+              ENACT: {
                 target: '#stack.enactable.serviceWorker',
                 guard: 'isEnactable',
               },
@@ -589,8 +589,11 @@ export const machine = createMachine(
             },
             always: [
               { target: 'pending', guard: 'isNotOpen' },
-              { target: 'pending', guard: 'isPacketPending' },
+              { target: 'pendingPacket', guard: 'isPacketPending' },
             ],
+          },
+          pendingPacket: {
+            always: { target: 'enacted', guard: 'isEnacted' },
           },
           pending: {
             initial: 'view',
@@ -896,11 +899,6 @@ export const machine = createMachine(
         target: '.stack',
         guard: 'isNotFirst',
         actions: 'prev',
-      },
-      MANUAL_TICK_TIME: {
-        target: '.stack',
-        guard: 'isTimeLeft',
-        actions: 'tickTime',
       },
     },
   },

@@ -47,7 +47,7 @@ function _createSuite({ toState, filter, verify, ...config }) {
       return toState(state)
     },
     filter: (state, event) => {
-      if (event.type === 'MANUAL_TICK_TIME') {
+      if (!skipJitter(state, event)) {
         return false
       }
       return filter(state, event)
@@ -135,4 +135,15 @@ export const logConfig = (options, dbg = debug) => {
     nextOptions.actions[key] = assign(assignments)
   }
   return nextOptions
+}
+
+const globalEvents = new Set(Object.keys(machine.config.on))
+const skipJitter = (state, event) => {
+  const localEvents = state.nextEvents.filter((e) => {
+    return !globalEvents.has(e)
+  })
+  if (!localEvents.length) {
+    return true
+  }
+  return localEvents.includes(event.type)
 }
