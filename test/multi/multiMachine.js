@@ -6,6 +6,15 @@ const MAX_TIME_TICKS = 5
 const DISPUTE_WINDOW_TICKS = 1
 const DEFUND_WINDOW_TICKS = 2
 const types = ['HEADER', 'PACKET', 'SOLUTION', 'DISPUTE', 'EDIT']
+export const ACCOUNT_MANAGEMENT_EVENTS = [
+  'EXIT',
+  'EXIT_SINGLE',
+  'BURN',
+  'REVOKE_OPERATOR',
+  'APPROVE_OPENSEA',
+  'APPROVE_OPERATOR',
+  'REVOKE_OPENSEA',
+]
 export const getChange = ({ changes, selectedChange }) => {
   if (!Array.isArray(changes) || changes.length === 0) {
     return {}

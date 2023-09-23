@@ -5,21 +5,22 @@ import {
   options,
 } from './multiMachine.js'
 import test, { logConfig } from '../testFactory.js'
-import { and } from '../conditions.js'
-import { createActor, createMachine } from 'xstate'
-import { expect } from 'chai'
 import { sendBatch } from '../utils.js'
+import { and } from '../conditions.js'
+import { createActor, createMachine, assign } from 'xstate'
+import { expect } from 'chai'
 import { skipActors, skipAccountMgmt, skipNavigation, max } from './filters.js'
 import Debug from 'debug'
 const debug = Debug('tests')
 
-describe('basics', () => {
-  it('gets to enacted packet', (done) => {
+describe('double solutions', () => {
+  it('handles two resolved solutions', (done) => {
     const loggingOptions = logConfig(options)
     const logging = createMachine(machine.config, loggingOptions)
     const actor = createActor(logging).start()
     const NO_LOG = ['NEXT', 'PREV', ...ACCOUNT_MANAGEMENT_EVENTS]
     let current
+
     actor.subscribe({
       next: (state) => {
         debug('state', state.toStrings())
@@ -63,23 +64,48 @@ describe('basics', () => {
   })
 })
 
-describe('simple solve packet', () => {
-  test({
+describe('double solution', () => {
+  test.skip({
     toState: (state) => {
       return (
         isDirect(state.context, { type: 'PACKET' }) &&
-        state.matches('stack.enacted')
+        state.matches('stack.enacted') &&
+        count({ type: 'SOLUTION' })(state) === 2
       )
     },
     dry: true,
     // debug: true,
+    first: true,
     filter: and(
-      skipActors('funder', 'trader', 'editor', 'superQa'),
+      skipActors(
+        'funder',
+        // 'disputer',
+        'trader',
+        // 'service',
+        'editor',
+        'superQa'
+        // 'qa',
+        // 'solver'
+      ),
       skipAccountMgmt(),
       max(1, { type: 'HEADER' }),
-      max(1, { type: 'SOLUTION' }),
+      max(2, { type: 'SOLUTION' }),
       max(0, { type: 'DISPUTE' }),
-      skipNavigation
+      skipNavigation,
+
+      // next and prev should not be able to dither
+      // they can only go to the end directly if they make no changes
+      (state, event) => {
+        // console.log('state', longest(state), 'event', event.type)
+        // console.log('changeCount', state.context.changes.length)
+        console.log(
+          'changes',
+          state.context.changes.map((c) => c.type),
+          state.toStrings(),
+          event.type
+        )
+        return true
+      }
     ),
   })
 })

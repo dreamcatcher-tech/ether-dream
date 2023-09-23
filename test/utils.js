@@ -58,3 +58,17 @@ export const longest = (state, prefix) => {
   }
   return longest
 }
+
+export const sendBatch = (actor, ...actions) => {
+  const script = []
+  for (const actionArray of actions) {
+    if (!Array.isArray(actionArray)) {
+      script.push([actionArray])
+    } else {
+      script.push(...actionArray)
+    }
+  }
+  for (const action of script) {
+    actor.send({ type: action })
+  }
+}

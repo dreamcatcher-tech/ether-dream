@@ -48,7 +48,7 @@ export const isAny =
 export const and =
   (...functions) =>
   (...args) =>
-    functions.every((fn) => fn(...args))
+    !functions.some((fn) => !fn(...args))
 
 export const change = (patch) =>
   assign({
