@@ -4,6 +4,7 @@ import { description } from './utils.js'
 import { initializeSut } from './sut.js'
 import { machine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
+import BarCli from 'barcli'
 import Debug from 'debug'
 
 /**
@@ -23,7 +24,7 @@ function _createSuite({ toState, filter, verify, ...config }) {
   expect(filter, 'filter').to.be.a('function')
   expect(verify, 'verify').to.be.a('function')
 
-  const { dry, debug, last, first, pathAt } = config
+  const { dry, debug, last, first, pathAt, graph } = config
 
   if (pathAt !== undefined) {
     it(`pathAt ${pathAt}`, () => {
@@ -41,6 +42,8 @@ function _createSuite({ toState, filter, verify, ...config }) {
   const wrappedOptions = debug ? logConfig(options) : options
   const testMachine = createTestMachine(machine.config, wrappedOptions)
   const model = createTestModel(testMachine)
+
+  const cliGraphUpdate = cliGraph()
   const paths = model.getShortestPaths({
     toState: (state) => {
       states++
@@ -50,7 +53,12 @@ function _createSuite({ toState, filter, verify, ...config }) {
       if (!skipJitter(state, event)) {
         return false
       }
-      return filter(state, event)
+
+      const result = filter(state, event)
+      if (graph && result) {
+        cliGraphUpdate(state, event, result)
+      }
+      return result
     },
   })
   const time = Date.now() - start
@@ -146,4 +154,25 @@ const skipJitter = (state, event) => {
     return true
   }
   return localEvents.includes(event.type)
+}
+const cliGraph = () => {
+  const bars = new Map()
+  let max = 0
+  return (state, event, result) => {
+    if (!bars.has(event.type)) {
+      const graph = new BarCli({ label: event.type })
+      const count = 0
+      bars.set(event.type, { graph, count })
+    }
+    let { graph, count } = bars.get(event.type)
+    count++
+    if (count > max) {
+      max = count
+    }
+    for (const [key, value] of bars) {
+      value.graph.inputRange = [0, max]
+    }
+    graph.update(count)
+    bars.set(event.type, { graph, count })
+  }
 }

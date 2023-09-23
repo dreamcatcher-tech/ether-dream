@@ -321,21 +321,28 @@ export const options = {
       },
     }),
     makePacket: assign({
-      changes: ({ context: { changes, selectedChange } }) => [
-        ...changes,
-        make({ type: 'PACKET', uplink: selectedChange }),
-      ],
+      changes: ({ context }) => {
+        const header = getChange(context)
+        check(header, { type: 'HEADER', enacted: true })
+        const { selectedChange } = context
+        const next = setDirect(header, { uplink: context.changes.length })
+        const changes = [
+          ...context.changes,
+          make({ type: 'PACKET', uplink: selectedChange }),
+        ]
+        changes[selectedChange] = next
+        return changes
+      },
     }),
     // TODO ensure there is a limit to the number of solutions we can do
     mergeShares: assign({
       changes: ({ context }) => {
         const solution = getChange(context)
-        check(solution, { type: 'SOLUTION' })
+        check(solution, { type: 'SOLUTION', enacted: true })
+        // TODO merge in the solution shares
         const changes = [...context.changes]
         const packet = changes[solution.uplink]
         check(packet, { type: 'PACKET' })
-        packet.downlinks.push(context.selectedChange)
-        changes[solution.uplink] = packet
         return changes
       },
     }),

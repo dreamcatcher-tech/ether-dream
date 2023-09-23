@@ -7,9 +7,15 @@ import {
 import test, { logConfig } from '../testFactory.js'
 import { sendBatch } from '../utils.js'
 import { and } from '../conditions.js'
-import { createActor, createMachine, assign } from 'xstate'
+import { createActor, createMachine } from 'xstate'
 import { expect } from 'chai'
-import { skipActors, skipAccountMgmt, skipNavigation, max } from './filters.js'
+import {
+  count,
+  skipActors,
+  skipAccountMgmt,
+  skipNavigation,
+  max,
+} from './filters.js'
 import Debug from 'debug'
 const debug = Debug('tests')
 
@@ -60,20 +66,29 @@ describe('double solutions', () => {
     expect(current.matches('stack.enacted')).to.be.true
     expect(isDirect(current.context, { type: 'PACKET' })).to.be.true
 
+    // Debug.enable('tests*')
+
+    sendBatch(actor, proposeSolution, resolveChange)
+
+    expect(count({ type: 'SOLUTION' })(current)).to.equal(2)
+    console.dir(current.context.changes, { depth: Infinity })
+
     done()
   })
 })
 
 describe('double solution', () => {
-  test.skip({
+  test.only({
     toState: (state) => {
       return (
         isDirect(state.context, { type: 'PACKET' }) &&
         state.matches('stack.enacted') &&
-        count({ type: 'SOLUTION' })(state) === 2
+        count({ type: 'SOLUTION', qaResolved: true, qaTickStart: 1 })(state) ===
+          2
       )
     },
     dry: true,
+    // graph: true,
     // debug: true,
     first: true,
     filter: and(
@@ -91,19 +106,19 @@ describe('double solution', () => {
       max(1, { type: 'HEADER' }),
       max(2, { type: 'SOLUTION' }),
       max(0, { type: 'DISPUTE' }),
-      skipNavigation,
+      //   skipNavigation,
 
       // next and prev should not be able to dither
       // they can only go to the end directly if they make no changes
       (state, event) => {
         // console.log('state', longest(state), 'event', event.type)
         // console.log('changeCount', state.context.changes.length)
-        console.log(
-          'changes',
-          state.context.changes.map((c) => c.type),
-          state.toStrings(),
-          event.type
-        )
+        // console.log(
+        //   'changes',
+        //   state.context.changes.map((c) => c.type),
+        //   state.toStrings(),
+        //   event.type
+        // )
         return true
       }
     ),
