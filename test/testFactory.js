@@ -181,6 +181,7 @@ const cliGraph = () => {
       bar.graph.update(bar.count)
     }
     BarCli.halt()
+    globalThis.process.stdout.write('\n')
   }
   return filter
 }

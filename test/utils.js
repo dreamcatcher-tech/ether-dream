@@ -41,8 +41,36 @@ export const description = (path, index) => {
     const count = counts[i]
     return count > 1 ? `${event} (x${count})` : event
   })
+  const translated = []
+  const memory = []
+  for (const event of condensed) {
+    memory.push(event)
+    const translation = match(memory)
+    if (translation) {
+      translated.push(...memory, translation)
+      memory.length = 0
+    }
+  }
+  translated.push(...memory)
+
   const prefix = index !== undefined ? `[${index}] ` : ''
-  return prefix + `Reaches: '${stateString}' via: ${condensed.join(' > ')}`
+  return prefix + `Reaches: '${stateString}' via: ${translated.join(' > ')}`
+}
+const match = (memory) => {
+  for (let i = 0; i < memory.length; i++) {
+    const key = memory.slice(i).join(' > ')
+    if (maps[key]) {
+      memory.length = i
+      return maps[key]
+    }
+  }
+}
+const maps = {
+  'PROPOSE_PACKET > BE_QA > DO > QA_RESOLVE > BE_DISPUTER > DO > TICK_TIME > BE_SERVICE > ENACT':
+    'CREATE_PACKET',
+  'BE_SOLVER > PROPOSE_SOLUTION > BE_QA > DO > QA_REJECT': 'REJECT_SOLUTION',
+  'BE_SOLVER > PROPOSE_SOLUTION > BE_QA > DO > QA_RESOLVE': 'RESOLVE_SOLUTION',
+  'BE_DISPUTER > DO > TICK_TIME > BE_SERVICE > ENACT': 'ENACT',
 }
 
 export const longest = (state, prefix) => {

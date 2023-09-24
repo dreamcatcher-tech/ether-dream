@@ -11,14 +11,7 @@ import { sendBatch } from '../utils.js'
 import { and } from '../conditions.js'
 import { createActor, createMachine } from 'xstate'
 import { expect } from 'chai'
-import {
-  isCount,
-  count,
-  skipActors,
-  skipAccountMgmt,
-  skipNavigation,
-  max,
-} from './filters.js'
+import { isCount, count, skipActors, skipAccountMgmt, max } from './filters.js'
 import Debug from 'debug'
 const debug = Debug('tests')
 
@@ -89,19 +82,8 @@ describe('double solution', () => {
     ),
     dry: true,
     graph: true,
-    // debug: true,
-    // first: true,
     filter: and(
-      skipActors(
-        'funder',
-        // 'disputer',
-        'trader',
-        // 'service',
-        'editor',
-        'superQa'
-        // 'qa',
-        // 'solver'
-      ),
+      skipActors('funder', 'trader', 'editor', 'superQa'),
       skipAccountMgmt(),
       max(5), // max total changes
       max(1, { type: 'HEADER' }),
@@ -119,6 +101,9 @@ describe('double solution', () => {
             enacted: false,
             qaTickStart: 1,
           })
+        }
+        if (event.type === 'NEXT') {
+          return false
         }
         return true
       }
