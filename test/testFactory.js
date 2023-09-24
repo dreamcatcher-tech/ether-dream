@@ -58,7 +58,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
     expect(paths.length, errorMessage).to.be.greaterThan(0)
     cliGraphUpdate.halt()
     const timeTaken = Date.now() - start
-    const msg = `MODEL: ${name} (${paths.length} paths with ${states} state traversals)`
+    const msg = `MODEL: ${name} (${paths.length} paths with ${states} state traversals in ${timeTaken}ms)`
 
     describe(msg, async () => {
       if (dry) {

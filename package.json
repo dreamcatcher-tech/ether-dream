@@ -19,7 +19,7 @@
     "@ipld/dag-pb": "^4.0.5",
     "@nomicfoundation/hardhat-toolbox": "^3.0.0",
     "@openzeppelin/contracts": "^4.9.3",
-    "@xstate/test": "1.0.0-beta.3",
+    "@xstate/test": "1.0.0-beta.4",
     "barcli": "^0.0.25",
     "base58-solidity": "^1.0.2",
     "debug": "^4.3.4",
