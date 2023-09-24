@@ -382,7 +382,7 @@ export const options = {
         check(solution, { type: 'SOLUTION', enacted: true })
         const changes = [...context.changes]
         const packet = changes[solution.uplink]
-        check(packet, { type: 'PACKET' })
+        check(packet, { type: 'PACKET', enacted: false })
         checkIsSolved(packet, changes)
         changes[solution.uplink] = setDirect(packet, { enacted: true })
         return changes
@@ -891,10 +891,7 @@ export const machine = createMachine(
               },
               enacted: { type: 'final' },
             },
-            onDone: {
-              target: '#stack.enacted',
-              actions: 'focusUplink',
-            },
+            onDone: '#stack.enacted',
           },
         },
       },

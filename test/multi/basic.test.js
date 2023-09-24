@@ -9,7 +9,13 @@ import { and } from '../conditions.js'
 import { createActor, createMachine } from 'xstate'
 import { expect } from 'chai'
 import { sendBatch } from '../utils.js'
-import { skipActors, skipAccountMgmt, skipNavigation, max } from './filters.js'
+import {
+  isCount,
+  skipActors,
+  skipAccountMgmt,
+  skipNavigation,
+  max,
+} from './filters.js'
 import Debug from 'debug'
 const debug = Debug('tests')
 
@@ -57,7 +63,7 @@ describe('basics', () => {
     sendBatch(actor, proposeSolution, resolveChange)
 
     expect(current.matches('stack.enacted')).to.be.true
-    expect(isDirect(current.context, { type: 'PACKET' })).to.be.true
+    expect(isCount(1, { type: 'PACKET', enacted: true })(current)).to.be.true
 
     done()
   })
@@ -65,14 +71,7 @@ describe('basics', () => {
 
 describe('simple solve packet', () => {
   test({
-    toState: (state) => {
-      return (
-        isDirect(state.context, { type: 'PACKET' }) &&
-        state.matches('stack.enacted')
-      )
-    },
-    dry: true,
-    // debug: true,
+    toState: isCount(1, { type: 'PACKET', enacted: true }),
     filter: and(
       skipActors('funder', 'trader', 'editor', 'superQa'),
       skipAccountMgmt(),
@@ -81,6 +80,7 @@ describe('simple solve packet', () => {
       max(0, { type: 'DISPUTE' }),
       skipNavigation
     ),
+    sut: {},
   })
 })
 

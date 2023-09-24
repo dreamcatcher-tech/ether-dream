@@ -37,6 +37,7 @@ export const skipNavigation = (state, event) => {
   return true
 }
 export const isCount = (count, params) => (state) => {
+  expect(count).to.be.greaterThanOrEqual(0)
   let c = 0
   for (const change of state.context.changes) {
     if (isChange(change, params)) {
@@ -71,3 +72,16 @@ export const max =
     }
     return true
   }
+
+const NO_LOG = ['NEXT', 'PREV', ...ACCOUNT_MANAGEMENT_EVENTS]
+
+export const log = (debug) => (state, event) => {
+  debug('state %o', state.toStrings())
+  debug('event', event.type)
+  debug(
+    'nextEvents %o',
+    state.nextEvents.filter((e) => !e.startsWith('BE_') && !NO_LOG.includes(e))
+  )
+
+  return true
+}

@@ -71,6 +71,7 @@ const maps = {
   'BE_SOLVER > PROPOSE_SOLUTION > BE_QA > DO > QA_REJECT': 'REJECT_SOLUTION',
   'BE_SOLVER > PROPOSE_SOLUTION > BE_QA > DO > QA_RESOLVE': 'RESOLVE_SOLUTION',
   'BE_DISPUTER > DO > TICK_TIME > BE_SERVICE > ENACT': 'ENACT',
+  'BE_SERVICE > ENACT': 'ENACT',
 }
 
 export const longest = (state, prefix) => {

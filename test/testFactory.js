@@ -24,7 +24,7 @@ function _createSuite({ toState, filter, verify, ...config }) {
   expect(filter, 'filter').to.be.a('function')
   expect(verify, 'verify').to.be.a('function')
 
-  const { dry, debug, last, first, pathAt, graph } = config
+  const { dry, debug, last, first, pathAt, graph, sut } = config
 
   if (pathAt !== undefined) {
     it(`pathAt ${pathAt}`, () => {
@@ -43,7 +43,7 @@ function _createSuite({ toState, filter, verify, ...config }) {
   const testMachine = createTestMachine(machine.config, wrappedOptions)
   const model = createTestModel(testMachine)
 
-  const cliGraphUpdate = cliGraph()
+  const cliGraphUpdate = cliGraph(graph)
   const paths = model.getShortestPaths({
     toState: (state) => {
       states++
@@ -55,7 +55,7 @@ function _createSuite({ toState, filter, verify, ...config }) {
       }
 
       const result = filter(state, event)
-      if (graph && result) {
+      if (result) {
         cliGraphUpdate(state, event, result)
       }
       return result
@@ -93,9 +93,12 @@ function _createSuite({ toState, filter, verify, ...config }) {
       if (dry) {
         return
       }
-      const sut = await initializeSut()
-      await path.test(sut)
-      await verify(sut)
+      if (sut) {
+        expect(sut, 'sut must be an object').to.be.an('object')
+      }
+      const system = sut || (await initializeSut())
+      await path.test(system)
+      await verify(system)
     })
   })
 }
@@ -156,10 +159,15 @@ const skipJitter = (state, event) => {
   }
   return localEvents.includes(event.type)
 }
-const cliGraph = () => {
+const cliGraph = (showAlways = false) => {
   const bars = new Map()
   let max = 0
-  const filter = (state, event, result) => {
+  const startTime = Date.now()
+  const startDelay = showAlways ? 0 : 2000
+  const filter = (state, event) => {
+    if (Date.now() - startTime < startDelay) {
+      return
+    }
     if (!bars.has(event.type)) {
       const graph = new BarCli({ label: event.type })
       const count = 0

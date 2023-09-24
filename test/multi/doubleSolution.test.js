@@ -60,10 +60,10 @@ describe('double solutions', () => {
     sendBatch(actor, proposeSolution, resolveChange)
 
     expect(current.matches('stack.enacted')).to.be.true
+    expect(count({ type: 'PACKET', enacted: true })(current)).to.equal(1)
+
+    sendBatch(actor, 'PREV')
     expect(isDirect(current.context, { type: 'PACKET' })).to.be.true
-
-    // Debug.enable('tests*')
-
     sendBatch(actor, proposeSolution, resolveChange)
 
     expect(count({ type: 'SOLUTION' })(current)).to.equal(2)
@@ -73,15 +73,12 @@ describe('double solutions', () => {
 })
 
 describe('double solution', () => {
-  test.only({
+  test({
     toState: and(
-      (state) => isDirect(state.context, { type: 'PACKET' }),
-      (state) => state.matches('stack.enacted'),
+      isCount(1, { type: 'PACKET', enacted: true }),
       isCount(1, { type: 'SOLUTION', qaResolved: true, qaTickStart: 1 }),
       isCount(2, { type: 'SOLUTION', qaRejected: true, qaTickStart: 1 })
     ),
-    dry: true,
-    graph: true,
     filter: and(
       skipActors('funder', 'trader', 'editor', 'superQa'),
       skipAccountMgmt(),
@@ -92,13 +89,11 @@ describe('double solution', () => {
       max(2, { type: 'SOLUTION', qaRejected: true }),
       max(0, { type: 'DISPUTE' }),
       (state, event) => {
-        // forces a specific solution to be enacted
+        // vastly reduces the possible paths
         if (event.type === 'PREV') {
           const change = getChange(state.context)
           return isChange(change, {
             type: 'SOLUTION',
-            qaRejected: true,
-            enacted: false,
             qaTickStart: 1,
           })
         }
@@ -108,8 +103,12 @@ describe('double solution', () => {
         return true
       }
     ),
+    sut: {},
   })
 })
+
+// want the path generation to be part of the test, not prior
+// skip and only should be in a callback, to let everything load first
 
 it('can survive multiple dispute rounds')
 it('does not dither between next and prev', (done) => {
