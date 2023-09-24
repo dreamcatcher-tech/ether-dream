@@ -70,10 +70,47 @@ describe('double solutions', () => {
 
     done()
   })
-})
 
-describe('double solution', () => {
-  test({
+  it('can survive multiple dispute rounds')
+  it('does not dither between next and prev', (done) => {
+    const loggingOptions = logConfig(options)
+    const logging = createMachine(machine.config, loggingOptions)
+    const actor = createActor(logging).start()
+    const NO_LOG = ['NEXT', 'PREV', ...ACCOUNT_MANAGEMENT_EVENTS]
+    let current
+
+    actor.subscribe({
+      next: (state) => {
+        debug('state', state.toStrings())
+        debug(
+          state.nextEvents.filter(
+            (e) => !e.startsWith('BE_') && !NO_LOG.includes(e)
+          )
+        )
+        current = state
+      },
+      error: (error) => {
+        done(error)
+      },
+      complete: () => {
+        debug('DONE')
+      },
+    })
+    const proposePacket = ['BE_PROPOSER', 'PROPOSE_PACKET']
+    sendBatch(actor, proposePacket, proposePacket, proposePacket)
+
+    expect(current.context.changes.length).to.equal(3)
+    expect(current.context.selectedChange).to.equal(2)
+    sendBatch(actor, 'PREV', 'PREV', 'PREV')
+    expect(current.context.selectedChange).to.equal(0)
+
+    sendBatch(actor, 'NEXT')
+    expect(current.context.selectedChange).to.equal(0)
+
+    done()
+  })
+
+  test('double solution', {
     toState: and(
       isCount(1, { type: 'PACKET', enacted: true }),
       isCount(1, { type: 'SOLUTION', qaResolved: true, qaTickStart: 1 }),
@@ -105,46 +142,4 @@ describe('double solution', () => {
     ),
     sut: {},
   })
-})
-
-// want the path generation to be part of the test, not prior
-// skip and only should be in a callback, to let everything load first
-
-it('can survive multiple dispute rounds')
-it('does not dither between next and prev', (done) => {
-  const loggingOptions = logConfig(options)
-  const logging = createMachine(machine.config, loggingOptions)
-  const actor = createActor(logging).start()
-  const NO_LOG = ['NEXT', 'PREV', ...ACCOUNT_MANAGEMENT_EVENTS]
-  let current
-
-  actor.subscribe({
-    next: (state) => {
-      debug('state', state.toStrings())
-      debug(
-        state.nextEvents.filter(
-          (e) => !e.startsWith('BE_') && !NO_LOG.includes(e)
-        )
-      )
-      current = state
-    },
-    error: (error) => {
-      done(error)
-    },
-    complete: () => {
-      debug('DONE')
-    },
-  })
-  const proposePacket = ['BE_PROPOSER', 'PROPOSE_PACKET']
-  sendBatch(actor, proposePacket, proposePacket, proposePacket)
-
-  expect(current.context.changes.length).to.equal(3)
-  expect(current.context.selectedChange).to.equal(2)
-  sendBatch(actor, 'PREV', 'PREV', 'PREV')
-  expect(current.context.selectedChange).to.equal(0)
-
-  sendBatch(actor, 'NEXT')
-  expect(current.context.selectedChange).to.equal(0)
-
-  done()
 })

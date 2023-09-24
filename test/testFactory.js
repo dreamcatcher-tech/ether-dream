@@ -17,7 +17,8 @@ import Debug from 'debug'
  * enforcing a repeated pattern.
  * @param {*} param0
  */
-function _createSuite({ toState, filter, verify, ...config }) {
+function _createSuite(name, { toState, filter, verify, ...config }, it) {
+  expect(name, 'name').to.be.a('string')
   filter = filter || (() => true)
   verify = verify || (() => {})
   expect(toState, 'toState').to.be.a('function')
@@ -26,97 +27,99 @@ function _createSuite({ toState, filter, verify, ...config }) {
 
   const { dry, debug, last, first, pathAt, graph, sut } = config
 
-  if (pathAt !== undefined) {
-    it(`pathAt ${pathAt}`, () => {
-      throw new Error(`pathAt ${pathAt}`)
-    })
-  } else if (first || last) {
-    const text = first ? 'first' : 'last'
-    const message = `${text} run only`
-    it(message, () => {
-      throw new Error(message)
-    })
-  }
-  const start = Date.now()
+  let start
   let states = 0
-  const wrappedOptions = debug ? logConfig(options) : options
-  const testMachine = createTestMachine(machine.config, wrappedOptions)
-  const model = createTestModel(testMachine)
+  let paths
+  it('GENERATE: ' + name, () => {
+    start = Date.now()
+    const wrappedOptions = debug ? logConfig(options) : options
+    const testMachine = createTestMachine(machine.config, wrappedOptions)
+    const model = createTestModel(testMachine)
 
-  const cliGraphUpdate = cliGraph(graph)
-  const paths = model.getShortestPaths({
-    toState: (state) => {
-      states++
-      return toState(state)
-    },
-    filter: (state, event) => {
-      if (!skipJitter(state, event)) {
-        return false
-      }
+    const cliGraphUpdate = cliGraph(graph)
+    paths = model.getShortestPaths({
+      toState: (state) => {
+        states++
+        return toState(state)
+      },
+      filter: (state, event) => {
+        if (!skipJitter(state, event)) {
+          return false
+        }
 
-      const result = filter(state, event)
-      if (result) {
-        cliGraphUpdate(state, event, result)
-      }
-      return result
-    },
-  })
-  cliGraphUpdate.halt()
-  const time = Date.now() - start
-  if (dry) {
-    const msg = `dry run for ${paths.length} paths in ${time}ms with ${states} traversals`
-    it(msg, () => {
-      throw new Error(msg)
+        const result = filter(state, event)
+        if (result) {
+          cliGraphUpdate(state, event, result)
+        }
+        return result
+      },
     })
-  }
-  it(`generated ${paths.length} paths in ${time}ms with ${states} traversals`, () => {
-    expect(paths.length, 'No paths generated').to.be.greaterThan(0)
-  })
-  if (pathAt !== undefined) {
-    const path = paths[pathAt]
-    expect(path).to.be.ok
-    paths.length = 1
-    paths[0] = path
-  }
-  if (last === true) {
-    paths.reverse()
-  }
-  if (first || last) {
-    paths.length = 1
-  }
+    const errorMessage = `No paths generated in ${states} state traversals`
+    expect(paths.length, errorMessage).to.be.greaterThan(0)
+    cliGraphUpdate.halt()
+    const timeTaken = Date.now() - start
+    const msg = `MODEL: ${name} (${paths.length} paths with ${states} state traversals)`
 
-  paths.forEach((path, index) => {
-    it(description(path, index), async () => {
-      if (debug) {
-        Debug.enable('test:sut')
-      }
+    describe(msg, async () => {
       if (dry) {
-        return
+        const msg = `dry run for ${paths.length} paths in ${timeTaken}ms with ${states} traversals`
+        it(msg, () => {
+          throw new Error(msg)
+        })
+      } else if (pathAt !== undefined) {
+        it(`limited to path at index: ${pathAt}`, () => {
+          throw new Error(`pathAt ${pathAt}`)
+        })
+      } else if (first || last) {
+        const text = first ? 'first' : 'last'
+        const message = `limited to ${text} path only`
+        it(message, () => {
+          throw new Error(message)
+        })
       }
-      if (sut) {
-        expect(sut, 'sut must be an object').to.be.an('object')
+      if (pathAt !== undefined) {
+        const path = paths[pathAt]
+        expect(path).to.be.ok
+        paths.length = 1
+        paths[0] = path
       }
-      const system = sut || (await initializeSut())
-      await path.test(system)
-      await verify(system)
+      if (last === true) {
+        paths.reverse()
+      }
+      if (first || last) {
+        paths.length = 1
+      }
+
+      paths.forEach((path, index) => {
+        it(description(path, index), async () => {
+          if (debug) {
+            Debug.enable('test:sut')
+          }
+          if (dry) {
+            return
+          }
+          if (sut) {
+            expect(sut, 'sut must be an object').to.be.an('object')
+          }
+          const system = sut || (await initializeSut())
+          await path.test(system)
+          await verify(system)
+        })
+      })
     })
   })
 }
 
-export default function createSuite(config) {
-  if (isOnly) {
-    return
-  }
-  return _createSuite(config)
+export default function createSuite(name, config) {
+  return _createSuite(name, config, it)
 }
-let isOnly = false
-createSuite.only = function (config) {
-  isOnly = true
-  return _createSuite(config)
+const UNSEARCHABLE = 'o' + 'n' + 'l' + 'y'
+createSuite[UNSEARCHABLE] = function (name, config) {
+  return _createSuite(name, config, it[UNSEARCHABLE])
 }
 
-createSuite.skip = function () {
-  return
+createSuite.skip = function (name, config) {
+  return _createSuite(name, config, it.skip)
 }
 
 const debug = Debug('tests')
@@ -187,6 +190,9 @@ const cliGraph = (showAlways = false) => {
   filter.halt = () => {
     for (const [, bar] of bars) {
       bar.graph.update(bar.count)
+    }
+    if (bars.size === 0) {
+      return
     }
     BarCli.halt()
     globalThis.process.stdout.write('\n')

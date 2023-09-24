@@ -67,10 +67,8 @@ describe('basics', () => {
 
     done()
   })
-})
 
-describe('simple solve packet', () => {
-  test({
+  test('simple solve packet', {
     toState: isCount(1, { type: 'PACKET', enacted: true }),
     filter: and(
       skipActors('funder', 'trader', 'editor', 'superQa'),
@@ -82,6 +80,6 @@ describe('simple solve packet', () => {
     ),
     sut: {},
   })
-})
 
-it('can survive multiple dispute rounds')
+  it('can survive multiple dispute rounds')
+})
