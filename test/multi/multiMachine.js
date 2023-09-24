@@ -99,11 +99,39 @@ const base = Object.freeze({
   // TODO add rounds limits for super qa
 })
 
+const snapshotEquals = (context, snapKey) => {
+  if (snapKey !== 'next' && snapKey !== 'prev') {
+    throw new Error(`key ${snapKey} is not a snapshot`)
+  }
+  const snapshot = context[snapKey]
+  if (!snapshot) {
+    return false
+  }
+  for (const key in snapshot) {
+    if (snapshot[key] !== context[key]) {
+      return false
+    }
+  }
+  return true
+}
+
+const snapshot = ({ context }) => {
+  const snapshot = { ...context }
+  delete snapshot.next
+  delete snapshot.prev
+  delete snapshot.selectedChange
+  return snapshot
+}
+const isNotLast = (context) =>
+  context.selectedChange < context.changes.length - 1
+const isNotFirst = (context) => context.selectedChange > 0
+
 const guards = {
   isChange: ({ context: { changes } }) => changes.length > 0,
-  isNotLast: ({ context }) =>
-    context.selectedChange < context.changes.length - 1,
-  isNotFirst: ({ context }) => context.selectedChange > 0,
+  isNextable: ({ context }) =>
+    isNotLast(context) && !snapshotEquals(context, 'prev'),
+  isPrevable: ({ context }) =>
+    isNotFirst(context) && !snapshotEquals(context, 'next'),
   isPacket: is({ type: 'PACKET' }),
   isHeader: is({ type: 'HEADER' }),
   isHeaderOrSolution: ({ context }) =>
@@ -244,9 +272,11 @@ export const options = {
   guards,
   actions: {
     next: assign({
+      next: snapshot,
       selectedChange: ({ context: { selectedChange } }) => selectedChange + 1,
     }),
     prev: assign({
+      prev: snapshot,
       selectedChange: ({ context: { selectedChange } }) => selectedChange - 1,
     }),
     selectLast: assign({
@@ -844,7 +874,7 @@ export const machine = createMachine(
                   {
                     target: 'enacted',
                     guard: 'isLastSolution',
-                    actions: ['enactPacket', 'focusUplink'],
+                    actions: ['enactPacket'],
                   },
                   'enacted',
                 ],
@@ -854,7 +884,7 @@ export const machine = createMachine(
                   {
                     target: 'enacted',
                     guard: 'isLastSolution',
-                    actions: ['enactPacket', 'focusUplink'],
+                    actions: ['enactPacket'],
                   },
                   'enacted',
                 ],
@@ -863,6 +893,7 @@ export const machine = createMachine(
             },
             onDone: {
               target: '#stack.enacted',
+              actions: 'focusUplink',
             },
           },
         },
@@ -906,14 +937,12 @@ export const machine = createMachine(
       },
       NEXT: {
         target: '.stack',
-        guard: 'isNotLast',
-        actions: {
-          type: 'next',
-        },
+        guard: 'isNextable',
+        actions: 'next',
       },
       PREV: {
         target: '.stack',
-        guard: 'isNotFirst',
+        guard: 'isPrevable',
         actions: 'prev',
       },
     },

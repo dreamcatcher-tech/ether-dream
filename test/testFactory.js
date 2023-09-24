@@ -61,6 +61,7 @@ function _createSuite({ toState, filter, verify, ...config }) {
       return result
     },
   })
+  cliGraphUpdate.halt()
   const time = Date.now() - start
   if (dry) {
     const msg = `dry run for ${paths.length} paths in ${time}ms with ${states} traversals`
@@ -158,21 +159,41 @@ const skipJitter = (state, event) => {
 const cliGraph = () => {
   const bars = new Map()
   let max = 0
-  return (state, event, result) => {
+  const filter = (state, event, result) => {
     if (!bars.has(event.type)) {
       const graph = new BarCli({ label: event.type })
       const count = 0
-      bars.set(event.type, { graph, count })
+      const update = debounce((c) => graph.update(c), 50)
+      bars.set(event.type, { graph, count, update })
     }
-    let { graph, count } = bars.get(event.type)
-    count++
-    if (count > max) {
-      max = count
+    const bar = bars.get(event.type)
+    bar.count++
+    if (bar.count > max) {
+      max = bar.count
     }
-    for (const [key, value] of bars) {
-      value.graph.inputRange = [0, max]
+    for (const [, bar] of bars) {
+      bar.graph.inputRange = [0, max]
     }
-    graph.update(count)
-    bars.set(event.type, { graph, count })
+    bar.update(bar.count)
+  }
+  filter.halt = () => {
+    for (const [, bar] of bars) {
+      bar.graph.update(bar.count)
+    }
+    BarCli.halt()
+  }
+  return filter
+}
+
+function debounce(func, delay) {
+  let lastRunTime = Date.now()
+  return function (...args) {
+    const now = Date.now()
+    const elapsed = now - lastRunTime
+    if (elapsed < delay) {
+      return
+    }
+    lastRunTime = now
+    func(...args)
   }
 }

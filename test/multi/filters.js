@@ -7,14 +7,17 @@ export const skipActors = (...actors) => {
       throw new Error(`Actor ${actor} not found`)
     }
   }
-  return (state) => {
-    for (const actor of actors) {
-      if (state.matches('actors.' + actor)) {
-        return false
+  // map to the events that would transition into these states
+  const events = actors.map((actor) => {
+    for (const [event, value] of Object.entries(machine.config.on)) {
+      if (value.target === '.actors.' + actor) {
+        return event
       }
     }
-    return true
-  }
+    throw new Error(`Actor ${actor} transition not found`)
+  })
+
+  return (state, event) => !events.includes(event.type)
 }
 
 export const skipAccountMgmt = () => {
@@ -33,6 +36,18 @@ export const skipNavigation = (state, event) => {
   }
   return true
 }
+export const isCount = (count, params) => (state) => {
+  let c = 0
+  for (const change of state.context.changes) {
+    if (isChange(change, params)) {
+      c++
+    }
+    if (c > count) {
+      return false
+    }
+  }
+  return c === count
+}
 export const count = (params) => (state) => {
   let count = 0
   for (const change of state.context.changes) {
@@ -42,15 +57,17 @@ export const count = (params) => (state) => {
   }
   return count
 }
-export const max = (limit, params) => (state) => {
-  let count = 0
-  for (const change of state.context.changes) {
-    if (isChange(change, params)) {
-      count++
+export const max =
+  (limit, params = {}) =>
+  (state) => {
+    let count = 0
+    for (const change of state.context.changes) {
+      if (isChange(change, params)) {
+        count++
+      }
+      if (count > limit) {
+        return false
+      }
     }
-    if (count > limit) {
-      return false
-    }
+    return true
   }
-  return true
-}

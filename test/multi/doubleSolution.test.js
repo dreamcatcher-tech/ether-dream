@@ -3,6 +3,8 @@ import {
   isDirect,
   machine,
   options,
+  getChange,
+  isChange,
 } from './multiMachine.js'
 import test, { logConfig } from '../testFactory.js'
 import { sendBatch } from '../utils.js'
@@ -10,6 +12,7 @@ import { and } from '../conditions.js'
 import { createActor, createMachine } from 'xstate'
 import { expect } from 'chai'
 import {
+  isCount,
   count,
   skipActors,
   skipAccountMgmt,
@@ -71,7 +74,6 @@ describe('double solutions', () => {
     sendBatch(actor, proposeSolution, resolveChange)
 
     expect(count({ type: 'SOLUTION' })(current)).to.equal(2)
-    console.dir(current.context.changes, { depth: Infinity })
 
     done()
   })
@@ -79,18 +81,16 @@ describe('double solutions', () => {
 
 describe('double solution', () => {
   test.only({
-    toState: (state) => {
-      return (
-        isDirect(state.context, { type: 'PACKET' }) &&
-        state.matches('stack.enacted') &&
-        count({ type: 'SOLUTION', qaResolved: true, qaTickStart: 1 })(state) ===
-          2
-      )
-    },
+    toState: and(
+      (state) => isDirect(state.context, { type: 'PACKET' }),
+      (state) => state.matches('stack.enacted'),
+      isCount(1, { type: 'SOLUTION', qaResolved: true, qaTickStart: 1 }),
+      isCount(2, { type: 'SOLUTION', qaRejected: true, qaTickStart: 1 })
+    ),
     dry: true,
-    // graph: true,
+    graph: true,
     // debug: true,
-    first: true,
+    // first: true,
     filter: and(
       skipActors(
         'funder',
@@ -103,22 +103,23 @@ describe('double solution', () => {
         // 'solver'
       ),
       skipAccountMgmt(),
+      max(5), // max total changes
       max(1, { type: 'HEADER' }),
-      max(2, { type: 'SOLUTION' }),
+      max(3, { type: 'SOLUTION' }),
+      max(1, { type: 'SOLUTION', qaResolved: true }),
+      max(2, { type: 'SOLUTION', qaRejected: true }),
       max(0, { type: 'DISPUTE' }),
-      //   skipNavigation,
-
-      // next and prev should not be able to dither
-      // they can only go to the end directly if they make no changes
       (state, event) => {
-        // console.log('state', longest(state), 'event', event.type)
-        // console.log('changeCount', state.context.changes.length)
-        // console.log(
-        //   'changes',
-        //   state.context.changes.map((c) => c.type),
-        //   state.toStrings(),
-        //   event.type
-        // )
+        // forces a specific solution to be enacted
+        if (event.type === 'PREV') {
+          const change = getChange(state.context)
+          return isChange(change, {
+            type: 'SOLUTION',
+            qaRejected: true,
+            enacted: false,
+            qaTickStart: 1,
+          })
+        }
         return true
       }
     ),
@@ -126,3 +127,40 @@ describe('double solution', () => {
 })
 
 it('can survive multiple dispute rounds')
+it('does not dither between next and prev', (done) => {
+  const loggingOptions = logConfig(options)
+  const logging = createMachine(machine.config, loggingOptions)
+  const actor = createActor(logging).start()
+  const NO_LOG = ['NEXT', 'PREV', ...ACCOUNT_MANAGEMENT_EVENTS]
+  let current
+
+  actor.subscribe({
+    next: (state) => {
+      debug('state', state.toStrings())
+      debug(
+        state.nextEvents.filter(
+          (e) => !e.startsWith('BE_') && !NO_LOG.includes(e)
+        )
+      )
+      current = state
+    },
+    error: (error) => {
+      done(error)
+    },
+    complete: () => {
+      debug('DONE')
+    },
+  })
+  const proposePacket = ['BE_PROPOSER', 'PROPOSE_PACKET']
+  sendBatch(actor, proposePacket, proposePacket, proposePacket)
+
+  expect(current.context.changes.length).to.equal(3)
+  expect(current.context.selectedChange).to.equal(2)
+  sendBatch(actor, 'PREV', 'PREV', 'PREV')
+  expect(current.context.selectedChange).to.equal(0)
+
+  sendBatch(actor, 'NEXT')
+  expect(current.context.selectedChange).to.equal(0)
+
+  done()
+})

@@ -63,7 +63,7 @@ export const sendBatch = (actor, ...actions) => {
   const script = []
   for (const actionArray of actions) {
     if (!Array.isArray(actionArray)) {
-      script.push([actionArray])
+      script.push(actionArray)
     } else {
       script.push(...actionArray)
     }
