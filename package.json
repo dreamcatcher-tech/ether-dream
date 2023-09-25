@@ -10,8 +10,8 @@
     "watch": "nodemon --exec \"hardhat --emoji test\"",
     "watch:check": "nodemon --exec \"npm run check\"",
     "watch:coverage": "nodemon --exec \"npm run coverage\"",
-    "multi": "nodemon --exec \"npx mocha test/multi/*.test.js\"",
-    "timed": "nodemon --exec \"timeout 5s npm run multi\"",
+    "model": "MODEL=1 nodemon --exec \"npx mocha test/multi/*.test.js\"",
+    "timed": "nodemon --exec \"timeout 5s npm run model\"",
     "reinstall": "rm -rf node_modules package-lock.json && npm install",
     "postinstall": "patch-package"
   },

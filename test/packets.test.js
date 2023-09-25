@@ -19,8 +19,6 @@ describe('packets', () => {
       max(0, { type: 'DISPUTE' }),
       skipNavigation
     ),
-    noCondense: true,
-    debug: true,
   })
 
   it('qa receives a medallion on packet close')
