@@ -1,13 +1,15 @@
 import { expect } from 'chai'
 import { isChange, ACCOUNT_MANAGEMENT_EVENTS, machine } from './multiMachine.js'
-
+export const and =
+  (...functions) =>
+  (...args) =>
+    !functions.some((fn) => !fn(...args))
 export const skipActors = (...actors) => {
   for (const actor of actors) {
     if (machine.states.actors.states[actor] === undefined) {
       throw new Error(`Actor ${actor} not found`)
     }
   }
-  // map to the events that would transition into these states
   const events = actors.map((actor) => {
     for (const [event, value] of Object.entries(machine.config.on)) {
       if (value.target === '.actors.' + actor) {

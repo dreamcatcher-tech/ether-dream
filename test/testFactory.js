@@ -1,7 +1,7 @@
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
 import { description } from './utils.js'
-import { initializeSut } from './singleUserModel/sut.js'
+import { initializeSut } from './sut.js'
 import { machine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
 import BarCli from 'barcli'

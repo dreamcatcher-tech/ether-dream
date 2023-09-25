@@ -2,7 +2,7 @@ import {
   time,
   takeSnapshot,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { hash } from '../utils.js'
+import { hash } from './utils.js'
 import { expect } from 'chai'
 import Debug from 'debug'
 const debug = Debug('test:sut')

@@ -1,18 +1,23 @@
 import chai, { expect } from 'chai'
 import sinonChai from 'sinon-chai'
 import sinon from 'sinon'
-
 import {
   time,
   loadFixture,
   setBalance,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types } from './singleUserModel/machine.js'
-import { is } from './singleUserModel/conditions.js'
 import { hash } from './utils.js'
-import sutTests, { tradeContent } from './singleUserModel/sutTests.js'
+import sutTests, { tradeContent } from './sutTests.js'
+import { getChange } from './multi/multiMachine.js'
 import Debug from 'debug'
-
+const types = {
+  HEADER: 'HEADER',
+  PACKET: 'PACKET',
+  SOLUTION: 'SOLUTION',
+  DISPUTE: 'DISPUTE',
+  EDIT: 'EDIT',
+  MERGE: 'MERGE',
+}
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const DEFUND_WINDOW_MS = 14 * ONE_DAY_MS
@@ -22,6 +27,8 @@ const SOLVER1_SHARES = 897
 const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
 const DISPUTER1_SHARES = 787
 const DISPUTER2_SHARES = 1000 - DISPUTER1_SHARES
+
+const getCursor = (context) => context.selectedChange + 1
 
 async function deploy() {
   // Contracts are deployed using the first signer/account by default
@@ -105,16 +112,19 @@ export const initializeSut = async () => {
     disputer2,
   } = fixture
 
+  // bug in xstate: https://github.com/statelyai/xstate/issues/4310
+  let lastState
+
   const sut = {
     fixture,
     tests,
     states: {
-      idle: () => {
-        expect(dreamEther.target).to.not.equal(0)
-      },
       '*': async (state) => {
         debug('state:', state.toStrings().join(' > '))
+        lastState = state
       },
+
+      // WAVE_FRONT
       qaClaim: async ({ context }) => {
         if (is({ funded: false })(context)) {
           await tests.noQaFundsToClaim(context.cursorId)
@@ -147,8 +157,8 @@ export const initializeSut = async () => {
       },
     },
     events: {
-      HEADER: async ({ state: { context } }) => {
-        const { cursorId } = context
+      PROPOSE_PACKET: async ({ state: { context } }) => {
+        const cursorId = getCursor(context)
         const header = hash('header' + cursorId)
         debug('header', cursorId)
         await expect(dreamEther.proposePacket(header, qa.target))
@@ -156,6 +166,70 @@ export const initializeSut = async () => {
           .withArgs(cursorId)
         expect(await dreamEther.getQA(cursorId)).to.equal(qa.target)
       },
+      TICK_TIME: async () => {
+        debug('tick time DEFUND_WINDOW_MS', DEFUND_WINDOW_MS)
+        await time.increase(DEFUND_WINDOW_MS)
+      },
+      QA_RESOLVE: async ({ state: { context } }) => {
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('qa resolve', type, cursorId)
+        await tests.superDismissBeforeQa(cursorId)
+        await tests.qaResolvePre(cursorId)
+
+        const shares = [
+          [solver1.address, SOLVER1_SHARES],
+          [solver2.address, SOLVER2_SHARES],
+        ]
+        await expect(qa.passQA(cursorId, shares))
+          .to.emit(dreamEther, 'QAResolved')
+          .withArgs(cursorId)
+        await tests.disputeInvalidRejection(cursorId)
+        await tests.qaResolvePost(cursorId)
+      },
+      ENACT: async () => {
+        // TODO confirm error if not enough time has passed
+        // bug in xstate: https://github.com/statelyai/xstate/issues/4310
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('enact', type, cursorId)
+        const tx = dreamEther.enact(cursorId)
+        switch (type) {
+          case types.HEADER: {
+            const packetId = context.changes.length + 1
+            await expect(tx)
+              .to.emit(dreamEther, 'PacketCreated')
+              .withArgs(packetId)
+            debug('enact packet created', packetId)
+            break
+          }
+          case types.SOLUTION: {
+            await expect(tx)
+              .to.emit(dreamEther, 'SolutionAccepted')
+              .withArgs(cursorId)
+            debug('enact solution accepted', cursorId)
+            break
+          }
+          default:
+            throw new Error('unknown type ' + type)
+        }
+      },
+      PROPOSE_SOLUTION: async () => {
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const contents = hash('solving ' + cursorId)
+        const { type } = getChange(context)
+        expect(type).to.equal(types.PACKET)
+        debug('solving', type, cursorId)
+        await expect(dreamEther.proposeSolution(cursorId, contents)).to.emit(
+          dreamEther,
+          'SolutionProposed'
+        )
+      },
+
+      // WAVE_FRONT
+
       FUND: async ({ state: { context } }) => {
         const { cursorId } = context
         const payments = []
@@ -177,23 +251,7 @@ export const initializeSut = async () => {
         )
         // TODO check balance of funding and dai has changed
       },
-      QA_RESOLVE: async ({ state: { context } }) => {
-        const { cursorId } = context
-        const { type } = context.transitions.get(cursorId)
-        debug('qa resolve', type, cursorId)
-        await tests.superDismissBeforeQa(cursorId)
-        await tests.qaResolvePre(cursorId)
 
-        const shares = [
-          [solver1.address, SOLVER1_SHARES],
-          [solver2.address, SOLVER2_SHARES],
-        ]
-        await expect(qa.passQA(cursorId, shares))
-          .to.emit(dreamEther, 'QAResolved')
-          .withArgs(cursorId)
-        await tests.disputeInvalidRejection(cursorId)
-        await tests.qaResolvePost(cursorId)
-      },
       QA_REJECT: async ({ state: { context } }) => {
         const { cursorId } = context
         const { type } = context.transitions.get(cursorId)
@@ -206,20 +264,6 @@ export const initializeSut = async () => {
           .to.emit(dreamEther, 'QARejected')
           .withArgs(cursorId)
         await tests.qaRejectPost(cursorId)
-      },
-      ENACT_HEADER: async ({ state: { context } }) => {
-        const { transitionsCount, cursorId } = context
-        const { type } = context.transitions.get(cursorId)
-        expect(type).to.equal(types.HEADER)
-
-        // TODO confirm error if not enough time has passed
-
-        const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
-        await time.increase(THREE_DAYS_IN_SECONDS)
-        debug('enact', type, cursorId)
-        await expect(dreamEther.enact(cursorId))
-          .to.emit(dreamEther, 'PacketCreated')
-          .withArgs(transitionsCount)
       },
       ENACT_SOLUTION: async ({ state: { context } }) => {
         const { cursorId } = context
@@ -278,16 +322,7 @@ export const initializeSut = async () => {
           .withArgs(cursorId)
         await tests.qaReClaim(cursorId)
       },
-      SOLVE: async ({ state: { context } }) => {
-        const { cursorId } = context
-        const contents = hash('solving ' + cursorId)
-        const { type } = context.transitions.get(cursorId)
-        debug('solving', type, cursorId)
-        await expect(dreamEther.solve(cursorId, contents)).to.emit(
-          dreamEther,
-          'SolutionProposed'
-        )
-      },
+
       CLAIM: async ({ state: { context } }) => {
         const { cursorId } = context
         const packet = context.transitions.get(cursorId)
