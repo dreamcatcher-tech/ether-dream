@@ -9,7 +9,7 @@ import {
 } from './multi/filters.js'
 
 describe('packets', () => {
-  test.only('simple solve packet', {
+  test('simple solve packet', {
     toState: isCount(1, { type: 'PACKET', enacted: true }),
     filter: and(
       skipActors('funder', 'trader', 'editor', 'superQa'),

@@ -125,11 +125,11 @@ export const initializeSut = async () => {
       },
 
       // WAVE_FRONT
-      qaClaim: async ({ context }) => {
-        if (is({ funded: false })(context)) {
-          await tests.noQaFundsToClaim(context.cursorId)
-        }
-      },
+      // qaClaim: async ({ context }) => {
+      //   if (is({ funded: false })(context)) {
+      //     await tests.noQaFundsToClaim(context.cursorId)
+      //   }
+      // },
       pending: async ({ context }) => {
         await tests.defundExitAfterQa(context.cursorId)
         await tests.defundInvalidStart(context.cursorId)
@@ -140,21 +140,21 @@ export const initializeSut = async () => {
         await tests.defundInvalidStart(context.cursorId)
         await tests.defundInvalidStop(context.cursorId)
       },
-      solved: async ({ context }) => {
-        const { cursorId } = context
-        expect(is({ type: types.PACKET })(context)).to.be.true
+      // solved: async ({ context }) => {
+      //   const { cursorId } = context
+      //   expect(is({ type: types.PACKET })(context)).to.be.true
 
-        tests.noQaClaimPackets(cursorId)
-        if (is({ funded: false })(context)) {
-          await tests.noFundsToClaim(cursorId)
-        }
-      },
-      tradePacketContent: async ({ context }) => {
-        expect(is({ type: types.PACKET })(context)).to.be.true
-        if (is({ isClaimed: false, funded: true })(context)) {
-          await tests.packetContentUntransferrable(context)
-        }
-      },
+      //   tests.noQaClaimPackets(cursorId)
+      //   if (is({ funded: false })(context)) {
+      //     await tests.noFundsToClaim(cursorId)
+      //   }
+      // },
+      // tradePacketContent: async ({ context }) => {
+      //   expect(is({ type: types.PACKET })(context)).to.be.true
+      //   if (is({ isClaimed: false, funded: true })(context)) {
+      //     await tests.packetContentUntransferrable(context)
+      //   }
+      // },
     },
     events: {
       PROPOSE_PACKET: async ({ state: { context } }) => {

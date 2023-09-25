@@ -4,7 +4,8 @@ import { assign, createMachine } from 'xstate'
 
 const MAX_TIME_TICKS = 5
 const DISPUTE_WINDOW_TICKS = 1
-const DEFUND_WINDOW_TICKS = 2
+// const DEFUND_WINDOW_TICKS = 2
+
 export const types = ['HEADER', 'PACKET', 'SOLUTION', 'DISPUTE', 'EDIT']
 export const ACCOUNT_MANAGEMENT_EVENTS = [
   'EXIT',
