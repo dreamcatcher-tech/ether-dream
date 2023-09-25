@@ -1,7 +1,7 @@
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
 import { description } from './utils.js'
-import { initializeSut } from './sut.js'
+import { initializeSut } from './singleUserModel/sut.js'
 import { machine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
 import BarCli from 'barcli'
@@ -25,7 +25,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
   expect(filter, 'filter').to.be.a('function')
   expect(verify, 'verify').to.be.a('function')
 
-  const { dry, debug, last, first, pathAt, graph, sut } = config
+  const { dry, debug, last, first, pathAt, graph, sut, noCondense } = config
 
   let start
   let states = 0
@@ -91,7 +91,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
       }
 
       paths.forEach((path, index) => {
-        it(description(path, index), async () => {
+        it(description(path, index, noCondense), async () => {
           if (debug) {
             Debug.enable('test:sut')
           }

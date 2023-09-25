@@ -10,7 +10,7 @@ export const hash = (value) => {
   return ethers.hexlify(hash.digest)
 }
 
-export const description = (path, index) => {
+export const description = (path, index, noCondense = false) => {
   let stateString = path.state.value
   if (typeof stateString !== 'string') {
     if (path.state.matches('actors')) {
@@ -42,16 +42,20 @@ export const description = (path, index) => {
     return count > 1 ? `${event} (x${count})` : event
   })
   const translated = []
-  const memory = []
-  for (const event of condensed) {
-    memory.push(event)
-    const translation = match(memory)
-    if (translation) {
-      translated.push(...memory, translation)
-      memory.length = 0
+  if (noCondense) {
+    translated.push(...condensed)
+  } else {
+    const memory = []
+    for (const event of condensed) {
+      memory.push(event)
+      const translation = match(memory)
+      if (translation) {
+        translated.push(...memory, translation)
+        memory.length = 0
+      }
     }
+    translated.push(...memory)
   }
-  translated.push(...memory)
 
   const prefix = index !== undefined ? `[${index}] ` : ''
   return prefix + `Reaches: '${stateString}' via: ${translated.join(' > ')}`

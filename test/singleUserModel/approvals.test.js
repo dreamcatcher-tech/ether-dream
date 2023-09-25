@@ -2,7 +2,7 @@ import { initializeSut } from './sut.js'
 import { filters } from './machine.js'
 import { is, and } from './conditions.js'
 import { expect } from 'chai'
-import test from './testFactory.js'
+import test from '../testFactory.js'
 
 const filter = and(
   filters.allowedStates('idle', 'open', 'tradeFunds'),

@@ -8,7 +8,7 @@ import {
 } from './multiMachine.js'
 import test, { logConfig } from '../testFactory.js'
 import { sendBatch } from '../utils.js'
-import { and } from '../conditions.js'
+import { and } from '../singleUserModel/conditions.js'
 import { createActor, createMachine } from 'xstate'
 import { expect } from 'chai'
 import { isCount, count, skipActors, skipAccountMgmt, max } from './filters.js'

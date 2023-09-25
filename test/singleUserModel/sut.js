@@ -7,10 +7,10 @@ import {
   loadFixture,
   setBalance,
 } from '@nomicfoundation/hardhat-toolbox/network-helpers.js'
-import { types } from './singleUserModel/machine.js'
-import { is } from './singleUserModel/conditions.js'
-import { hash } from './utils.js'
-import sutTests, { tradeContent } from './singleUserModel/sutTests.js'
+import { types } from './machine.js'
+import { is } from './conditions.js'
+import { hash } from '../utils.js'
+import sutTests, { tradeContent } from './sutTests.js'
 import Debug from 'debug'
 
 const debug = Debug('test:sut')

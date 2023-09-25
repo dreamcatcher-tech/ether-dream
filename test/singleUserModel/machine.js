@@ -1,5 +1,5 @@
 import Immutable from 'immutable'
-import { hash } from './utils.js'
+import { hash } from '../utils.js'
 import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
 import { change, global, globalIs, not, is, isAny, and } from './conditions.js'

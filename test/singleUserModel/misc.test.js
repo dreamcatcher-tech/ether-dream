@@ -1,4 +1,4 @@
-import { hash } from './utils.js'
+import { hash } from '../utils.js'
 import { initializeSut } from './sut.js'
 import { expect } from 'chai'
 

@@ -5,7 +5,7 @@ import {
   options,
 } from './multiMachine.js'
 import test, { logConfig } from '../testFactory.js'
-import { and } from '../conditions.js'
+import { and } from '../singleUserModel/conditions.js'
 import { createActor, createMachine } from 'xstate'
 import { expect } from 'chai'
 import { sendBatch } from '../utils.js'
@@ -68,7 +68,7 @@ describe('basics', () => {
     done()
   })
 
-  test('simple solve packet', {
+  test.only('simple solve packet', {
     toState: isCount(1, { type: 'PACKET', enacted: true }),
     filter: and(
       skipActors('funder', 'trader', 'editor', 'superQa'),
@@ -79,6 +79,7 @@ describe('basics', () => {
       skipNavigation
     ),
     sut: {},
+    noCondense: true,
   })
 
   it('can survive multiple dispute rounds')
