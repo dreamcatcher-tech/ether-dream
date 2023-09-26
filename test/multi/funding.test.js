@@ -48,7 +48,6 @@ globalThis.process.env.MODEL === '1' &&
         enacted: true,
         fundedEth: true,
         qaResolved: true,
-        // qaRejected: true,
         tradedFundsSome: true,
         tradedContentSome: true,
       }),

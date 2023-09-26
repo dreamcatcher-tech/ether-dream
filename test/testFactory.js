@@ -2,7 +2,7 @@ import { createTestModel, createTestMachine } from '@xstate/test'
 import { assign } from 'xstate'
 import { description } from './utils.js'
 import { initializeSut } from './sut.js'
-import { machine, options } from './multi/multiMachine.js'
+import { snapshot, machine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
 import BarCli from 'barcli'
 import Debug from 'debug'
@@ -43,6 +43,9 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
         return toState(state)
       },
       filter: (state, event) => {
+        if (!skipJitter(state, event)) {
+          return false
+        }
         const result = filter(state, event)
         if (result) {
           cliGraphUpdate(state, event, result)
@@ -149,20 +152,30 @@ export const logConfig = (options, dbg = debug) => {
 }
 
 const globalEvents = new Set(Object.keys(machine.config.on))
+
 const skipJitter = (state, event) => {
-  /**
-   * Jitter blocking is wrong, since sometimes we could do other actions
-   * but we need to switch actors. We need to store context same as prev and next
-   * so you can only take a global action if you have done at least one
-   * local action
-   */
-  const localEvents = state.nextEvents.filter((e) => {
-    return !globalEvents.has(e)
-  })
-  if (!localEvents.length) {
+  if (event.type === 'NEXT' || event.type === 'PREV') {
     return true
   }
-  return localEvents.includes(event.type)
+  if (!globalEvents.has(event.type)) {
+    return true
+  }
+  // an actor change is only allowed if context changed since last one
+  const { actorSnapshot } = state.context
+  if (!actorSnapshot) {
+    return true
+  }
+  if (actorSnapshot.event === event.type) {
+    // controversially, you cannot be the same actor twice
+    return false
+  }
+  const snap = snapshot(state)
+  for (const key in snap) {
+    if (snap[key] !== actorSnapshot.snapshot[key]) {
+      return true
+    }
+  }
+  return false
 }
 const cliGraph = (showAlways) => {
   const bars = new Map()

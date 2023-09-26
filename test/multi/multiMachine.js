@@ -91,7 +91,7 @@ export const nand =
   (...args) =>
     functions.some((fn) => !fn(...args))
 
-const snapshotEquals = (context, snapKey) => {
+export const snapshotEquals = (context, snapKey) => {
   if (snapKey !== 'next' && snapKey !== 'prev') {
     throw new Error(`key ${snapKey} is not a snapshot`)
   }
@@ -107,11 +107,12 @@ const snapshotEquals = (context, snapKey) => {
   return true
 }
 
-const snapshot = ({ context }) => {
+export const snapshot = ({ context }) => {
   const snapshot = { ...context }
   delete snapshot.next
   delete snapshot.prev
   delete snapshot.selectedChange
+  delete snapshot.actorSnapshot
   return snapshot
 }
 const checkIsSolved = (packet, changes) => {
@@ -341,6 +342,12 @@ const base = Object.freeze({
 export const options = {
   guards,
   actions: {
+    snapshotActor: assign({
+      actorSnapshot: ({ context, event }) => ({
+        snapshot: snapshot({ context }),
+        event: event.type,
+      }),
+    }),
     fundEth: set({ fundedEth: true }),
     fundDai: set({ fundedDai: true }),
     fund1155: set({ funded1155: true }),
@@ -366,13 +373,15 @@ export const options = {
     tradeAllFunds: set({ tradedFundsAll: true }),
     tradeSomeContent: set({ tradedContentSome: true }),
     tradeAllContent: set({ tradedContentAll: true }),
-    next: assign({
+    snapshotNext: assign({
       next: snapshot,
       selectedChange: ({ context: { selectedChange } }) => selectedChange + 1,
+      actorSnapshot: () => undefined,
     }),
-    prev: assign({
+    snapshotPrev: assign({
       prev: snapshot,
       selectedChange: ({ context: { selectedChange } }) => selectedChange - 1,
+      actorSnapshot: () => undefined,
     }),
     selectLast: assign({
       selectedChange: ({ context }) => context.changes.length - 1,
@@ -987,47 +996,56 @@ export const machine = createMachine(
       BE_TRADER: {
         target: '.actors.trader',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_PROPOSER: {
         target: '.actors.proposer',
+        actions: 'snapshotActor',
       },
       BE_SERVICE: {
         target: '.actors.service',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_SOLVER: {
         target: '.actors.solver',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_EDITOR: {
         target: '.actors.editor',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_DISPUTER: {
         target: '.actors.disputer',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_QA: {
         target: '.actors.qa',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_FUNDER: {
         target: '.actors.funder',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       BE_SUPER_QA: {
         target: '.actors.superQa',
         guard: 'isChange',
+        actions: 'snapshotActor',
       },
       NEXT: {
         target: '.stack',
         guard: 'isNextable',
-        actions: 'next',
+        actions: 'snapshotNext',
       },
       PREV: {
         target: '.stack',
         guard: 'isPrevable',
-        actions: 'prev',
+        actions: 'snapshotPrev',
       },
     },
   },

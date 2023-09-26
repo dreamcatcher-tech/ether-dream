@@ -13,14 +13,9 @@ export default function () {
       params: {
         env: 'MODEL=1',
         runner: '--experimental-vm-modules',
-        timeout: 20000,
       },
     },
     testFramework: 'mocha',
     workers: { restart: true },
-    setup: (wallaby) => {
-      const mocha = wallaby.testFramework
-      mocha.timeout(20000)
-    },
   }
 }
