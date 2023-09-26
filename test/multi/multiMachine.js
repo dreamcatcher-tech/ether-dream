@@ -22,8 +22,8 @@ export const getChange = ({ changes, selectedChange }) => {
   }
   return changes[selectedChange]
 }
-const make = (params = {}) => {
-  if (!Object.keys(params).length) {
+const make = (params) => {
+  if (!params) {
     return base
   }
   for (const key of Object.keys(params)) {
@@ -76,7 +76,7 @@ export const isDirect = (context, params) => {
 }
 export const isChange = (change, params) => {
   const base = make()
-  for (const key of Object.keys(params)) {
+  for (const key in params) {
     if (!(key in base)) {
       throw new Error(`key ${key} is not in base key set`)
     }
@@ -169,7 +169,7 @@ const guards = {
     return guards.isDisputeWindowPassed({ context })
   },
   isNotOpen: not({ qaResolved: false, qaRejected: false }),
-  isPacketPending: ({ context }) => {
+  isPacketNotOpen: ({ context }) => {
     // pending if packet not enacted but a solution has passed qa
     // even if that solution may yet be disputed
     const packet = getChange(context)
@@ -177,7 +177,7 @@ const guards = {
       return false
     }
     if (isChange(packet, { enacted: true })) {
-      return false
+      return true
     }
     for (const solutionIndex of packet.downlinks) {
       const solution = context.changes[solutionIndex]
@@ -298,8 +298,10 @@ const guards = {
   },
   isDefundWaiting: (opts) =>
     guards.isTimeLeft(opts) && !guards.isDefundWindowPassed(opts),
-  isContentTraded: not({ tradedContentAll: false, tradedContentSome: false }),
-  isFundsTraded: not({ tradedFundsAll: false, tradedFundsSome: false }),
+  isContentTraded: is({ tradedContentAll: true }),
+  isSomeContentTradable: is({ tradedContentSome: false }),
+  isFundsTraded: is({ tradedFundsAll: false }),
+  isSomeFundsTradable: is({ tradedFundsSome: false }),
   isFunded: ({ context }) => {
     const change = getChange(context)
     const isNoFunding = isChange(change, {
@@ -314,6 +316,7 @@ const guards = {
     })
     return !isNoFunding && !isDefunded
   },
+  isMedallionTraded: is({ tradedMedallion: true }),
 }
 const base = Object.freeze({
   type: '',
@@ -342,6 +345,7 @@ const base = Object.freeze({
 export const options = {
   guards,
   actions: {
+    tradeMedallion: set({ tradedMedallion: true }),
     snapshotActor: assign({
       actorSnapshot: ({ context, event }) => ({
         snapshot: snapshot({ context }),
@@ -726,7 +730,7 @@ export const machine = createMachine(
             },
             always: [
               { target: 'pending', guard: 'isNotOpen' },
-              { target: 'pendingPacket', guard: 'isPacketPending' },
+              { target: 'pendingPacket', guard: 'isPacketNotOpen' },
             ],
           },
           pendingPacket: {
@@ -851,8 +855,8 @@ export const machine = createMachine(
                         actions: 'tradeAllFunds',
                       },
                       TRADE_SOME_FUNDS: {
-                        target: 'traded',
                         actions: 'tradeSomeFunds',
+                        guard: 'isSomeFundsTradable',
                       },
                     },
                   },
@@ -884,8 +888,8 @@ export const machine = createMachine(
                         actions: 'tradeAllContent',
                       },
                       TRADE_SOME_CONTENT: {
-                        target: 'traded',
                         actions: 'tradeSomeContent',
+                        guard: 'isSomeContentTradable',
                       },
                     },
                   },
@@ -912,6 +916,7 @@ export const machine = createMachine(
                     },
                   },
                   enacted: {
+                    always: { target: 'traded', guard: 'isMedallionTraded' },
                     on: {
                       TRADE_MEDALLION: {
                         target: 'traded',

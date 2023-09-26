@@ -218,42 +218,9 @@ export default function createTests(fixture) {
       const nftIds = await dreamEther.fundingNftIds(cursorId)
       for (const nftId of nftIds) {
         const balanceNoone = await dreamEther.balanceOf(noone, nftId)
-        debug('balance noone', nftId, balanceNoone)
+        debug('balance noone for id %i is:', nftId, balanceNoone)
         expect(balanceNoone).to.equal(0)
       }
     },
   }
-}
-
-export const tradeContent = async (fixture, context) => {
-  const { dreamEther, noone, solver1, solver2 } = fixture
-  const { cursorId } = context
-  const { type } = context.transitions.get(cursorId)
-  debug('trading content', type, cursorId)
-  // TODO add balace of checks pre and post trade
-
-  expect(await dreamEther.isNftHeld(cursorId, solver1.address)).to.be.true
-  expect(await dreamEther.isNftHeld(cursorId, solver2.address)).to.be.true
-  expect(await dreamEther.isNftHeld(cursorId, noone.address)).to.be.false
-  const nftId = await dreamEther.contentNftId(cursorId)
-  expect(nftId).to.be.greaterThan(0)
-
-  expect(await dreamEther.totalSupply(nftId)).to.equal(1000)
-
-  const balanceSolver1 = await dreamEther.balanceOf(solver1, nftId)
-  debug('balance solver1', nftId, balanceSolver1)
-  expect(balanceSolver1).to.equal(SOLVER1_SHARES)
-  const balanceSolver2 = await dreamEther.balanceOf(solver2, nftId)
-  debug('balance solver2', nftId, balanceSolver2)
-  expect(balanceSolver2).to.equal(SOLVER2_SHARES)
-
-  const from = solver1.address
-  const to = solver2.address
-  const amount = 1
-
-  const tx = dreamEther
-    .connect(solver1)
-    .safeTransferFrom(from, to, nftId, amount, '0x')
-  const args = { from, to, id: nftId, amount }
-  return [tx, args]
 }

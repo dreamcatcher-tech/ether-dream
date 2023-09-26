@@ -4,13 +4,21 @@ import {
   isCount,
   skipActors,
   skipAccountMgmt,
-  skipNavigation,
+  skipEvents,
+  skipDisputes,
+  skipDefunding,
+  skipFundPackets,
+  skipMetaFunding,
+  skipMetaTrading,
+  skipNext,
   max,
+  skipRejection,
+  skipFundsTrading,
 } from './multi/filters.js'
 import { expect } from 'chai'
 import test from './testFactory.js'
 
-describe.only(`trading`, () => {
+describe(`trading`, () => {
   it('errors on totalSupply for invalid nft id', async () => {
     const sut = await initializeSut()
     const { dreamEther } = sut.fixture
@@ -29,64 +37,55 @@ describe.only(`trading`, () => {
       dreamEther.safeTransferFrom(owner, owner, fakeNftId, fakeAmount, fakeData)
     ).to.be.revertedWith('Data not supported')
   })
-  test.only('header funding shares can trade', {
-    dry: true,
-    toState: (state) => state.matches('stack.contentTrading.traded'),
-    // && state.matches('stack.fundsTrading.traded')
-    // && state.matches('stack.qaMedallionTrading.traded')
+  test('header funding shares can trade', {
+    toState: isCount(1, {
+      type: 'HEADER',
+      enacted: true,
+      fundedEth: true,
+      qaResolved: true,
+      tradedFundsSome: true,
+      tradedContentSome: true,
+    }),
     filter: and(
-      skipActors('solver', 'editor', 'superQa'),
+      skipActors('proposer', 'solver', 'editor', 'superQa'),
+      skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721'),
       skipAccountMgmt(),
-      max(1, { type: 'HEADER' }),
-      max(1),
-      skipNavigation
+      skipDisputes(),
+      skipDefunding(),
+      skipFundPackets(),
+      max(2)
     ),
     verify: async (sut) =>
-      expect(sut.events.TRADE_FUNDS).to.have.been.calledOnce &&
+      expect(sut.events.TRADE_SOME_FUNDS).to.have.been.calledOnce &&
+      expect(sut.events.TRADE_SOME_CONTENT).to.have.been.calledOnce &&
       expect(sut.tests.nooneHasNoBalance).to.have.been.calledOnce,
   })
 
-  // test('meta content shares can trade', {
-  //   toState: (state) =>
-  //     state.matches('enacted') && is({ contentTraded: true })(state.context),
-  //   filter: and(
-  //     filters.skipFunding,
-  //     filters.skipDefunding,
-  //     filters.skipDisputes
-  //   ),
-  //   verify: async (sut) => {
-  //     expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce
-  //     const { dreamEther, solver1, noone } = sut.fixture
-  //     const firstId = 1
-  //     const nftId = await dreamEther.contentNftId(firstId)
-  //     const balance = await dreamEther.balanceOf(solver1, nftId)
-  //     expect(balance).to.be.greaterThan(0)
-  //     const tx = dreamEther
-  //       .connect(solver1)
-  //       .safeTransferFrom(solver1, noone, nftId, balance, '0x')
-  //     await expect(tx).to.emit(dreamEther, 'TransferSingle')
-  //     expect(await dreamEther.balanceOf(solver1, nftId)).to.equal(0)
-  //   },
-  // })
-  // test('funded packet content shares can trade', {
-  //   toState: (state) =>
-  //     state.matches('solved') &&
-  //     is({
-  //       contentTraded: true,
-  //       isClaimed: true,
-  //       fundedEth: true,
-  //       fundedDai: false,
-  //     })(state.context),
-  //   filter: and(
-  //     filters.skipMetaFunding,
-  //     filters.skipMetaTrading,
-  //     filters.skipFundTrading,
-  //     filters.skipDefunding,
-  //     filters.skipDisputes,
-  //     filters.skipExit
-  //   ),
-  //   verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
-  // })
+  test.only('funded packet content shares can trade', {
+    dry: true,
+    debug: true,
+    toState: isCount(1, {
+      type: 'PACKET',
+      fundedEth: true,
+      tradedContentSome: true,
+      tradedMedallion: true,
+      tradedContentAll: true,
+    }),
+    filter: and(
+      skipActors('proposer', 'editor', 'superQa'),
+      skipMetaFunding(),
+      skipMetaTrading(),
+      skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721'),
+      skipAccountMgmt(),
+      skipDisputes(),
+      skipDefunding(),
+      skipRejection(),
+      skipFundsTrading(),
+      skipNext(),
+      max(3)
+    ),
+    verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
+  })
   // test('unfunded packet content shares trade without claim', {
   //   toState: (state) =>
   //     state.matches('solved') &&
@@ -125,4 +124,5 @@ describe.only(`trading`, () => {
   it('no trading before claimin')
   it('unfunded packets are tradeable without claim')
   it('QA Medallion can be traded')
+  it('cannot trade solution content shares')
 })

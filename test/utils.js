@@ -10,7 +10,7 @@ export const hash = (value) => {
   return ethers.hexlify(hash.digest)
 }
 
-export const description = (path, index, noCondense = false) => {
+export const description = (path, index, expand = false) => {
   let stateString = path.state.value
   if (typeof stateString !== 'string') {
     if (path.state.matches('actors')) {
@@ -20,6 +20,9 @@ export const description = (path, index, noCondense = false) => {
     if (path.state.matches('stack')) {
       stateString = longest(path.state, 'stack.')
       stateString = stateString.replace('stack.', '')
+    }
+    if (stateString.startsWith('trading')) {
+      stateString = 'trading'
     }
   }
   const allEvents = path.steps.map((step) => step.event.type)
@@ -42,7 +45,7 @@ export const description = (path, index, noCondense = false) => {
     return count > 1 ? `${event} (x${count})` : event
   })
   const translated = []
-  if (noCondense) {
+  if (expand) {
     translated.push(...condensed)
   } else {
     const memory = []
@@ -50,7 +53,7 @@ export const description = (path, index, noCondense = false) => {
       memory.push(event)
       const translation = match(memory)
       if (translation) {
-        translated.push(...memory, translation)
+        translated.push(...memory, `*${translation}`)
         memory.length = 0
       }
     }
@@ -80,7 +83,10 @@ const maps = {
   'BE_TRADER > DO_TRADER > TRADE_SOME_CONTENT': 'TRADE_SOME_CONTENT',
   'BE_FUNDER > DO_FUNDER > FUND_ETH': 'FUND_ETH',
   'BE_QA > DO_QA > QA_RESOLVE': 'RESOLVE',
+  'BE_QA > DO_QA > QA_REJECT': 'REJECT',
   'BE_DISPUTER > DO_DISPUTER > TICK_TIME': 'TICK',
+  'BE_TRADER > DO_TRADER > TRADE_ALL_FUNDS': 'TRADE_ALL_FUNDS',
+  'BE_TRADER > DO_TRADER > TRADE_ALL_CONTENT': 'TRADE_ALL_CONTENT',
 }
 
 export const longest = (state, prefix) => {

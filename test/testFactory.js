@@ -25,7 +25,9 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
   expect(filter, 'filter').to.be.a('function')
   expect(verify, 'verify').to.be.a('function')
 
-  const { dry, debug, last, first, pathAt, graph, sut, noCondense } = config
+  const { dry, debug, last, first, pathAt, graph, sut, expand, ...rest } =
+    config
+  expect(rest, 'unknown config').to.be.empty
 
   let start
   let states = 0
@@ -90,7 +92,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
       }
 
       paths.forEach((path, index) => {
-        it(description(path, index, noCondense), async () => {
+        it(description(path, index, expand), async () => {
           if (debug) {
             Debug.enable('test:sut')
           }

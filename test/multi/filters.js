@@ -76,18 +76,36 @@ export const skipFundPackets = () => {
     return true
   }
 }
+export const skipMetaFunding = () => (state, event) => {
+  if (!fundingEvents.includes(event.type)) {
+    return true
+  }
+  const change = getChange(state.context)
+  return isChange(change, { type: 'PACKET' })
+}
+const tradingEvents = [
+  'TRADE_SOME_FUNDS',
+  'TRADE_SOME_CONTENT',
+  'TRADE_ALL_FUNDS',
+  'TRADE_ALL_CONTENT',
+]
+export const skipMetaTrading = () => {
+  checkEvents(...tradingEvents)
+  return (state, event) => {
+    if (!tradingEvents.includes(event.type)) {
+      return true
+    }
+    const change = getChange(state.context)
+    return isChange(change, { type: 'PACKET' })
+  }
+}
 
 export const skipAccountMgmt = () => {
   const { actors } = machine.states
   expect(ACCOUNT_MANAGEMENT_EVENTS.every((a) => actors.on[a])).to.be.ok
-  return (state, event) => {
-    if (ACCOUNT_MANAGEMENT_EVENTS.includes(event.type)) {
-      return false
-    }
-    return true
-  }
+  return (state, event) => !ACCOUNT_MANAGEMENT_EVENTS.includes(event.type)
 }
-export const skipNavigation = (state, event) => {
+export const skipNavigation = () => (state, event) => {
   if (event.type === 'NEXT' || event.type === 'PREV') {
     return false
   }
@@ -142,3 +160,13 @@ export const log = (debug) => (state, event) => {
 
   return true
 }
+
+export const skipRejection = () => {
+  const event = 'QA_REJECT'
+  return skipEvents(event)
+}
+export const skipFundsTrading = () => {
+  const events = ['TRADE_SOME_FUNDS', 'TRADE_ALL_FUNDS']
+  return skipEvents(...events)
+}
+export const skipNext = () => skipEvents('NEXT')
