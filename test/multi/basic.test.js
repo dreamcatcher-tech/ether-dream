@@ -1,13 +1,7 @@
-import {
-  ACCOUNT_MANAGEMENT_EVENTS,
-  isDirect,
-  machine,
-  options,
-} from './multiMachine.js'
-import test, { logConfig } from '../testFactory.js'
-import { createActor, createMachine } from 'xstate'
+import { isDirect } from './multiMachine.js'
+import test from '../testFactory.js'
+import { startLoggingActor, scripts } from './paths.js'
 import { expect } from 'chai'
-import { sendBatch } from '../utils.js'
 import {
   and,
   isCount,
@@ -22,49 +16,17 @@ const debug = Debug('tests')
 globalThis.process.env.MODEL === '1' &&
   describe('basics', () => {
     it('gets to enacted packet', (done) => {
-      const loggingOptions = logConfig(options)
-      const logging = createMachine(machine.config, loggingOptions)
-      const actor = createActor(logging).start()
-      const NO_LOG = ['NEXT', 'PREV', ...ACCOUNT_MANAGEMENT_EVENTS]
-      let current
-      actor.subscribe({
-        next: (state) => {
-          debug('state', state.toStrings())
-          debug(
-            state.nextEvents.filter(
-              (e) => !e.startsWith('BE_') && !NO_LOG.includes(e)
-            )
-          )
-          current = state
-        },
-        error: (error) => {
-          done(error)
-        },
-        complete: () => {
-          debug('DONE')
-        },
-      })
-      const proposePacket = ['BE_PROPOSER', 'PROPOSE_PACKET']
-      const resolveChange = [
-        'BE_QA',
-        'DO',
-        'QA_RESOLVE',
-        'BE_DISPUTER',
-        'DO',
-        'TICK_TIME',
-        'BE_SERVICE',
-        'ENACT',
-      ]
-      sendBatch(actor, proposePacket, resolveChange)
+      const actor = startLoggingActor(done, debug)
+      const { proposePacket, resolveChange, solve } = scripts
+      actor(proposePacket, resolveChange)
+      expect(actor.state.matches('stack.open')).to.be.true
+      expect(isDirect(actor.context, { type: 'PACKET' })).to.be.true
 
-      expect(current.matches('stack.open')).to.be.true
-      expect(isDirect(current.context, { type: 'PACKET' })).to.be.true
+      actor(solve, resolveChange)
 
-      const proposeSolution = ['BE_SOLVER', 'PROPOSE_SOLUTION']
-      sendBatch(actor, proposeSolution, resolveChange)
-
-      expect(current.matches('stack.enacted')).to.be.true
-      expect(isCount(1, { type: 'PACKET', enacted: true })(current)).to.be.true
+      expect(actor.state.matches('stack.enacted')).to.be.true
+      expect(isCount(1, { type: 'PACKET', enacted: true })(actor.state)).to.be
+        .true
 
       done()
     })

@@ -1,9 +1,19 @@
 import { expect } from 'chai'
-import { isChange, ACCOUNT_MANAGEMENT_EVENTS, machine } from './multiMachine.js'
+import {
+  getChange,
+  isChange,
+  ACCOUNT_MANAGEMENT_EVENTS,
+  machine,
+} from './multiMachine.js'
 export const and =
   (...functions) =>
   (...args) =>
     !functions.some((fn) => !fn(...args))
+export const nand =
+  (...functions) =>
+  (...args) =>
+    functions.some((fn) => !fn(...args))
+
 export const skipActors = (...actors) => {
   for (const actor of actors) {
     if (machine.states.actors.states[actor] === undefined) {
@@ -22,9 +32,54 @@ export const skipActors = (...actors) => {
   return (state, event) => !events.includes(event.type)
 }
 
+export const skipEvents = (...events) => {
+  checkEvents(...events)
+  return (state, event) => {
+    return !events.includes(event.type)
+  }
+}
+
+const checkEvents = (...events) => {
+  for (const event of events) {
+    expect(event).to.be.a('string')
+    if (!machine.events.includes(event)) {
+      throw new Error(`Event ${event} not found`)
+    }
+  }
+}
+
+export const skipDisputes = () => {
+  const diputeEvents = [
+    'DISPUTE_SHARES',
+    'DISPUTE_RESOLVE',
+    'DISPUTE_REJECTION',
+  ]
+  return skipEvents(...diputeEvents)
+}
+export const skipDefunding = () => {
+  const diputeEvents = [
+    'DEFUND_START',
+    'DEFUND_STOP',
+    'DEFUND',
+    'TICK_DEFUND_TIME',
+  ]
+  return skipEvents(...diputeEvents)
+}
+const fundingEvents = ['FUND_ETH', 'FUND_DAI', 'FUND_1155', 'FUND_721']
+export const skipFundPackets = () => {
+  checkEvents(...fundingEvents)
+  return (state, event) => {
+    const change = getChange(state.context)
+    if (isChange(change, { type: 'PACKET' })) {
+      return !fundingEvents.includes(event.type)
+    }
+    return true
+  }
+}
+
 export const skipAccountMgmt = () => {
-  const accounts = machine.states.actors
-  expect(ACCOUNT_MANAGEMENT_EVENTS.every((a) => accounts.on[a])).to.be.ok
+  const { actors } = machine.states
+  expect(ACCOUNT_MANAGEMENT_EVENTS.every((a) => actors.on[a])).to.be.ok
   return (state, event) => {
     if (ACCOUNT_MANAGEMENT_EVENTS.includes(event.type)) {
       return false
@@ -44,9 +99,9 @@ export const isCount = (count, params) => (state) => {
   for (const change of state.context.changes) {
     if (isChange(change, params)) {
       c++
-    }
-    if (c > count) {
-      return false
+      if (c > count) {
+        return false
+      }
     }
   }
   return c === count
@@ -67,9 +122,9 @@ export const max =
     for (const change of state.context.changes) {
       if (isChange(change, params)) {
         count++
-      }
-      if (count > limit) {
-        return false
+        if (count > limit) {
+          return false
+        }
       }
     }
     return true

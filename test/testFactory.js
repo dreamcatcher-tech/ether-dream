@@ -43,10 +43,6 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
         return toState(state)
       },
       filter: (state, event) => {
-        if (!skipJitter(state, event)) {
-          return false
-        }
-
         const result = filter(state, event)
         if (result) {
           cliGraphUpdate(state, event, result)
@@ -54,9 +50,9 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
         return result
       },
     })
+    cliGraphUpdate.halt()
     const errorMessage = `No paths generated in ${states} state traversals`
     expect(paths.length, errorMessage).to.be.greaterThan(0)
-    cliGraphUpdate.halt()
     const timeTaken = Date.now() - start
     const msg = `MODEL: ${name} (${paths.length} paths with ${states} state traversals in ${timeTaken}ms)`
 
@@ -154,6 +150,12 @@ export const logConfig = (options, dbg = debug) => {
 
 const globalEvents = new Set(Object.keys(machine.config.on))
 const skipJitter = (state, event) => {
+  /**
+   * Jitter blocking is wrong, since sometimes we could do other actions
+   * but we need to switch actors. We need to store context same as prev and next
+   * so you can only take a global action if you have done at least one
+   * local action
+   */
   const localEvents = state.nextEvents.filter((e) => {
     return !globalEvents.has(e)
   })
@@ -162,12 +164,15 @@ const skipJitter = (state, event) => {
   }
   return localEvents.includes(event.type)
 }
-const cliGraph = (showAlways = false) => {
+const cliGraph = (showAlways) => {
   const bars = new Map()
   let max = 0
   const startTime = Date.now()
-  const startDelay = showAlways ? 0 : 2000
-  const filter = (state, event) => {
+  const startDelay = showAlways ? 0 : Infinity
+  const updater = (state, event) => {
+    if (showAlways === false) {
+      return
+    }
     if (Date.now() - startTime < startDelay) {
       return
     }
@@ -187,7 +192,7 @@ const cliGraph = (showAlways = false) => {
     }
     bar.update(bar.count)
   }
-  filter.halt = () => {
+  updater.halt = () => {
     for (const [, bar] of bars) {
       bar.graph.update(bar.count)
     }
@@ -197,11 +202,11 @@ const cliGraph = (showAlways = false) => {
     BarCli.halt()
     globalThis.process.stdout.write('\n')
   }
-  return filter
+  return updater
 }
 
 function debounce(func, delay) {
-  let lastRunTime = Date.now()
+  let lastRunTime = 0
   return function (...args) {
     const now = Date.now()
     const elapsed = now - lastRunTime

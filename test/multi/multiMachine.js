@@ -4,7 +4,7 @@ import { assign, createMachine } from 'xstate'
 
 const MAX_TIME_TICKS = 5
 const DISPUTE_WINDOW_TICKS = 1
-// const DEFUND_WINDOW_TICKS = 2
+const DEFUND_WINDOW_TICKS = 2
 
 export const types = ['HEADER', 'PACKET', 'SOLUTION', 'DISPUTE', 'EDIT']
 export const ACCOUNT_MANAGEMENT_EVENTS = [
@@ -86,19 +86,10 @@ export const isChange = (change, params) => {
   }
   return true
 }
-
-const base = Object.freeze({
-  type: '',
-  uplink: undefined,
-  downlinks: Object.freeze([]),
-  qaResolved: false,
-  qaRejected: false,
-  enacted: false,
-  disputed: false,
-  qaTickStart: undefined,
-  funded: false,
-  // TODO add rounds limits for super qa
-})
+export const nand =
+  (...functions) =>
+  (...args) =>
+    functions.some((fn) => !fn(...args))
 
 const snapshotEquals = (context, snapKey) => {
   if (snapKey !== 'next' && snapKey !== 'prev') {
@@ -123,6 +114,25 @@ const snapshot = ({ context }) => {
   delete snapshot.selectedChange
   return snapshot
 }
+const checkIsSolved = (packet, changes) => {
+  check(packet, { type: 'PACKET' })
+  let firstSolution
+  for (const solutionIndex of packet.downlinks) {
+    const solution = changes[solutionIndex]
+    check(solution, { type: 'SOLUTION' })
+    if (isChange(solution, { enacted: true })) {
+      firstSolution = solution
+      break
+    }
+  }
+  check(firstSolution, { enacted: true })
+}
+const check = (change, params) => {
+  if (!isChange(change, params)) {
+    const string = JSON.stringify(change, null, 2)
+    throw new Error(`change is not ${JSON.stringify(params)}\n${string}`)
+  }
+}
 const isNotLast = (context) =>
   context.selectedChange < context.changes.length - 1
 const isNotFirst = (context) => context.selectedChange > 0
@@ -141,7 +151,7 @@ const guards = {
   isDispute: is({ type: 'DISPUTE' }),
   isEdit: is({ type: 'EDIT' }),
   isDisputed: is({ disputed: true }),
-  isFunded: is({ funded: true }),
+
   isEnacted: is({ enacted: true }),
   isEnactable: ({ context }) => {
     // if no disputes outstanding, enough time has passed, then is enactable
@@ -268,10 +278,94 @@ const guards = {
   isTimeLeft: ({ context }) => context.time < MAX_TIME_TICKS,
   isDisputeWindowOpen: (opts) =>
     guards.isTimeLeft(opts) && !guards.isDisputeWindowPassed(opts),
+  isFundableEth: is({ fundedEth: false }),
+  isFundableDai: is({ fundedDai: false }),
+  isFundable1155: is({ funded1155: false }),
+  isFundable721: is({ funded721: false }),
+  isDefunding: is({ defundStarted: true, defundCompleted: false }),
+  isDefundable: is({ defundStarted: false }),
+  isDefundWindowPassed: ({ context }) => {
+    const change = getChange(context)
+    const start = change.defundTickStart
+    if (!Number.isInteger(start)) {
+      throw new Error('defundTickStart is not an integer')
+    }
+    if (start + DEFUND_WINDOW_TICKS <= context.time) {
+      return true
+    }
+    return false
+  },
+  isDefundWaiting: (opts) =>
+    guards.isTimeLeft(opts) && !guards.isDefundWindowPassed(opts),
+  isContentTraded: not({ tradedContentAll: false, tradedContentSome: false }),
+  isFundsTraded: not({ tradedFundsAll: false, tradedFundsSome: false }),
+  isFunded: ({ context }) => {
+    const change = getChange(context)
+    const isNoFunding = isChange(change, {
+      fundedEth: false,
+      fundedDai: false,
+      funded1155: false,
+      funded721: false,
+    })
+    const isDefunded = isChange(change, {
+      defundCompleted: true,
+      defundStopped: false,
+    })
+    return !isNoFunding && !isDefunded
+  },
 }
+const base = Object.freeze({
+  type: '',
+  uplink: undefined,
+  downlinks: Object.freeze([]),
+  qaResolved: false,
+  qaRejected: false,
+  enacted: false,
+  disputed: false,
+  qaTickStart: undefined,
+  fundedEth: false,
+  fundedDai: false,
+  funded1155: false,
+  funded721: false,
+  defundStarted: false,
+  defundTickStart: undefined,
+  defundCompleted: false,
+  defundStopped: false,
+  tradedFundsSome: false,
+  tradedFundsAll: false,
+  tradedContentSome: false,
+  tradedContentAll: false,
+  tradedMedallion: false,
+  // TODO add rounds limits for super qa
+})
 export const options = {
   guards,
   actions: {
+    fundEth: set({ fundedEth: true }),
+    fundDai: set({ fundedDai: true }),
+    fund1155: set({ funded1155: true }),
+    fund721: set({ funded721: true }),
+    defundStart: assign({
+      changes: ({ context }) => {
+        const change = getChange(context)
+        check(change, { defundStarted: false })
+        const changes = [...context.changes]
+        changes[context.selectedChange] = setDirect(change, {
+          defundStarted: true,
+          defundTickStart: context.time,
+        })
+        return changes
+      },
+    }),
+    defundStop: set({ defundStopped: true, defundCompleted: true }),
+    defund: set({ defundCompleted: true }),
+    tickDefundTime: assign({
+      time: ({ context }) => context.time + DEFUND_WINDOW_TICKS,
+    }),
+    tradeSomeFunds: set({ tradedFundsSome: true }),
+    tradeAllFunds: set({ tradedFundsAll: true }),
+    tradeSomeContent: set({ tradedContentSome: true }),
+    tradeAllContent: set({ tradedContentAll: true }),
     next: assign({
       next: snapshot,
       selectedChange: ({ context: { selectedChange } }) => selectedChange + 1,
@@ -310,7 +404,7 @@ export const options = {
       },
     }),
     tickTime: assign({
-      time: ({ context }) => context.time + 1,
+      time: ({ context }) => context.time + DISPUTE_WINDOW_TICKS,
     }),
     qaReject: set({ qaRejected: true }),
     qaResolve: set({ qaResolved: true }),
@@ -323,7 +417,6 @@ export const options = {
         return changes
       },
     }),
-    dispute: set({ disputed: true }),
     disputeShares: assign({
       changes: ({ context: { changes, selectedChange } }) => [
         ...changes,
@@ -397,25 +490,6 @@ export const options = {
     }),
   },
 }
-const checkIsSolved = (packet, changes) => {
-  check(packet, { type: 'PACKET' })
-  let firstSolution
-  for (const solutionIndex of packet.downlinks) {
-    const solution = changes[solutionIndex]
-    check(solution, { type: 'SOLUTION' })
-    if (isChange(solution, { enacted: true })) {
-      firstSolution = solution
-      break
-    }
-  }
-  check(firstSolution, { enacted: true })
-}
-const check = (change, params) => {
-  if (!isChange(change, params)) {
-    const string = JSON.stringify(change, null, 2)
-    throw new Error(`change is not ${JSON.stringify(params)}\n${string}`)
-  }
-}
 
 export const machine = createMachine(
   {
@@ -443,7 +517,7 @@ export const machine = createMachine(
           funder: {
             description: 'Funds the current Change',
             on: {
-              DO: '#stack.open.funding',
+              DO_FUNDER: '#stack.open.funding',
             },
           },
           solver: {
@@ -459,13 +533,13 @@ export const machine = createMachine(
           qa: {
             description: 'Judges the current Change',
             on: {
-              DO: '#stack.open.qa',
+              DO_QA: '#stack.open.qa',
             },
           },
           superQa: {
             description: 'Judges the current Dispute',
             on: {
-              DO: {
+              DO_SUPER_QA: {
                 target: '#stack.open.superQa',
                 guard: 'isDispute',
               },
@@ -474,7 +548,7 @@ export const machine = createMachine(
           trader: {
             description: 'Trades any of the NFTs in the current Change',
             on: {
-              DO: '#stack.trading',
+              DO_TRADER: '#stack.trading',
             },
           },
           editor: {
@@ -490,7 +564,7 @@ export const machine = createMachine(
           disputer: {
             description: 'Disputes the QA in the current Change',
             on: {
-              DO: {
+              DO_DISPUTER: {
                 target: '#stack.pending.dispute',
                 guard: 'isDisputable',
               },
@@ -551,6 +625,7 @@ export const machine = createMachine(
                           DEFUND_START: {
                             target: 'defunding',
                             guard: 'isDefundable',
+                            actions: 'defundStart',
                           },
                         },
                       },
@@ -558,16 +633,18 @@ export const machine = createMachine(
                         on: {
                           DEFUND_STOP: {
                             target: 'holding',
+                            actions: 'defundStop',
                           },
                           DEFUND: {
                             target: '#funding.unFunded',
                             guard: 'isDefundWindowPassed',
+                            actions: 'defund',
                           },
-                          TICK_TIME: {
+                          TICK_DEFUND_TIME: {
                             target: 'defunding',
                             // TODO use isTimeLeft check too
                             guard: 'isDefundWaiting',
-                            actions: 'tickTime',
+                            actions: 'tickDefundTime',
                             description:
                               'Move time forwards so defunding is possible',
                           },
@@ -580,18 +657,22 @@ export const machine = createMachine(
                   FUND_ETH: {
                     target: '.funded',
                     guard: 'isFundableEth',
+                    actions: 'fundEth',
                   },
                   FUND_DAI: {
                     target: '.funded',
                     guard: 'isFundableDai',
+                    actions: 'fundDai',
                   },
                   FUND_1155: {
                     target: '.funded',
                     guard: 'isFundable1155',
+                    actions: 'fund1155',
                   },
                   FUND_721: {
                     target: '.funded',
                     guard: 'isFundable721',
+                    actions: 'fund721',
                   },
                 },
               },
@@ -737,6 +818,7 @@ export const machine = createMachine(
           },
           trading: {
             description: 'Trading is always available to all changes',
+            type: 'parallel',
             states: {
               fundsTrading: {
                 initial: 'unfunded',
@@ -757,9 +839,11 @@ export const machine = createMachine(
                     on: {
                       TRADE_ALL_FUNDS: {
                         target: 'traded',
+                        actions: 'tradeAllFunds',
                       },
                       TRADE_SOME_FUNDS: {
                         target: 'traded',
+                        actions: 'tradeSomeFunds',
                       },
                     },
                   },
@@ -788,9 +872,11 @@ export const machine = createMachine(
                     on: {
                       TRADE_ALL_CONTENT: {
                         target: 'traded',
+                        actions: 'tradeAllContent',
                       },
                       TRADE_SOME_CONTENT: {
                         target: 'traded',
+                        actions: 'tradeSomeContent',
                       },
                     },
                   },
@@ -820,6 +906,7 @@ export const machine = createMachine(
                     on: {
                       TRADE_MEDALLION: {
                         target: 'traded',
+                        actions: 'tradeMedallion',
                       },
                     },
                   },
@@ -829,7 +916,6 @@ export const machine = createMachine(
                 },
               },
             },
-            type: 'parallel',
           },
           enactSolution: {
             initial: 'sort',
