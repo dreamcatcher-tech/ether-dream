@@ -19,7 +19,6 @@ const debug = Debug('test')
 globalThis.process.env.MODEL === '1' &&
   describe('all nft types are generated', () => {
     it('generates all nft types', (done) => {
-      Debug.enable('test')
       const actor = startLoggingActor(done, debug)
       const {
         proposePacket,

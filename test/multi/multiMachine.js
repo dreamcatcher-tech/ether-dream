@@ -351,7 +351,7 @@ const guards = {
     guards.isTimeLeft(opts) && !guards.isDefundWindowPassed(opts),
   isContentTraded: is({ tradedContentAll: true }),
   isSomeContentTradable: is({ tradedContentSome: false }),
-  isFundsTraded: is({ tradedFundsAll: false }),
+  isAllFundsTraded: is({ tradedFundsAll: true }),
   isSomeFundsTradable: is({ tradedFundsSome: false }),
   isFunded: ({ context }) => {
     const change = getChange(context)
@@ -965,7 +965,7 @@ export const machine = createMachine(
                     description: 'Funding is available for trading',
                     always: {
                       target: 'traded',
-                      guard: 'isFundsTraded',
+                      guard: 'isAllFundsTraded',
                     },
                     on: {
                       TRADE_ALL_FUNDS: {

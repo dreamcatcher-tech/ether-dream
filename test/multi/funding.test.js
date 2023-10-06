@@ -17,8 +17,7 @@ const debug = Debug('test')
 
 globalThis.process.env.MODEL === '1' &&
   describe('funding', () => {
-    it.only('funds a header', (done) => {
-      Debug.enable('test')
+    it('funds a header', (done) => {
       const actor = startLoggingActor(done, debug)
 
       const { proposePacket, fundEth, resolve, enact, trade } = scripts
