@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
 import '@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
@@ -12,7 +12,7 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function fund(uint id, Payment[] calldata payments) external payable;
 
-  function defundStart(uint id) external;
+  function defundStart(uint id, uint windowMs) external;
 
   function defundStop(uint id) external;
 
@@ -36,17 +36,13 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function proposeSolution(uint packetId, bytes32 contents) external;
 
-  function merge(uint fromId, uint toId, bytes32 reason) external;
+  function proposeMerge(uint fromId, uint toId, bytes32 reason) external;
 
   function proposeEdit(uint id, bytes32 editContents, bytes32 reason) external;
 
-  function exit() external;
+  function exit(uint filterId) external;
 
   function exitList(address holder) external view returns (Payment[] memory);
-
-  function exitSingle(uint assetId) external;
-
-  function exitBurn(uint assetId) external;
 
   // views
   function isNftHeld(
@@ -67,8 +63,7 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
 
   function changeCount() external view returns (uint);
 
-  event Exit(address indexed user);
-  event ExitBurn(address indexed user, uint assetId);
+  event ExitFailed(uint indexed assetId);
 
   // to notify opensea to halt trading
   event Locked(uint tokenId);

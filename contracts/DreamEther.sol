@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
-import '@openzeppelin/contracts/utils/Counters.sol';
-import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
-
+import './Counters.sol';
 import './IQA.sol';
 import './IDreamcatcher.sol';
 import './LibraryUtils.sol';
@@ -17,15 +15,17 @@ import './LibraryState.sol';
 contract DreamEther is IDreamcatcher {
   using Counters for Counters.Counter;
   using EnumerableMap for EnumerableMap.UintToUintMap;
+  using EnumerableMap for EnumerableMap.AddressToUintMap;
   using EnumerableSet for EnumerableSet.AddressSet;
   using LibraryQA for State;
   using LibraryState for State;
+  using LibraryFilter for AssetFilter;
 
   State state;
 
   constructor() {
     assert(CONTENT_ASSET_ID == state.assetCounter.current());
-    uint[1] memory assetIds = [QA_MEDALLION_ID];
+    uint[1] memory assetIds = [QA_MEDALLION_ASSET_ID];
     for (uint i = 0; i < assetIds.length; i++) {
       state.assetCounter.increment();
       assert(state.assetCounter.current() == assetIds[i]);
@@ -41,8 +41,8 @@ contract DreamEther is IDreamcatcher {
     state.fund(changeId, payments);
   }
 
-  function defundStart(uint id) external {
-    state.defundStart(id);
+  function defundStart(uint id, uint windowMs) external {
+    state.defundStart(id, windowMs);
   }
 
   function defundStop(uint id) external {
@@ -92,103 +92,109 @@ contract DreamEther is IDreamcatcher {
     state.proposeSolution(packetId, contents);
   }
 
-  function merge(uint fromId, uint toId, bytes32 reason) external {
-    state.merge(fromId, toId, reason);
+  function proposeMerge(uint fromId, uint toId, bytes32 reason) external {
+    state.proposeMerge(fromId, toId, reason);
   }
 
   function proposeEdit(uint id, bytes32 editContents, bytes32 reason) external {
     state.proposeEdit(id, editContents, reason);
   }
 
-  function exitBurn(uint assetId) external {
-    // used when the exit is problematic
-    require(state.exits[msg.sender].contains(assetId), 'No exit for asset');
-    state.exits[msg.sender].remove(assetId);
-    emit ExitBurn(msg.sender, assetId);
-  }
+  /**
+   * Iterates all the exits, stops when it runs out of gas.
+   * Stores where it was up to, so when called again it does
+   * not retry any failed exits.
+   * Because exits.balances does a tailpop on delete
+   * the same index is reused when there is a deletion.
+   * @dev Exit the contract with all assets owed to an account
+   * @param filterId The filter to use for exiting.  Anything not matched by
+   * this filter will be burned
+   */
+  function exit(uint filterId) external {
+    Exits storage exits = state.exits[msg.sender];
+    require(!exits.inProgress, 'Exit already in progress');
+    exits.inProgress = true;
+    // TODO check reentrancy attacks
+    // TODO check filterId 0 is allow all
+    AssetFilter storage filter = state.filters[filterId];
+    require(filter.isValid(), 'Invalid filter');
+    assert(exits.atIndex < exits.balances.length());
+    for (; exits.atIndex < exits.balances.length(); ) {
+      (uint assetId, uint amount) = exits.balances.at(exits.atIndex);
+      assert(amount > 0);
+      Asset memory asset = state.assets[assetId];
+      uint tokenId = asset.tokenId;
+      bool success;
+      if (!filter.isAllowed(assetId, state)) {
+        success = true;
+      } else if (LibraryUtils.isEther(asset)) {
+        // TODO set gas limits for transfers
+        (bool sent, bytes memory data) = msg.sender.call{value: amount}('');
+        success = (sent && (data.length == 0));
+      } else if (tokenId == 0) {
+        // TODO handle erc1155 with a tokenId of zero
+        IERC20 token = IERC20(asset.tokenContract);
+        try token.transfer(msg.sender, amount) returns (bool ok) {
+          success = ok;
+        } catch {
+          success = false;
+        }
+      } else {
+        // call erc1155 onErc1155Received
+        IERC1155 token = IERC1155(asset.tokenContract);
+        address from = msg.sender;
+        try token.safeTransferFrom(address(this), from, tokenId, amount, '') {
+          success = true;
+        } catch {
+          success = false;
+        }
+      }
 
-  function exit() external {
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
-    require(debts.length() > 0, 'No exits available');
-    uint[] memory assetIds = debts.keys();
-
-    for (uint i = 0; i < assetIds.length; i++) {
-      uint assetId = assetIds[i];
-      exitSingleInternal(assetId);
+      if (success) {
+        exits.balances.remove(exits.atIndex);
+      } else {
+        emit ExitFailed(assetId);
+        exits.atIndex++;
+      }
+      if (gasleft() < GAS_PER_CLAIMABLE) {
+        break;
+      }
     }
-    delete state.exits[msg.sender];
-    emit Exit(msg.sender);
+    if (exits.atIndex == exits.balances.length()) {
+      exits.atIndex = 0;
+    }
+    exits.inProgress = false;
   }
 
   function exitList(address holder) public view returns (Payment[] memory) {
     require(holder != address(0), 'Invalid holder');
-    EnumerableMap.UintToUintMap storage debts = state.exits[holder];
-    uint[] memory assetIds = debts.keys();
-    Payment[] memory payments = new Payment[](assetIds.length);
-    for (uint i = 0; i < assetIds.length; i++) {
-      uint assetId = assetIds[i];
+    Exits storage exits = state.exits[holder];
+    Payment[] memory payments = new Payment[](exits.balances.length());
+    for (uint i = 0; i < payments.length; i++) {
+      (uint assetId, uint amount) = exits.balances.at(i);
       Asset memory asset = state.assets[assetId];
-      payments[i] = Payment(
-        asset.tokenContract,
-        asset.tokenId,
-        debts.get(assetId)
-      );
+      assert(amount > 0);
+      payments[i] = Payment(asset.tokenContract, asset.tokenId, amount);
     }
     return payments;
   }
 
-  function exitSingle(uint assetId) public {
-    exitSingleInternal(assetId);
-    emit Exit(msg.sender);
-  }
-
-  function exitSingleInternal(uint assetId) internal {
-    Asset memory asset = state.assets[assetId];
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
-    require(debts.contains(assetId), 'No exit for asset');
-
-    Payment memory payment = Payment(
-      asset.tokenContract,
-      asset.tokenId,
-      debts.get(assetId)
-    );
-    debts.remove(assetId);
-
-    if (LibraryUtils.isEther(asset)) {
-      uint amount = payment.amount;
-      (bool sent, bytes memory data) = msg.sender.call{value: amount}('');
-      require(sent && (data.length == 0), 'Failed to send Ether');
-    } else if (payment.tokenId == 0) {
-      // TODO handle erc1155 with a tokenId of zero
-      IERC20 token = IERC20(payment.token);
-
-      require(token.transfer(msg.sender, payment.amount));
-    } else {
-      IERC1155 token = IERC1155(payment.token);
-      token.safeTransferFrom(
-        address(this),
-        msg.sender,
-        payment.tokenId,
-        payment.amount,
-        ''
-      );
-    }
-  }
-
-  function balanceOf(address account, uint256 id) public view returns (uint) {
-    TaskNft memory nft = state.taskNfts[id];
+  function balanceOf(address holder, uint256 id) public view returns (uint) {
+    Nft memory nft = state.nfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
     Change storage change = state.changes[nft.changeId];
     if (nft.assetId == CONTENT_ASSET_ID) {
-      if (change.contentShares.holders.contains(account)) {
+      if (change.contentShares.holders.contains(holder)) {
         // TODO handle id being part of an open share dispute
-        return change.contentShares.balances[account];
+        return change.contentShares.holders.get(holder);
+      } else if (change.contentShares.claimables.contains(holder)) {
+        return change.contentShares.claimables.get(holder);
       }
       return 0;
     }
-    if (change.fundingShares.holders.contains(account)) {
-      if (change.fundingShares.balances[account].contains(id)) {
-        return change.fundingShares.balances[account].get(id);
+    if (change.fundingShares.holders.contains(holder)) {
+      if (change.fundingShares.balances[holder].contains(id)) {
+        return change.fundingShares.balances[holder].get(id);
       }
     }
     return 0;
@@ -240,46 +246,41 @@ contract DreamEther is IDreamcatcher {
     address to,
     uint256 nftId,
     uint256 amount,
-    bytes calldata data
-  ) public {
-    require(data.length == 0, 'Data not supported');
+    bytes calldata
+  ) public override {
     require(isApprovedForAll(from, msg.sender), 'Not approved');
-    require(balanceOf(from, nftId) >= amount, 'Insufficient funds');
+    uint fromBalance = balanceOf(from, nftId);
+    require(fromBalance >= amount, 'Insufficient funds');
 
-    TaskNft memory nft = state.taskNfts[nftId];
+    Nft memory nft = state.nfts[nftId];
     Change storage change = state.changes[nft.changeId];
 
     if (nft.assetId == CONTENT_ASSET_ID) {
       require(change.changeType != ChangeType.SOLUTION, 'No Solution shares');
-      require(LibraryState.isTransferrable(change, from), 'Untransferrable');
-      // TODO handle id being part of an open share dispute
-      uint fromBalance = change.contentShares.balances[from];
       uint fromRemaining = fromBalance - amount;
-      if (fromRemaining == 0) {
+      bool isSolver = change.contentShares.claimables.contains(from);
+      if (fromRemaining == 0 && !isSolver) {
         change.contentShares.holders.remove(from);
-        delete change.contentShares.balances[from];
-        delete change.contentShares.claims[from];
       } else {
-        change.contentShares.balances[from] = fromRemaining;
-        change.contentShares.claims[from] = fromRemaining;
+        change.contentShares.holders.set(from, fromRemaining);
       }
-      if (!change.contentShares.holders.contains(to)) {
-        change.contentShares.holders.add(to);
+      uint toBalance = 0;
+      if (change.contentShares.holders.contains(to)) {
+        toBalance = change.contentShares.holders.get(to);
       }
-      change.contentShares.balances[to] += amount;
-      change.contentShares.claims[to] += amount;
+      change.contentShares.holders.set(to, toBalance + amount);
     } else {
       require(change.fundingShares.holders.contains(from));
-      require(change.fundingShares.defundWindows[to] == 0, 'to is defunding');
-
-      uint fromBalance = change.fundingShares.balances[from].get(nftId);
+      if (!change.isEnacted) {
+        require(change.fundingShares.defundWindows[to] == 0, 'to is defunding');
+      }
       uint fromRemaining = fromBalance - amount;
       if (fromRemaining == 0) {
         change.fundingShares.balances[from].remove(nftId);
         if (change.fundingShares.balances[from].length() == 0) {
-          change.fundingShares.holders.remove(from);
           delete change.fundingShares.balances[from];
           delete change.fundingShares.defundWindows[from];
+          change.fundingShares.holders.remove(from);
         }
       } else {
         change.fundingShares.balances[from].set(nftId, fromRemaining);
@@ -314,7 +315,7 @@ contract DreamEther is IDreamcatcher {
 
   // ERC1155Supply extension
   function totalSupply(uint id) public view returns (uint) {
-    TaskNft memory nft = state.taskNfts[id];
+    Nft memory nft = state.nfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
     if (nft.assetId == CONTENT_ASSET_ID) {
       return SHARES_TOTAL;
@@ -344,7 +345,7 @@ contract DreamEther is IDreamcatcher {
 
   // IERC1155MetadataURI
   function uri(uint id) external view returns (string memory) {
-    TaskNft memory nft = state.taskNfts[id];
+    Nft memory nft = state.nfts[id];
     require(nft.changeId != 0, 'NFT does not exist');
     Change storage change = state.changes[nft.changeId];
     return LibraryUtils.uri(change, nft.assetId);
@@ -386,13 +387,13 @@ contract DreamEther is IDreamcatcher {
   function contentNftId(uint changeId) external view returns (uint) {
     Change storage change = state.changes[changeId];
     require(change.createdAt != 0, 'Change does not exist');
-    return state.taskNftsLut.lut[changeId][CONTENT_ASSET_ID];
+    return state.nftsLut.lut[changeId][CONTENT_ASSET_ID];
   }
 
   function qaMedallionNftId(uint changeId) external view returns (uint) {
     Change storage change = state.changes[changeId];
     require(change.createdAt != 0, 'Change does not exist');
-    uint id = state.taskNftsLut.lut[changeId][QA_MEDALLION_ID];
+    uint id = state.nftsLut.lut[changeId][QA_MEDALLION_ASSET_ID];
     require(id != 0, 'QA Medallion does not exist');
     return id;
   }

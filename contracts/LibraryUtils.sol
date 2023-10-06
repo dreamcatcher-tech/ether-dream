@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 import './Types.sol';
 import 'base58-solidity/contracts/Base58.sol';
 
@@ -26,7 +26,7 @@ library LibraryUtils {
       } else {
         suffix = 'META';
       }
-    } else if (assetId == QA_MEDALLION_ID) {
+    } else if (assetId == QA_MEDALLION_ASSET_ID) {
       suffix = 'QA_MEDALLION';
     } else {
       if (c.changeType == ChangeType.PACKET) {

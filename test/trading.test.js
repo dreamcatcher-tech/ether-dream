@@ -62,8 +62,8 @@ describe(`trading`, () => {
   })
 
   test.only('funded packet content shares can trade', {
-    dry: true,
-    debug: true,
+    dbg: true,
+    first: true,
     toState: isCount(1, {
       type: 'PACKET',
       fundedEth: true,
@@ -125,4 +125,10 @@ describe(`trading`, () => {
   it('unfunded packets are tradeable without claim')
   it('QA Medallion can be traded')
   it('cannot trade solution content shares')
+  it('handles 999 share holders')
+  it('can claim over two transactions')
+  it('can fund an existing nft against a packet')
+  it('can fund a qaMedallion against a packet')
+  it('cannot transfer nfts that are part of an open dispute')
+  it('trades after enacted if was defundable')
 })

@@ -13,15 +13,16 @@ import {
 } from './filters.js'
 import { startLoggingActor, scripts } from './paths.js'
 import Debug from 'debug'
-const debug = Debug('tests')
+const debug = Debug('test')
 
 globalThis.process.env.MODEL === '1' &&
   describe('funding', () => {
-    it('funds a header', (done) => {
+    it.only('funds a header', (done) => {
+      Debug.enable('test')
       const actor = startLoggingActor(done, debug)
 
-      const { proposePacket, fundEth, resolveChange, trade } = scripts
-      actor(proposePacket, fundEth, resolveChange)
+      const { proposePacket, fundEth, resolve, enact, trade } = scripts
+      actor(proposePacket, fundEth, resolve, enact)
       expect(
         isCount(1, { type: 'HEADER', enacted: true, fundedEth: true })(
           actor.state

@@ -6,6 +6,7 @@ import { snapshot, machine, options } from './multi/multiMachine.js'
 import { expect } from 'chai'
 import BarCli from 'barcli'
 import Debug from 'debug'
+const debug = Debug('test:sut')
 
 /**
  * Saves reptition when generating tests, and enforces tests such as
@@ -25,8 +26,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
   expect(filter, 'filter').to.be.a('function')
   expect(verify, 'verify').to.be.a('function')
 
-  const { dry, debug, last, first, pathAt, graph, sut, expand, ...rest } =
-    config
+  const { dry, dbg, last, first, pathAt, graph, sut, expand, ...rest } = config
   expect(rest, 'unknown config').to.be.empty
 
   let start
@@ -34,7 +34,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
   let paths
   it('GENERATE: ' + name, () => {
     start = Date.now()
-    const wrappedOptions = debug ? logConfig(options) : options
+    const wrappedOptions = dbg ? logConfig(options, dbg) : options
     const testMachine = createTestMachine(machine.config, wrappedOptions)
     const model = createTestModel(testMachine)
 
@@ -93,8 +93,8 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
 
       paths.forEach((path, index) => {
         it(description(path, index, expand), async () => {
-          if (debug) {
-            Debug.enable('test:sut')
+          if (dbg) {
+            Debug.enable('test:sut*')
           }
           if (dry) {
             return
@@ -103,7 +103,16 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
             expect(sut, 'sut must be an object').to.be.an('object')
           }
           const system = sut || (await initializeSut())
-          await path.test(system)
+          const logger = { ...system, events: {} }
+          for (const event of machine.events) {
+            if (system.events?.[event]) {
+              logger.events[event] = system.events[event]
+            } else if (!globalEvents.has(event) && !event.startsWith('DO_')) {
+              logger.events[event] = () =>
+                debug.extend('event')('no handler for', event)
+            }
+          }
+          await path.test(logger)
           await verify(system)
         })
       })
@@ -123,13 +132,15 @@ createSuite.skip = function (name, config) {
   return _createSuite(name, config, it.skip)
 }
 
-const debug = Debug('tests')
-export const logConfig = (options, dbg = debug) => {
+export const logConfig = (options, dbg) => {
+  if (dbg === true) {
+    dbg = debug
+  }
   expect(dbg).to.be.a('function')
   const { guards, actions } = options
   const nextOptions = { guards: {}, actions: {} }
 
-  const guarder = debug.extend('guard')
+  const guarder = dbg.extend('guard')
   for (const key in guards) {
     nextOptions.guards[key] = ({ context, event }) => {
       const result = guards[key]({ context, event })
@@ -137,7 +148,7 @@ export const logConfig = (options, dbg = debug) => {
       return result
     }
   }
-  const actioner = debug.extend('action')
+  const actioner = dbg.extend('action')
   for (const key in actions) {
     const assignAction = actions[key]
     expect(assignAction.type).to.equal('xstate.assign')

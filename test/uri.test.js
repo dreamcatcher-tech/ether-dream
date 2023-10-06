@@ -6,7 +6,10 @@ import {
   skipActors,
   skipAccountMgmt,
   skipNavigation,
+  skipRejection,
   max,
+  skipDefunding,
+  skipEvents,
 } from './multi/filters.js'
 import { hash } from './utils.js'
 import { CID } from 'multiformats/cid'
@@ -14,28 +17,55 @@ import { equals } from 'uint8arrays/equals'
 import test from './testFactory.js'
 import Debug from 'debug'
 
-const debug = Debug('tests')
+const debug = Debug('test')
 
 describe('uri', () => {
   it('returns edit urls')
   test('all packet types', {
-    toState: (state) => state.matches('solved'),
+    toState: and(
+      isCount(1, { type: 'HEADER', fundedEth: true, disputed: false }),
+      isCount(1, { type: 'PACKET', fundedEth: true, enacted: true }),
+      isCount(1, {
+        type: 'DISPUTE',
+        disputeType: 'resolve',
+        disputeUpheld: true,
+        fundedEth: true,
+      }),
+      isCount(1, { type: 'SOLUTION', fundedEth: false })
+    ),
     filter: and(
-      skipActors('funder', 'trader', 'editor', 'superQa'),
+      skipActors('proposer', 'trader', 'editor'),
       skipAccountMgmt(),
       max(1, { type: 'HEADER' }),
+      max(0, { type: 'HEADER', disputed: true }),
       max(1, { type: 'SOLUTION' }),
-      max(0, { type: 'DISPUTE' }),
-      skipNavigation
-
-      // filters.skipUnfunded,
-      // filters.skipUndisputed
+      max(1, { type: 'DISPUTE' }),
+      max(4),
+      skipRejection(),
+      skipNavigation(),
+      skipDefunding(),
+      skipEvents(
+        'FUND_DAI',
+        'FUND_1155',
+        'FUND_721',
+        'ALL_DISPUTES_DISMISSED',
+        'DISPUTE_SHARES',
+        'DISPUTE_UPHELD_SHARES'
+      )
     ),
     verify: async (sut) => {
       const { dreamEther } = sut.fixture
       const changeCount = await dreamEther.changeCount()
       await expect(dreamEther.contentNftId(0)).to.be.reverted
-      let packetFound = false
+      const hits = {
+        PACKET: false,
+        DISPUTE: false,
+        META: false,
+        QA_MEDALLION: false,
+        PACKET_FUNDING: false,
+        DISPUTE_FUNDING: false,
+        META_FUNDING: false,
+      }
       for (let i = 1; i <= changeCount; i++) {
         const nfts = []
         const contentNftId = await dreamEther.contentNftId(i)
@@ -46,7 +76,6 @@ describe('uri', () => {
           .qaMedallionNftId(i)
           .then((id) => {
             nfts.push(id)
-            packetFound = true
           })
           .catch(() => {})
         for (const nft of nfts) {
@@ -54,11 +83,13 @@ describe('uri', () => {
           debug('change %i uri %i %s', i, nft, uri)
           expect(uri.startsWith('ipfs://')).to.be.true
           const last = uri.lastIndexOf('/')
-          const string = uri.substring(last)
-          expect(string.length).to.be.greaterThanOrEqual(4)
+          const string = uri.substring(last + 1)
+          hits[string] = true
         }
       }
-      expect(packetFound).to.be.true
+      for (const key in hits) {
+        expect(hits[key], key).to.be.true
+      }
     },
   })
 

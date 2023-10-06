@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
-import './Types.sol';
 import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
-import '@openzeppelin/contracts/utils/Counters.sol';
 import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
+import './Types.sol';
+import './Counters.sol';
 import './IDreamcatcher.sol';
 import './LibraryChange.sol';
 import './LibraryQA.sol';
+import './LibraryFilter.sol';
 
 library LibraryState {
   using EnumerableSet for EnumerableSet.AddressSet;
+  using EnumerableSet for EnumerableSet.UintSet;
   using EnumerableMap for EnumerableMap.UintToUintMap;
+  using EnumerableMap for EnumerableMap.AddressToUintMap;
   using Counters for Counters.Counter;
   using LibraryChange for Change;
+  using LibraryFilter for AssetFilter;
+  using BitMaps for BitMaps.BitMap;
 
   event PacketCreated(uint packetId);
   event SolutionAccepted(uint transitionHash);
@@ -116,25 +121,20 @@ library LibraryState {
     );
   }
 
-  function defundStart(State storage state, uint id) public {
+  function defundStart(State storage state, uint id, uint windowMs) public {
     Change storage change = state.changes[id];
     require(change.isOpen(), 'Change is not open for defunding');
-    require(
-      change.fundingShares.defundWindows[msg.sender] == 0,
-      'Already started'
-    );
-
-    change.fundingShares.defundWindows[msg.sender] = block.timestamp;
+    require(change.fundingShares.defundWindows[msg.sender] == 0, 'Started');
+    // TODO get the defund window by walking the changes
+    require(windowMs >= DEFUND_WINDOW, 'Window too small');
+    change.fundingShares.defundWindows[msg.sender] = block.timestamp + windowMs;
     emit DefundStarted(id, msg.sender);
   }
 
   function defundStop(State storage state, uint id) external {
     Change storage change = state.changes[id];
     require(change.isOpen(), 'Change is not open for defunding');
-    require(
-      change.fundingShares.defundWindows[msg.sender] != 0,
-      'Defund not started'
-    );
+    require(change.fundingShares.defundWindows[msg.sender] != 0, 'Not started');
 
     delete change.fundingShares.defundWindows[msg.sender];
     emit DefundStopped(id, msg.sender);
@@ -142,22 +142,20 @@ library LibraryState {
 
   function defund(State storage state, uint id) public {
     Change storage change = state.changes[id];
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
     require(change.isOpen(), 'Change is not open for defunding');
-    FundingShares storage shares = change.fundingShares;
-    require(shares.defundWindows[msg.sender] != 0, 'Defund not started');
+    FundingShares storage funding = change.fundingShares;
+    require(funding.defundWindows[msg.sender] != 0, 'Defund not started');
+    require(funding.defundWindows[msg.sender] < block.timestamp, 'Too early');
+    require(funding.holders.contains(msg.sender), 'Not a holder');
 
-    uint lockedTime = shares.defundWindows[msg.sender];
-    uint elapsedTime = block.timestamp - lockedTime;
-    require(elapsedTime > DEFUND_WINDOW, 'Defund timeout not reached');
+    Exits storage exits = state.exits[msg.sender];
 
-    EnumerableMap.UintToUintMap storage holdings = shares.balances[msg.sender];
-    uint[] memory nftIds = holdings.keys(); // nftId => amount
-    require(nftIds.length > 0, 'No funds to defund');
-
-    for (uint i = 0; i < nftIds.length; i++) {
-      uint nftId = nftIds[i];
-      uint amount = holdings.get(nftId);
+    EnumerableMap.UintToUintMap storage holdings = funding.balances[msg.sender];
+    uint length = holdings.length();
+    uint[] memory nftIds;
+    for (uint i = 0; i < length; i++) {
+      (uint nftId, uint amount) = holdings.at(i);
+      nftIds[i] = nftId;
       // TODO emit burn event
       uint total = change.funds.get(nftId);
       uint newTotal = total - amount;
@@ -166,19 +164,20 @@ library LibraryState {
       } else {
         change.funds.set(nftId, newTotal);
       }
-      uint debt = 0;
-      if (debts.contains(state.taskNfts[nftId].assetId)) {
-        debt = debts.get(state.taskNfts[nftId].assetId);
+      uint balance = 0;
+      if (exits.balances.contains(state.nfts[nftId].assetId)) {
+        balance = exits.balances.get(state.nfts[nftId].assetId);
       }
-      debts.set(state.taskNfts[nftId].assetId, debt + amount);
+      exits.balances.set(state.nfts[nftId].assetId, balance + amount);
     }
-
-    delete shares.defundWindows[msg.sender];
-    delete shares.balances[msg.sender];
-    shares.holders.remove(msg.sender);
+    for (uint i = 0; i < nftIds.length; i++) {
+      holdings.remove(nftIds[i]);
+    }
+    delete funding.defundWindows[msg.sender];
+    delete funding.balances[msg.sender];
+    funding.holders.remove(msg.sender);
     emit Defunded(id, msg.sender);
 
-    // TODO make a token to allow spending of locked funds
     // TODO check if any solutions have passed threshold and revert if so
   }
 
@@ -208,78 +207,85 @@ library LibraryState {
     emit SolutionProposed(solutionId);
   }
 
-  function claim(State storage state, uint id) public {
-    Change storage c = state.changes[id];
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
-    require(c.isPacketSolved());
-    require(c.contentShares.holders.contains(msg.sender), 'Not a holder');
-    require(c.fundingShares.holders.length() != 0, 'No funds to claim');
-
-    uint shares = c.contentShares.balances[msg.sender];
-    uint claimed = c.contentShares.claims[msg.sender];
-    uint unclaimed = shares - claimed;
-    if (unclaimed == 0) {
-      revert('Already claimed');
-    }
-    c.contentShares.totalClaims += unclaimed;
-    c.contentShares.claims[msg.sender] = shares;
-
-    uint[] memory nftIds = c.funds.keys();
-
-    for (uint i = 0; i < nftIds.length; i++) {
-      uint nftId = nftIds[i];
-      require(
-        state.taskNfts[nftId].changeId == id,
-        'NFT is not for this transition'
-      );
-
-      uint initialFunds = c.funds.get(nftId);
-      uint withdrawn = c.contentShares.withdrawn[nftId];
-      uint remainingFunds = initialFunds - withdrawn;
-      uint withdrawable = 0;
-      if (c.contentShares.totalClaims == SHARES_TOTAL) {
-        // final claim gets all residues
-        withdrawable = remainingFunds;
+  function claim(State storage state, uint filterId) public {
+    EnumerableSet.UintSet storage ids = state.claimables[msg.sender];
+    require(ids.length() > 0, 'No claims to make');
+    uint length = ids.length();
+    for (uint i = length; i > 0; i--) {
+      uint id = ids.at(i - 1);
+      Change storage change = state.changes[id];
+      if (change.changeType == ChangeType.PACKET) {
+        claimPacket(state, id, filterId);
       } else {
-        withdrawable = (remainingFunds * unclaimed) / SHARES_TOTAL;
+        LibraryQA.claimMeta(state, id, filterId);
+      }
+      ids.remove(id);
+      if (gasleft() < GAS_PER_CLAIMABLE) {
+        // TODO sample how much gas it costs worst case
+        break;
+      }
+    }
+  }
+
+  function claimPacket(State storage state, uint id, uint filterId) internal {
+    Change storage c = state.changes[id];
+    assert(c.changeType == ChangeType.PACKET);
+    bool claimed = c.contentShares.claimed.get(uint(uint160(msg.sender)));
+    require(claimed == false, 'Already claimed');
+    Exits storage exits = state.exits[msg.sender];
+    require(c.isPacketSolved());
+    require(c.contentShares.claimables.contains(msg.sender), 'Not a holder');
+    require(c.funds.length() > 0, 'No funds to claim');
+    AssetFilter storage filter = state.filters[filterId];
+    assert(filter.isValid());
+
+    uint shares = c.contentShares.claimables.get(msg.sender);
+    assert(shares > 0);
+
+    uint length = c.funds.length();
+    for (uint i = 0; i < length; i++) {
+      (uint nftId, uint amount) = c.funds.at(i);
+      if (!filter.isAllowed(state.nfts[nftId].assetId, state)) {
+        continue;
+      }
+      assert(state.nfts[nftId].changeId == id);
+
+      uint withdrawable;
+      if (c.contentShares.bigdog == msg.sender) {
+        uint others = 0;
+        for (uint j = 0; j < c.contentShares.holders.length(); j++) {
+          (address holder, uint share) = c.contentShares.holders.at(j);
+          if (holder == msg.sender) {
+            continue;
+          }
+          others += (amount * share) / SHARES_TOTAL;
+        }
+        // others is how much of the nft went to others
+        withdrawable = amount - others;
+      } else {
+        withdrawable = (amount * shares) / SHARES_TOTAL;
       }
       if (withdrawable == 0) {
         continue;
       }
-      c.contentShares.withdrawn[nftId] += withdrawable;
-
-      uint debt = 0;
-      if (debts.contains(state.taskNfts[nftId].assetId)) {
-        debt = debts.get(state.taskNfts[nftId].assetId);
+      uint balance = 0;
+      if (exits.balances.contains(state.nfts[nftId].assetId)) {
+        balance = exits.balances.get(state.nfts[nftId].assetId);
       }
-      debts.set(state.taskNfts[nftId].assetId, debt + withdrawable);
+      exits.balances.set(state.nfts[nftId].assetId, balance + withdrawable);
     }
-    emit Claimed(id, msg.sender);
+    c.contentShares.claimed.set(uint(uint160(msg.sender)));
   }
 
-  function isTransferrable(
-    Change storage c,
-    address holder
-  ) public view returns (bool) {
-    if (c.changeType != ChangeType.PACKET) {
-      return true;
-    }
-    if (c.fundingShares.holders.length() == 0) {
-      return true;
-    }
-    uint shares = c.contentShares.balances[holder];
-    uint claimed = c.contentShares.claims[holder];
-    return shares == claimed;
-  }
-
-  function enact(State storage state, uint id) public {
-    Change storage c = state.changes[id];
-    require(c.disputeWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - c.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+  function enact(State storage state, uint changeId) public {
+    Change storage c = state.changes[changeId];
+    require(c.disputeWindowEnd > 0, 'Not passed by QA');
+    require(c.disputeWindowEnd < block.timestamp, 'Dispute window still open');
     require(c.changeType != ChangeType.DISPUTE, 'Cannot enact disputes');
     require(c.changeType != ChangeType.PACKET, 'Cannot enact packets');
     // TODO check no other disputes are open too
+
+    c.isEnacted = true;
 
     if (c.rejectionReason != 0) {
       if (c.changeType == ChangeType.SOLUTION) {
@@ -288,7 +294,7 @@ library LibraryState {
       return;
     }
 
-    upsertNftId(state, id, CONTENT_ASSET_ID);
+    upsertNftId(state, changeId, CONTENT_ASSET_ID);
 
     if (c.changeType == ChangeType.HEADER) {
       require(c.uplink == 0, 'Header already enacted');
@@ -298,12 +304,12 @@ library LibraryState {
       assert(packet.createdAt == 0);
       packet.changeType = ChangeType.PACKET;
       packet.createdAt = block.timestamp;
-      packet.uplink = id;
+      packet.uplink = changeId;
       c.uplink = packetId;
 
       emit PacketCreated(packetId);
     } else if (c.changeType == ChangeType.SOLUTION) {
-      emit SolutionAccepted(id);
+      emit SolutionAccepted(changeId);
       Change storage packet = state.changes[c.uplink];
       assert(packet.createdAt != 0);
       assert(packet.changeType == ChangeType.PACKET);
@@ -316,6 +322,14 @@ library LibraryState {
     } else {
       revert('Invalid transition type');
     }
+
+    if (c.funds.length() == 0) {
+      return;
+    }
+
+    if (c.changeType != ChangeType.PACKET) {
+      // TODO claim everything for QA
+    }
   }
 
   function enactPacket(uint packetId, State storage state) internal {
@@ -324,39 +338,53 @@ library LibraryState {
     assert(packet.changeType == ChangeType.PACKET);
     assert(packet.contentShares.holders.length() == 0);
 
+    IQA qa = IQA(LibraryQA.getQa(state, packetId));
     for (uint i = 0; i < packet.downlinks.length; i++) {
       uint solutionId = packet.downlinks[i];
-      if (isFeasible(solutionId, state)) {
+      if (isFeasible(solutionId, qa, state)) {
         return; // this is not the final solution
       }
     }
     packet.slurpShares(state.changes);
 
-    uint qaMedallionNftId = upsertNftId(state, packetId, QA_MEDALLION_ID);
+    // TODO mark all solvers as being able to claim this packet
+
+    uint qaMedallionNftId = upsertNftId(state, packetId, QA_MEDALLION_ASSET_ID);
     packet.mintQaMedallion(LibraryQA.getQa(state, packetId), qaMedallionNftId);
     upsertNftId(state, packetId, CONTENT_ASSET_ID);
+    packet.isEnacted = true;
     emit PacketResolved(packetId);
   }
 
   function isFeasible(
     uint id,
+    IQA qa,
     State storage state
   ) internal view returns (bool) {
     Change storage solution = state.changes[id];
     assert(solution.createdAt != 0);
     assert(solution.changeType == ChangeType.SOLUTION);
 
-    if (solution.disputeWindowStart == 0) {
+    if (solution.disputeWindowEnd == 0) {
       // has not been passed by QA yet, but is eligible
-      Change storage packet = state.changes[solution.uplink];
-      IQA qa = IQA(state.qaMap[packet.uplink]);
       return qa.isJudgeable(id);
     }
-    // until the dispute window is closed the solution is still possible
-    uint elapsedTime = block.timestamp - solution.disputeWindowStart;
-    return elapsedTime < DISPUTE_WINDOW;
+    if (solution.disputeWindowEnd >= block.timestamp) {
+      // until the dispute window is closed the solution is still possible
+      return true;
+    }
 
     // TODO handle disputes being outstanding after the window closed
+    // if there is an active dispute, honour that as it still might uphold
+
+    if (LibraryQA.isDisputed(solution)) {
+      return true;
+    }
+    if (solution.rejectionReason == 0) {
+      return false;
+    }
+    // if this is not enacted, then it is feasible
+    return !solution.isEnacted;
   }
 
   function upsertNftId(
@@ -364,15 +392,15 @@ library LibraryState {
     uint changeId,
     uint assetId
   ) internal returns (uint) {
-    uint nftId = state.taskNftsLut.lut[changeId][assetId];
+    uint nftId = state.nftsLut.lut[changeId][assetId];
     if (nftId == 0) {
       state.nftCounter.increment();
       nftId = state.nftCounter.current();
       // TODO emit mint event
-      TaskNft storage nft = state.taskNfts[nftId];
+      Nft storage nft = state.nfts[nftId];
       nft.changeId = changeId;
       nft.assetId = assetId;
-      state.taskNftsLut.lut[changeId][assetId] = nftId;
+      state.nftsLut.lut[changeId][assetId] = nftId;
     }
     return nftId;
   }
@@ -423,7 +451,7 @@ library LibraryState {
     emit ProposeEdit(id, editId);
   }
 
-  function merge(
+  function proposeMerge(
     State storage state,
     uint fromId,
     uint toId,

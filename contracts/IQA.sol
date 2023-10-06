@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 import './Types.sol';
 
 interface IQA {
@@ -18,8 +18,10 @@ interface IQA {
    * The QA can opt to veto the change by reverting this call.
    * Allows the QA to be selective about what they will accept.
    * @param changeId the id of the change
+   * @return the dispute window size used for this change.  Only
+   * used for headers and packets
    */
-  function onChange(uint changeId) external view;
+  function onChange(uint changeId) external view returns (uint);
 
   /**
    * The QA can opt to veto the change by reverting this call

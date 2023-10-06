@@ -72,7 +72,9 @@ const match = (memory) => {
     }
   }
 }
+
 const maps = {
+  // TODO use the same condensations as the multi/paths file uses
   'PROPOSE_PACKET > BE_QA > DO > QA_RESOLVE > BE_DISPUTER > DO > TICK_TIME > BE_SERVICE > ENACT':
     'CREATE_PACKET',
   'BE_SOLVER > PROPOSE_SOLUTION > BE_QA > DO > QA_REJECT': 'REJECT_SOLUTION',

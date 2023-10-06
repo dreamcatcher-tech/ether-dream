@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
 import './Types.sol';
 import './LibraryUtils.sol';
+import './LibraryFilter.sol';
 import './IQA.sol';
 
 library LibraryQA {
   using EnumerableSet for EnumerableSet.AddressSet;
   using EnumerableMap for EnumerableMap.UintToUintMap;
+  using EnumerableMap for EnumerableMap.AddressToUintMap;
   using Counters for Counters.Counter;
+  using LibraryFilter for AssetFilter;
   event ChangeDisputed(uint changeId, uint disputeId);
   event QAResolved(uint transitionHash);
   event QARejected(uint transitionHash);
@@ -38,32 +41,45 @@ library LibraryQA {
   }
 
   function qaStart(Change storage change) internal {
-    require(change.disputeWindowStart == 0, 'Dispute window started');
+    require(change.disputeWindowEnd == 0, 'Dispute window set');
     require(change.changeType != ChangeType.PACKET, 'Cannot QA packets');
     require(change.changeType != ChangeType.DISPUTE, 'Cannot QA disputes');
-    change.disputeWindowStart = block.timestamp;
+    assert(change.disputeWindowSize != 0);
+    change.disputeWindowEnd = block.timestamp + change.disputeWindowSize;
   }
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
     require(shares.length > 0, 'Must provide shares');
-    assert(c.contentShares.holders.length() == 0);
+    assert(c.contentShares.claimables.length() == 0);
 
     bool isDispute = c.changeType == ChangeType.DISPUTE;
     uint total = 0;
+    address bigdog;
+    uint bigdogAmount = 0;
+    bool bigdogTie = false;
     for (uint i = 0; i < shares.length; i++) {
       Share memory share = shares[i];
       require(share.holder != address(0), 'Owner cannot be 0');
+      // TODO why isDispute allows QA to be a holder ?
       require(isDispute || share.holder != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
       require(!c.contentShares.holders.contains(share.holder), 'Owner exists');
 
       // TODO call onERC1155Received
 
-      c.contentShares.holders.add(share.holder);
-      c.contentShares.balances[share.holder] = share.amount;
+      c.contentShares.holders.set(share.holder, share.amount);
       total += share.amount;
+      if (share.amount > bigdogAmount) {
+        bigdogAmount = share.amount;
+        bigdog = share.holder;
+        bigdogTie = false;
+      } else if (share.amount == bigdogAmount) {
+        bigdogTie = true;
+      }
     }
     require(total == SHARES_TOTAL, 'Shares must sum to SHARES_TOTAL');
+    require(!bigdogTie, 'Shares must have a single bigdog');
+    assert(bigdog != address(0));
   }
 
   function disputeResolve(
@@ -112,9 +128,8 @@ library LibraryQA {
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage c = state.changes[id];
     require(c.createdAt != 0, 'Change does not exist');
-    require(c.disputeWindowStart > 0, 'Dispute window not started');
-    uint elapsedTime = block.timestamp - c.disputeWindowStart;
-    require(elapsedTime < DISPUTE_WINDOW, 'Dispute window closed');
+    require(c.disputeWindowEnd > 0, 'Dispute window not started');
+    require(c.disputeWindowEnd > block.timestamp, 'Dispute window passed');
     require(c.changeType != ChangeType.PACKET, 'Cannot dispute packets');
     require(c.changeType != ChangeType.DISPUTE, 'Cannot dispute disputes');
 
@@ -141,9 +156,8 @@ library LibraryQA {
     require(isQa(state, changeId), 'Must be the change QA');
     require(LibraryUtils.isIpfs(reason), 'Invalid reason hash');
     Change storage change = state.changes[changeId];
-    require(change.disputeWindowStart > 0, 'Dispute window not started');
-    uint elapsedTime = block.timestamp - change.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(change.disputeWindowEnd > 0, 'Dispute window not started');
+    require(change.disputeWindowEnd <= block.timestamp, 'Dispute window open');
     require(isDisputed(change), 'No active disputes');
 
     DisputeRound memory round;
@@ -169,20 +183,19 @@ library LibraryQA {
     require(isQa(state, disputeId), 'Must be the change QA');
 
     Change storage change = state.changes[dispute.uplink];
-    require(change.disputeWindowStart > 0, 'Dispute window not started');
-    uint elapsedTime = block.timestamp - change.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(change.disputeWindowEnd > 0, 'Dispute window not started');
+    require(change.disputeWindowEnd <= block.timestamp, 'Dispute window open');
     require(isDisputed(change), 'No active disputes');
 
     if (change.rejectionReason != 0) {
       delete change.rejectionReason;
-      delete change.disputeWindowStart;
+      delete change.disputeWindowEnd;
     } else if (dispute.contentShares.holders.length() != 0) {
       deallocateShares(change);
       copyShares(dispute.contentShares, change.contentShares);
       delete dispute.contentShares;
     } else {
-      delete change.disputeWindowStart;
+      delete change.disputeWindowEnd;
       deallocateShares(change);
     }
 
@@ -205,10 +218,8 @@ library LibraryQA {
     assert(to.holders.length() == 0);
     uint holdersCount = from.holders.length();
     for (uint i = 0; i < holdersCount; i++) {
-      address holder = from.holders.at(i);
-      uint balance = from.balances[holder];
-      to.holders.add(holder);
-      to.balances[holder] = balance;
+      (address holder, uint balance) = from.holders.at(i);
+      to.holders.set(holder, balance);
     }
   }
 
@@ -216,43 +227,35 @@ library LibraryQA {
     ContentShares storage contentShares = change.contentShares;
     uint holdersCount = contentShares.holders.length();
     for (uint i = holdersCount; i > 0; i--) {
-      address holder = contentShares.holders.at(i - 1);
-      delete contentShares.balances[holder];
+      (address holder, ) = contentShares.holders.at(i - 1);
       contentShares.holders.remove(holder);
     }
   }
 
-  function claimQa(State storage state, uint id) public {
+  function claimMeta(State storage state, uint id, uint filterId) internal {
     require(isQa(state, id), 'Must be transition QA');
     Change storage change = state.changes[id];
-    require(change.changeType != ChangeType.PACKET, 'Cannot claim packets');
+    require(change.changeType != ChangeType.PACKET, 'QA cannot claim packets');
     require(change.createdAt != 0, 'Change does not exist');
-    require(change.disputeWindowStart > 0, 'Not passed by QA');
-    uint elapsedTime = block.timestamp - change.disputeWindowStart;
-    require(elapsedTime > DISPUTE_WINDOW, 'Dispute window still open');
+    require(change.disputeWindowEnd > 0, 'Not passed by QA');
+    require(change.disputeWindowEnd <= block.timestamp, 'Window still open');
+    AssetFilter storage filter = state.filters[filterId];
+    assert(filter.isValid());
 
-    if (change.funds.length() == 0) {
-      revert('No funds to claim');
-    }
-    uint[] memory nftIds = change.funds.keys();
-    EnumerableMap.UintToUintMap storage debts = state.exits[msg.sender];
+    // TODO test no double withdraws possible for solvers or QA
+    Exits storage exits = state.exits[msg.sender];
+    uint length = change.funds.length();
+    for (uint i = 0; i < length; i++) {
+      (uint nftId, uint amount) = change.funds.at(i);
+      assert(amount > 0);
+      Nft memory nft = state.nfts[nftId];
+      assert(nft.changeId == id);
 
-    for (uint i = 0; i < nftIds.length; i++) {
-      uint nftId = nftIds[i];
-      if (change.contentShares.withdrawn[nftId] != 0) {
-        revert('Already claimed');
+      uint exit = 0;
+      if (exits.balances.contains(nft.assetId)) {
+        exit = exits.balances.get(nft.assetId);
       }
-      uint funds = change.funds.get(nftId);
-      assert(funds > 0);
-      TaskNft memory nft = state.taskNfts[nftId];
-      require(nft.changeId == id, 'NFT not for this transition');
-
-      uint debt = 0;
-      if (debts.contains(nft.assetId)) {
-        debt = debts.get(nft.assetId);
-      }
-      debts.set(nft.assetId, debt + funds);
-      change.contentShares.withdrawn[nftId] = funds;
+      exits.balances.set(nft.assetId, exit + amount);
     }
     emit QAClaimed(id);
   }

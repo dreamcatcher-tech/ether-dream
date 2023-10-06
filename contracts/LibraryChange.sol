@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
 import './Types.sol';
 import './LibraryUtils.sol';
 
 library LibraryChange {
   using EnumerableSet for EnumerableSet.AddressSet;
+  using EnumerableMap for EnumerableMap.AddressToUintMap;
 
   function createHeader(Change storage header, bytes32 contents) internal {
     require(LibraryUtils.isIpfs(contents), 'Invalid contents');
@@ -18,7 +19,7 @@ library LibraryChange {
 
   function isOpen(Change storage change) internal view returns (bool) {
     // TODO extend this to handle packets
-    return change.createdAt != 0 && change.disputeWindowStart == 0;
+    return change.createdAt != 0 && change.disputeWindowEnd == 0;
   }
 
   function isPacketSolved(Change storage packet) internal view returns (bool) {
@@ -32,9 +33,9 @@ library LibraryChange {
     Change storage packet,
     mapping(uint => Change) storage changes
   ) internal {
-    // merge all solution shares into packet shares delete the solution shares
     ContentShares storage contentShares = packet.contentShares;
-    require(contentShares.holders.length() == 0);
+    require(contentShares.claimables.length() == 0);
+    assert(contentShares.holders.length() == 0);
 
     uint solutionCount = 0;
     for (uint i = 0; i < packet.downlinks.length; i++) {
@@ -42,64 +43,68 @@ library LibraryChange {
       Change storage solution = changes[solutionId];
       assert(solution.changeType == ChangeType.SOLUTION);
 
-      if (solution.rejectionReason != 0) {
-        continue;
-      }
-      if (solution.disputeWindowStart == 0) {
+      if (solution.rejectionReason != 0 || solution.disputeWindowEnd == 0) {
         // dispute window has passed, else isFeasible() would have failed.
         continue;
       }
-      uint holdersCount = solution.contentShares.holders.length();
-      assert(holdersCount > 0);
-      for (uint j = 0; j < holdersCount; j++) {
-        address holder = solution.contentShares.holders.at(j);
-        uint balance = solution.contentShares.balances[holder];
-        if (!contentShares.holders.contains(holder)) {
-          contentShares.holders.add(holder);
-        }
-        contentShares.balances[holder] += balance;
 
-        // TODO emit burn events
+      uint claimablesCount = solution.contentShares.claimables.length();
+      assert(claimablesCount > 0);
+      for (uint j = 0; j < claimablesCount; j++) {
+        (address solver, uint amount) = solution.contentShares.claimables.at(j);
+        uint share = 0;
+        if (contentShares.claimables.contains(solver)) {
+          share = contentShares.claimables.get(solver);
+        }
+        contentShares.claimables.set(solver, share + amount);
       }
       solutionCount++;
-      delete solution.contentShares;
     }
     assert(solutionCount > 0);
     if (solutionCount == 1) {
       return;
     }
 
-    uint biggestBalance = 0;
-    address biggestHolder = address(0);
+    address bigdog = address(0);
+    uint bigdogBalance = 0;
+    bool bigdogTie = false;
     address[] memory toDelete;
     uint toDeleteIndex = 0;
     uint sum = 0;
 
-    uint packetHoldersCount = contentShares.holders.length();
+    uint packetHoldersCount = contentShares.claimables.length();
     for (uint i = 0; i < packetHoldersCount; i++) {
-      address holder = contentShares.holders.at(i);
-      uint balance = contentShares.balances[holder];
-      if (balance > biggestBalance) {
-        biggestBalance = balance;
-        biggestHolder = holder;
+      (address solver, uint amount) = contentShares.claimables.at(i);
+      if (amount > bigdogBalance) {
+        bigdogBalance = amount;
+        bigdog = solver;
+        bigdogTie = false;
+      } else if (amount == bigdogBalance) {
+        bigdogTie = true;
       }
-      uint newBalance = balance / solutionCount;
-      if (newBalance == 0) {
-        toDelete[toDeleteIndex++] = holder;
+      uint normalized = amount / solutionCount;
+      if (normalized == 0) {
+        toDelete[toDeleteIndex++] = solver;
       } else {
-        contentShares.balances[holder] = newBalance;
-        sum += newBalance;
+        contentShares.claimables.set(solver, normalized);
+        sum += normalized;
       }
     }
-    require(biggestHolder != address(0), 'Must have biggest holder');
+    require(bigdog != address(0), 'Must have biggest holder');
+    if (bigdogTie) {
+      // TODO take from the least and give to the beast
+    }
+    // TODO if all balances are zero, take all the bigdogs and split it all
     uint remainder = SHARES_TOTAL - sum;
-    contentShares.balances[biggestHolder] += remainder;
+    bigdogBalance = contentShares.claimables.get(bigdog);
+    contentShares.claimables.set(bigdog, bigdogBalance + remainder);
 
     for (uint i = 0; i < toDelete.length; i++) {
-      address holder = toDelete[i];
-      delete contentShares.balances[holder];
-      contentShares.holders.remove(holder);
+      address solver = toDelete[i];
+      assert(bigdog != solver);
+      contentShares.claimables.remove(solver);
     }
+    contentShares.bigdog = bigdog;
   }
 
   function mintQaMedallion(

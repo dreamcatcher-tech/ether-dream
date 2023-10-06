@@ -11,26 +11,26 @@ import {
 } from './filters.js'
 import { startLoggingActor, scripts } from './paths.js'
 import Debug from 'debug'
-const debug = Debug('tests')
+const debug = Debug('test')
 
 globalThis.process.env.MODEL === '1' &&
   describe('double solutions', () => {
     it('handles two resolved solutions', (done) => {
       const actor = startLoggingActor(done, debug)
-      const { proposePacket, resolveChange, solve } = scripts
-      actor(proposePacket, resolveChange)
+      const { proposePacket, resolve, enact, solve } = scripts
+      actor(proposePacket, resolve, enact)
 
       expect(actor.state.matches('stack.open')).to.be.true
       expect(isDirect(actor.context, { type: 'PACKET' })).to.be.true
 
-      actor(solve, resolveChange)
+      actor(solve, resolve, enact)
 
       expect(actor.state.matches('stack.enacted')).to.be.true
       expect(count({ type: 'PACKET', enacted: true })(actor.state)).to.equal(1)
 
       actor('PREV')
       expect(isDirect(actor.context, { type: 'PACKET' })).to.be.true
-      actor(solve, resolveChange)
+      actor(solve, resolve)
 
       expect(count({ type: 'SOLUTION' })(actor.state)).to.equal(2)
 
@@ -45,10 +45,10 @@ globalThis.process.env.MODEL === '1' &&
 
       expect(actor.context.changes.length).to.equal(3)
       expect(actor.context.selectedChange).to.equal(2)
-      actor('PREV', 'PREV', 'PREV')
+      expect(() => actor('PREV', 'PREV', 'PREV')).to.throw('not change')
       expect(actor.context.selectedChange).to.equal(0)
 
-      actor('NEXT')
+      expect(() => actor('NEXT')).to.throw('not change')
       expect(actor.context.selectedChange).to.equal(0)
 
       done()
@@ -71,6 +71,7 @@ globalThis.process.env.MODEL === '1' &&
         max(0, { type: 'DISPUTE' }),
         (state, event) => {
           // vastly reduces the possible paths
+          // TODO may change to just skip next
           if (event.type === 'PREV') {
             const change = getChange(state.context)
             return isChange(change, {

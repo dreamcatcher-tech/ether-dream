@@ -52,7 +52,7 @@ const setDirect = (change, params) => {
   return next
 }
 
-const set = (params) =>
+export const set = (params) =>
   assign({
     changes: ({ context }) => {
       const change = getChange(context)
@@ -62,11 +62,11 @@ const set = (params) =>
       return changes
     },
   })
-const not =
+export const not =
   (params) =>
   ({ context }) =>
     !isDirect(context, params)
-const is =
+export const is =
   (params) =>
   ({ context }) =>
     isDirect(context, params)
@@ -137,7 +137,53 @@ const check = (change, params) => {
 const isNotLast = (context) =>
   context.selectedChange < context.changes.length - 1
 const isNotFirst = (context) => context.selectedChange > 0
-
+const disputeDismiss = ({ context }) => {
+  const change = getChange(context)
+  check(change, {
+    type: 'DISPUTE',
+    disputeUpheld: false,
+    disputeDismissed: false,
+  })
+  const changes = [...context.changes]
+  const target = changes[change.uplink]
+  if (!target.downlinks.includes(context.selectedChange)) {
+    throw new Error('dispute not found in target downlinks')
+  }
+  const disputes = target.downlinks
+  for (const disputeIndex of disputes) {
+    const dispute = changes[disputeIndex]
+    check(dispute, {
+      type: 'DISPUTE',
+      disputeUpheld: false,
+      disputeDismissed: false,
+    })
+    changes[disputeIndex] = setDirect(dispute, {
+      disputeDismissed: true,
+    })
+  }
+  changes[change.uplink] = setDirect(target, { disputeSettled: true })
+  return changes
+}
+const addDispute =
+  (disputeType) =>
+  ({ context }) => {
+    const { changes, selectedChange } = context
+    const change = getChange({ changes, selectedChange })
+    if (guards.isPacket({ context }) || guards.isDispute({ context })) {
+      throw new Error('cannot dispute a packet or dispute')
+    }
+    const next = [
+      ...changes,
+      make({
+        type: 'DISPUTE',
+        uplink: selectedChange,
+        disputeType,
+      }),
+    ]
+    const downlinks = [...change.downlinks, next.length - 1]
+    next[selectedChange] = setDirect(change, { disputed: true, downlinks })
+    return next
+  }
 const guards = {
   isChange: ({ context: { changes } }) => changes.length > 0,
   isNextable: ({ context }) =>
@@ -164,7 +210,9 @@ const guards = {
       return false
     }
     if (isChange(change, { disputed: true })) {
-      return isChange(change, { disputeSettled: true })
+      if (isChange(change, { disputeSettled: false })) {
+        return false
+      }
     }
     return guards.isDisputeWindowPassed({ context })
   },
@@ -203,8 +251,11 @@ const guards = {
     return true
   },
   isDisputeWindowPassed: ({ context }) => {
-    const change = getChange(context)
-    if (Number.isInteger(change.qaTickStart) === false) {
+    let change = getChange(context)
+    if (isChange(change, { type: 'DISPUTE' })) {
+      change = context.changes[change.uplink]
+    }
+    if (!Number.isInteger(change.qaTickStart)) {
       throw new Error('qaTickStart is not an integer')
     }
     if (change.qaTickStart + DISPUTE_WINDOW_TICKS <= context.time) {
@@ -277,7 +328,7 @@ const guards = {
   },
 
   isTimeLeft: ({ context }) => context.time < MAX_TIME_TICKS,
-  isDisputeWindowOpen: (opts) =>
+  isDisputeWindowCloseable: (opts) =>
     guards.isTimeLeft(opts) && !guards.isDisputeWindowPassed(opts),
   isFundableEth: is({ fundedEth: false }),
   isFundableDai: is({ fundedDai: false }),
@@ -317,6 +368,22 @@ const guards = {
     return !isNoFunding && !isDefunded
   },
   isMedallionTraded: is({ tradedMedallion: true }),
+  isDisputeSettleable: ({ context }) => {
+    if (!guards.isDispute({ context })) {
+      return false
+    }
+    const dispute = getChange(context)
+    check(dispute, { type: 'DISPUTE' })
+    const target = context.changes[dispute.uplink]
+    if (isChange(target, { disputeSettled: true })) {
+      // TODO how to model rounds of disputes ?
+      // these should be limited by the amount of time in the system
+      return false
+    }
+    return true
+  },
+  isDisputeShares: is({ disputeType: 'shares' }),
+  isNotDisputeShares: (opts) => !guards.isDisputeShares(opts),
 }
 const base = Object.freeze({
   type: '',
@@ -325,7 +392,6 @@ const base = Object.freeze({
   qaResolved: false,
   qaRejected: false,
   enacted: false,
-  disputed: false,
   qaTickStart: undefined,
   fundedEth: false,
   fundedDai: false,
@@ -340,11 +406,41 @@ const base = Object.freeze({
   tradedContentSome: false,
   tradedContentAll: false,
   tradedMedallion: false,
+  disputed: false,
+  disputeSettled: false,
+  disputeDismissed: false,
+  disputeUpheld: false,
+  disputeType: undefined,
   // TODO add rounds limits for super qa
 })
 export const options = {
   guards,
   actions: {
+    // TODO change share balances
+
+    disputeDismiss: assign({ changes: disputeDismiss }),
+    disputeSharesUpheld: set({ disputeUpheld: true }),
+    disputeUpheld: assign({
+      changes: ({ context }) => {
+        const change = getChange(context)
+        const next = setDirect(change, {
+          disputeUpheld: true,
+          disputeDismissed: false,
+        })
+        const changes = [...context.changes]
+        changes[context.selectedChange] = next
+
+        const target = changes[change.uplink]
+        check(target, { disputed: true })
+        changes[change.uplink] = setDirect(target, {
+          disputeSettled: true,
+          qaResolved: false,
+          qaRejected: false,
+          qaTickStart: undefined,
+        })
+        return changes
+      },
+    }),
     tradeMedallion: set({ tradedMedallion: true }),
     snapshotActor: assign({
       actorSnapshot: ({ context, event }) => ({
@@ -424,30 +520,16 @@ export const options = {
     qaDisputeWindowStart: assign({
       changes: ({ context }) => {
         const change = getChange(context)
+        check(change, { qaTickStart: undefined })
         const next = setDirect(change, { qaTickStart: context.time })
         const changes = [...context.changes]
         changes[context.selectedChange] = next
         return changes
       },
     }),
-    disputeShares: assign({
-      changes: ({ context: { changes, selectedChange } }) => [
-        ...changes,
-        make({ type: 'DISPUTE', uplink: selectedChange }),
-      ],
-    }),
-    disputeResolve: assign({
-      changes: ({ context: { changes, selectedChange } }) => [
-        ...changes,
-        make({ type: 'DISPUTE', uplink: selectedChange }),
-      ],
-    }),
-    disputeReject: assign({
-      changes: ({ context: { changes, selectedChange } }) => [
-        ...changes,
-        make({ type: 'DISPUTE', uplink: selectedChange }),
-      ],
-    }),
+    disputeShares: assign({ changes: addDispute('shares') }),
+    disputeResolve: assign({ changes: addDispute('resolve') }),
+    disputeReject: assign({ changes: addDispute('reject') }),
     enact: assign({
       changes: ({ context }) => {
         const change = getChange(context)
@@ -506,6 +588,7 @@ export const options = {
 
 export const machine = createMachine(
   {
+    /** @xstate-layout N4IgpgJg5mDOIC5QDswA8AuBiAQgUQH0AVAJQEEARPEgbQAYBdRUABwHtYBLDTt5ZkGkQAWAEwAaEAE9EARgDMADgDsAOjqj5ANjoBWAJxbRo-cMUBfc5NSZchAAokA8vacBlavSZIQ7Ljz4BIQQxSRkEFVF1TWEtQ0V9WQT9S2t0bHwCDxIANQBJAGE8LwE-bl5+H2DQ6URdLXlo+WFZXWbRWVEtYVSQGwzCNycAGRzPRlKOcsCqkQlahC0lpt1RM2FlWWFY3v67AjwKPKInWgmfMoDK0Gr58OU4puF9ZS7FWS1leV30-aO3ewAVSI428rCmVyCczCiBeuieYlksg0nQsVj6v0yAEUyCULhCKlCQnc5KJFMImg15LoWqJNsofrZMgAxQEAOSoZzBvgJMxu0IWyOUiieWzanWpWkZAyygPs1AIOLx4P8hNmxJhCCR70pWiRog0ZjRaVsbLwAA0iMqeaq+YIBeEyfp4QYDQp9Ip6lpjRjbI48DlrZc1fyNQt5HQtKpVs1XvJ9IZlMoeuj+qoAIYAYwwbAATrAsBbjkHedd7Qg1lHEsJIx8k2Z9M1NVtEqpRLo6PGk106HRZAzU+kM9m8wWi0Qsnk2QBxYbFc4q6Zl4KV1TV2ufZMJJuCmmyVTKDsfbT9vvx6XDnP53CAkhsku25eIVfrvWbhs78KtfRRdt0DbCtsvYDiaGCXqOWAkAGTgANKEC41BkCcXKTI+RIvlsG71tuwjNt0USHnQyg-kRyK9qIF5ZleBZkPYjhOGMBAIWyHi4guNpLuhsRrphb7YY2uGCnEjR-roujEUYfZrJRI7XrR9GMQh5DIQ+nHqhhNZ8VuAnNsmjSEfImiehGlYydRkHQXBTHyixeBsdywZ2iu3GvnW2mfnIxEUn+dAJMmNbyCBvpgVRo6qCwuZsH4YC5lg9GuB4BD2GQBRwVa7GOU+CAkW24nCqYWgGPGWiasmaj1MY4nHnQCZmWFABmACuyAQDFWAUE4BCshyoKoWpoY5e2SYJLERWGM2-4is8Hr1EBP5KHV+aqLAbAADYAG5tfF7iDCMwJ5E494ZaWRKDXlI2FY240LB2dAHrdwhKI9ijkikg6YOBS0AI7pu1nVKsdaHqmdw0FWNJULAayh3T+7YqPGfYNBR70hbJsDLY1LAxViv0dbK8okIq9l9ZCwMGrloOjVdENfksFLyJ0eqKF0HxiVKKOfejGC5umrWxXjpCUL1+JAwN5NDflVPFZqdIvKo7zMwzWxKMRuiLejkDcHmcXOAlhCHMWgP9eWIOS5d0sLEYFKtEYKi6CoZivOrqgQJwsAsI1GBtXj-xAiCKEi8bwSmxd4OagmIq9r2+h6NNSJqxzoVLbAMXrZwmZgIWbIpelDknWTd0S6H1OasIHa5VHgXki9awpqBy0YFmADWqhRWAyBYKppOhkoHqqAoHQ6B6rSaDTciKP+8uJEkE8Tx8L0XrAjeZi3bcdzQsh56L5a9yKA8fDV7wxmPITdGuCaGPI8aeu67P10vzet1jyCqE1LWcMgUBYN1FAHEQAASXcQzli6NoaMjYOzGBUHER64cNj3UjNsbYxhlaL2XqvZ+r9mqu0-t-dkv8KBkDyEApyz4GhRiKpAskDxTDyAmtsNsnZoavEZmsBO990FP3blg9+uCf4EHjroEhWVQEUIgRoahMC6GCkwqoQqnw4gegjM0b4HMH4ry4S-N+OCv78JYcI9C5DwHUgkdA2hzZNBqCRJ2d4vlTDtjvsFBuj8148J0aoZqzJsGQE7kbbuID6zRkUURQ82xdCyGbEoO6ihtCJDWMmBoeg0EuMwdoj+UA3GQFUAACzWjo9qeB+FuCIGQEgucSbAOCMoxohV6gKEMjHD4Fjy5fBaPqF4ZhvTJI0a4tJn9MkQByXk9Jvit5B0QNUuRbN6kmERpE+BSR6SaXynEbpGDuF9IydorJrVNkFKKScewBj1QRjEOoWIolfIPCIs2Vo3kj7xESeJdhTj1HrK0dg9JAyXZgD2VQH+xye5l30G2QwSRDA1W0EsZsGx4R6n-MmBMcRZDOjWZotxXztmDN2Z83BRBCgwQIP8-BxA8gAFl5xjP8VUjoIpal02MHqBMgkvwdGiTE55bQjCqI4Sk7hP1RkVNIQgbQaxzlMwlAkb0MsiJRDEA4-8l1+xBTTG89FP1VAACtGrQBGTiAgUEhijEpUKkRHpI7vAaKsVYzDmwJiiIjJEzoGjxBVUONVriNXat1bg-VUEABSeACjlMDtS585r1CWupO2OkNzIbx1UPKux7p7ZETRa42AmNsbplUAAd3TOUPFBLSUUsBSA7cqhtCeg6LGxmJ9577gqkmNoh4R48teZwjNWbcw4zzQWnguCy00seFW1YnoJHehZePak6gPhdCWLEus6bMGZqxj2nN3qoAjLIMMYYRK8gAmBHgNw+63BkoPR4CgQ6JkVv3kPI+o9mzVsrYkYC7xEztmXdw1d2atU6q3bg32R6CByn-ngYYv83D-1Kce69Irb0ARemzF4+g7WHgPIYF4XxnRkh2GoztK7u29s3SMoDIIQP2DAxBuDu9+6GQPsPY+MtGb91miiToRE3q8o0c-HR9hm5gGwHBjs9s6ODx-Mid4pVkwV1eLEF6GwGhot4yM4Teg970biGyqTCw7aycrAph47bVWcJU4OzepqiQiY0+J7TETLZiQQcilF3pViyGU+3dxrt3ae0zvi1KJaTWhsqSIHQVjNMouFEsVDN0fzRiMmJR64laUed4Rk7zHsvaqFzHANam0IDtQPX7QY0HDVqdE3eiTvl7PhEbCKEwXxDw6DWAzLjHbH5mfS27TLYBsu5Y2j4sjhBDUjDGOVmzHwqs6a-LWA8NiIGYTYalrz3XfN9ZWgNgrcHHpKHFUkYwJ5OilXJPp+T5IjPLa+RltbOXNVgGzINorwGA1BvxYdcbYnJt2duZ6fuyI2liDqV8NF7cqI+O23c8VDN5UxOZroUusQ1AbGZswx6NVHEmcftdr2W2-EhYQHueEnpEjxlje+zUtT1C9nqIeRFxEfSY40aD7M6YABGq1esp1zGnDOAB1PMTc2pwYUGfWOSxXj0hesoTUUKRQRktQVakwoQfIComzjny1U7pzAPz3MgvYobypfj8SCY1xGciAmf8U6QgtAwwmK+YlaVGBV2r9nnOtd84F0L0QRvhUi4pGLz4dJ+xS4RzHORHRqRIcCn2F3LO3ea+59r3X+vO7yF91lE3IKXgNAtzHbYpUxWHgjEmGqbQr7GfdZw7mvNMXYNgEQHm7jmpYsFcF4VDW6VsL7L2T09QZZ9-lii-8mgaTkiU-hx+Nf3HaIb03uvLUfGCyoAQHde6f5uBoxGeEsRIzOiUTHEkFZifyzEG07o3RY+T40dPhfEA5+1-6a35fu0KVdXwZvvHwr5d3TaGXuk4kisMsyY8IwoDi4oT0bqH0aqt+T+9ejej+Wy3iuOGeRIV8egiaOgcQBgMSh+A+nQlaYg-4SuNU88aKsBGSmYfAXsyAGACBzeqAquD2KBlm6kLwjQkK4k2+hk-4Mu-YRODMjWNYHwCgUBYEMB8+-SVBtB7cdBkhGSzOOOWAL+q+u6BABQh0IIbIIai4YaIq1IRO9spgmE52SYfBxE8sYkyI0WDMm45B8hqg0hNBchiBqgihS+5AK+Qwb+Gh2heA2hNGNUDqRgSQYg3oyqJ8EYhUGGqwOg2gtYZc9hrhThsh9BXy7hLB7eWUDuhhI0JhAE0u4YA8laNIXwigeoDwMSle0B1eDhP0ZKkA6Yq0q0FQaR-SyAfAeAaAbszhbeuh+OJgBg58KKWw4Rr0hRjoYkagL0+eu+-Yeo1R4htRrh9RjRzRrRDhzUGRfRHEehDM5REesQ2w-YCgCQMsUx8sCQVuOg8xCgSR7iqxEATRLRfAbRChTBShKhFKhCu6B0R0qBJyNYd0mwnYzwIBzosCkMbQIKzM1YNaLQmk9xXyjxzxGxrh2xNGQJB4yIzQHSBgNI0ijozwUQhkKgyYk08iceGAbga0nsFQWAEAfAnOjcWWjOLcihNJq0dJfAcGQ0ja4iUCNCkJ4QLQGga4CJnQOBV8noVJnJ3JL8K0uYQmX+WUrQCg6gY+NU2whEKgpckYDqfkgEmwZ+ixziTOHxcpVwy0eYQmFmWRRIapHBmppgsKVyMuKg+4NYHYFy2oHYppaqHJtJVpa8-GK8gmOxmUDpcO58mgsyDMsaMWIpzQv+CxHScSeospQZFQmioZgutpAJoY+28I9qDSnYnQ0MiZIgIedGB8Jgh+LybJbhFpWZfAOZAmQmPurBhZ0ZJZcZ5ZNUepbQbYWwisXKY+mZXJVpqAmYkUuZ4ZvJKKIotOMCyIZIYk7ptuLMF+R4SYE+3G7JzZk52Z05s57Zncdp-RHei590Qpq5feMuAk2Jim8ZkYyu1+B5VElp2ZmYq0HA6uYAc5ypBZIC15y5xhGg95Cwj0SI-c4RHQAUkYE58pjhv5sA-5gF55wFK4oF4kK5EF65UFNYFIIRRkKIYKSFVpt292OOZKjUq0PAX5fAEZ+coYHQfcYFopa58OUFHQagmwD0gErQDOVej8gZR5rZVFzBtF9FnAjF68F5uxAxOFt5+F3FIpJxT5L08YqwLQaIqYbArU8APg-QXZ5YAAtCfGZWclHDZbZX2HXE4knEZZeaqX3K5O+DhKXIZBXL2FXEaNJInGjOFJFNFLmKZVUsKOfAmIeBLMPoSYgPDD5SObnjEhjkOE5ZkmFfaSct6NGPGe8F5NSEcRNBYWsAmAYNDK6I2M7BtptFlS5WgeTKYOKGXPsZWBTp8D5dDCiLDsjPXBlT9OFRMmfIVKPlETSEyhMaSL9n+GXGSLgWJG1mmBlT+uukNSKmfDnmzMaZNvWvtm2NNPRl0Dhs7NPjFOtfLomhfK8J8J2DVJ2JEi9AdR6DQt6NFcJR9BlZrFeBdXSImv2HCKAoFM8NJoXA9LXGSDoB9ajNRC7Ktl7PVYpd-hGG2BUVsAaLGY9CfDns9S9bhjHN0DVR7mAOtRpFhO5NbrND5Tnr3q0KaV9d0Tjutcaf3DhhPGzJ8DSM2DSL+N6YFMKA9A5ctUFemCwBFGwOtE0W4IJszVsKzWOnoF6KErpPGGuL5RsKAvNA2SJSvOtZ0H3IHhLiHrqVBTvu9QYM9KCYke+ZoqTTSL-gKZIuYgsK8PVt6fWNqQzNrTUXyi-GnGALmhdZsCCgPH2C9OprwZDKRImgdgPCgq7V+h8mlnbU9ZQqYkKfFREK0AgkDdHs8InRiv0p4sgaTfhGuGOqct6J2NCoKCrGuAaHoJwU9GlT7T0qkrikgYvhAKTeUfuLUiAUdeUYoBNMsMKEkMiIkD+DSAXZst8rkqtDoqTTHCCv3a1TWkPRYpsNiURBVYFEkGJDPR3d8jisndlT3K1geN6O+v9jwcPbXY9PLFWhCfZTagXYNWfeWh0JGi2CXnEHbHapPOElSKKojNPTbZ6huv+ukj3Y8NVs8L-S9Wpc+J2PCEoPbM8LHKXmIWae8qoBqjlrVZAL9X2NGPbKMU6ibY6BoHxSik6C2hPGYG-TmpJUzR-TSiQ2JO8LEBQ1NRWGqf3DGgYEiM0P2AXatTjD3WXJWq5jWtDHWtzaYOoEYB6LQgoEaGI0RjmvmoWlABdSiPLJOi2kovzU+s0LOjcVdIIX1e1m3d+po3+j6ro2wxMtoBSGXFjVga+sKdOgHgfCivGFY5dp-IBetWXGKa0ItdBaeCfLECJLdEwtXMzNsEE04w1eqLSBwbE+jWSEoO2KXAcUYOEhoHvfvP6aZp5l8v7YHc4yEIZFGMmrdTbIVJqB6QgsRHWP2GsNDTg+FBU-0tjiTTUy0FvYqtDlArk0gwTjJpKfwY7t6B0Ck3DT5llgQ3lkQ0M2xVDtk71ZM0sH3e2G0BVZFjKTbZ1ksz1n1ndswaEztmJn2B6BoKYHffcDEhXABEgl8B8FSes2kz3IkFGF0HSFfAmPPDE+EhSM6H6Z8PLnhvuec75t3TUzalGJ6JECYMHgOQ5gHr5QaFfBKN7UsaJR8f+etTSHLM1e2GRLNJMy5lFXbAkMYERF0jbYof+aoFU9A0i-UI0LvkhiORsJWcfhSPExPMKEwtoFSWy1zjzjrl7ojZGeqIlsWXNUU3oN0JMyolTlJL5AE0ZkLTrS3BQXbTOmnYKVIjLHSFEMzOUURHoEiF8ASz0xQW4g-ovTU28HdCcZVKrEaDLIVPVszAaA2GXN6UiXAS1K618i3iXe667f3JsN6xCS9APt5fUFKjcTWCoGG53ffm8QMno18NvXqHSDtszAPvAqPrbL5IDsDjbc67Pnm2dYi78zvOEiSUrskDQsygPjJjWB0HlAdkNNm44dQakfIaXURGuGFpoEoEsOJDLC8PVhCf5A2u5nWw4SkbQXm1sR8T80jSIpThCnGLO4VLw17VEGQ3s5GL5GA3C865uy4e4hkXo7lQDaKZJJHeELYWoF04ZAzAzBoI6xIckaO1uw4U2xdeg9GKNHO20MzAoHwYowidWjQpCsOyiesa8eO+6-bI0Ka07d4xWERfLE6C9P9ih+h+mA0U8Zh8gHmx0cgF0T0bIaXQzMYlQmYoR+2GY7nvECzORJR9R6iVh64Tu2Ds2-u2gYreoEmDFV065ifAcyi1LuwamkuuuysVR2sS8XRw4c+zU6SfuCCWYP2Lk+1VCfUJcSoKp3PJ8IJ9p2ie4hBwZ1DTxNSGo+dqYOcTSJWi9H5w3ZGEB5wmJfKXrc0PUxNUHpLpQxMsXpfaiFDfEi8BRdmYqRgGF4o4bcHsKDF-Bg8DJ+6M9JpEF0S5+S2S-CGe2XrZzVPNW2VHoHi3qXqJGg89CTTil62SeWwCE+63dYmgBEinOwVO6Y8IVM8M8OCwdh1y-D+X+W7j1y2yuH2OVErOwb2PA0fjtiCnUmfi0GJIhSy4echSw5ANJQxeV3rRGta0ES9IkmYKXPMb560PqT+FbNN02eJ6TUoPyc0CboAduA97lcaX3rO6SZYJYEAA */
     context: {
       time: 0,
       changes: [],
@@ -554,7 +637,7 @@ export const machine = createMachine(
             on: {
               DO_SUPER_QA: {
                 target: '#stack.open.superQa',
-                guard: 'isDispute',
+                guard: 'isDisputeSettleable',
               },
             },
           },
@@ -584,7 +667,8 @@ export const machine = createMachine(
             },
           },
           service: {
-            description: 'Enacts the current Change because Ethereum',
+            description:
+              'Enacts the current Change because Ethereum cannot do cron jobs',
             on: {
               ENACT: {
                 target: '#stack.enactable.serviceWorker',
@@ -717,13 +801,47 @@ export const machine = createMachine(
                 },
               },
               superQa: {
-                exit: 'focusUplink',
-                on: {
-                  ALL_DISPUTES_DISMISSED: {
-                    target: '#stack',
+                initial: 'waiting',
+                states: {
+                  waiting: {
+                    always: {
+                      target: 'judging',
+                      guard: 'isDisputeWindowPassed',
+                    },
+                    on: {
+                      TICK_TIME: {
+                        guard: 'isDisputeWindowCloseable',
+                        actions: 'tickTime',
+                        description:
+                          'Move time forwards so dispute resolution is possible',
+                      },
+                    },
                   },
-                  DISPUTE_UPHELD: {
-                    target: '#stack',
+                  judging: {
+                    on: {
+                      ALL_DISPUTES_DISMISSED: {
+                        target: '#stack',
+                        actions: ['disputeDismiss', 'focusUplink'],
+                      },
+                      DISPUTE_UPHELD_SHARES: {
+                        target: '#stack',
+                        actions: [
+                          'disputeDismiss',
+                          'disputeSharesUpheld',
+                          'focusUplink',
+                        ],
+                        guard: 'isDisputeShares',
+                      },
+                      DISPUTE_UPHELD: {
+                        target: '#stack',
+                        actions: [
+                          'disputeDismiss',
+                          'disputeUpheld',
+                          'focusUplink',
+                        ],
+                        guard: 'isNotDisputeShares',
+                      },
+                    },
                   },
                 },
               },
@@ -771,7 +889,7 @@ export const machine = createMachine(
                 on: {
                   TICK_TIME: {
                     target: '#stack.pending',
-                    guard: 'isDisputeWindowOpen',
+                    guard: 'isDisputeWindowCloseable',
                     actions: 'tickTime',
                     description:
                       'Move time forwards so dispute resolution is possible',

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
 import './Types.sol';
 import './IDreamcatcher.sol';
@@ -42,7 +42,7 @@ contract QA is IQA {
   }
 
   function exit() external {
-    dreamcatcher.exit();
+    dreamcatcher.exit(0);
   }
 
   receive() external payable {}
@@ -57,10 +57,11 @@ contract QA is IQA {
     rejectOnChange = true;
   }
 
-  function onChange(uint) external view {
+  function onChange(uint) external view returns (uint) {
     if (rejectOnChange) {
       revert('QA: onChange rejected');
     }
+    return 0;
   }
 
   bool rejectOnFund = false;

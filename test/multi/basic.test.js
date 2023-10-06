@@ -11,18 +11,18 @@ import {
   max,
 } from './filters.js'
 import Debug from 'debug'
-const debug = Debug('tests')
+const debug = Debug('test')
 
 globalThis.process.env.MODEL === '1' &&
   describe('basics', () => {
     it('gets to enacted packet', (done) => {
       const actor = startLoggingActor(done, debug)
-      const { proposePacket, resolveChange, solve } = scripts
-      actor(proposePacket, resolveChange)
+      const { proposePacket, resolve, solve, enact } = scripts
+      actor(proposePacket, resolve, enact)
       expect(actor.state.matches('stack.open')).to.be.true
       expect(isDirect(actor.context, { type: 'PACKET' })).to.be.true
 
-      actor(solve, resolveChange)
+      actor(solve, resolve, enact)
 
       expect(actor.state.matches('stack.enacted')).to.be.true
       expect(isCount(1, { type: 'PACKET', enacted: true })(actor.state)).to.be

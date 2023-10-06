@@ -66,4 +66,6 @@ describe('qa', () => {
   it('can stop an edit')
   it('can stop a dispute')
   it('can stop a solve')
+  it('can claim when it is a funder in one nft and qa in another')
+  it('only allows a single bigdog')
 })

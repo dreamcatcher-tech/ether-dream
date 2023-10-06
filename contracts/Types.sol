@@ -1,18 +1,21 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.21;
 
 import '@openzeppelin/contracts/utils/structs/EnumerableSet.sol';
 import '@openzeppelin/contracts/utils/structs/EnumerableMap.sol';
-import '@openzeppelin/contracts/utils/Counters.sol';
+import '@openzeppelin/contracts/utils/structs/BitMaps.sol';
+import './Counters.sol';
 
 address constant OPEN_SEA = address(0x495f947276749Ce646f68AC8c248420045cb7b5e);
 address constant ETH_ADDRESS = address(0);
 uint constant ETH_TOKEN_ID = 0;
 uint constant DISPUTE_ROUND_DISMISSED = 2 ** 256 - 1;
+uint constant GAS_PER_CLAIMABLE = 100000;
 
 // PREALLOCATED ASSET IDs
 uint constant CONTENT_ASSET_ID = 0;
-uint constant QA_MEDALLION_ID = 1; // QA medallion assigned by packet
+uint constant QA_MEDALLION_ASSET_ID = 1; // QA medallion assigned by packet
+uint constant LAST_PREALLOCATED_ASSET_ID = QA_MEDALLION_ASSET_ID;
 
 // TUNABLE PARAMETERS
 uint constant DISPUTE_WINDOW = 7 days;
@@ -43,8 +46,10 @@ struct Change {
   uint createdAt;
   bytes32 contents; // v1 CID hash component
   bytes32 rejectionReason;
-  uint disputeWindowStart;
+  uint disputeWindowEnd;
+  uint disputeWindowSize;
   bytes32 editContents; // if an edit, this is the replacement contents
+  bool isEnacted; // TODO change to a timestamp ?
   //
   // shares
   EnumerableMap.UintToUintMap funds; // nftId => amount
@@ -52,7 +57,7 @@ struct Change {
   ContentShares contentShares; // assigned by QA
   //
   // links
-  uint uplink; //packets to headers, solutions to packets, disputes to metas
+  uint uplink; //packets to headers, solutions to packets, disputes to metas, headers to packets
   uint[] downlinks; // packets to solutions, metas to disputes
   uint[] edits; // packets to merges, metas to edits
   DisputeRound[] disputeRounds;
@@ -62,17 +67,19 @@ struct DisputeRound {
   uint outcome; // chosen downlink index or DISPUTE_ROUND_DISMISSED
   bytes32 reason; // the reason for the outcome
 }
+// TODO check we never try to delete a struct with a mapping inside
 struct FundingShares {
   EnumerableSet.AddressSet holders;
   mapping(address => EnumerableMap.UintToUintMap) balances; // nftId => amount
   mapping(address => uint) defundWindows;
 }
 struct ContentShares {
-  EnumerableSet.AddressSet holders;
-  mapping(address => uint) balances;
-  mapping(address => uint) claims; // holder => claimedShareCount
-  mapping(uint => uint) withdrawn; // nftId => amount
-  uint totalClaims;
+  // TODO make claimables be ordered, and remove bigdog field
+  EnumerableMap.AddressToUintMap claimables; // solver => amount
+  EnumerableMap.AddressToUintMap holders; // all who have traded shares
+  BitMaps.BitMap claimed; // tracks which claimables have been claimed
+  address bigdog; // the solver with the most shares
+  // TODO test trading all before withdrawing holding correct balances
   QaMedallion qaMedallion; // QA medallion minted on packet resolved
 }
 struct QaMedallion {
@@ -88,11 +95,11 @@ struct Payment {
   uint tokenId;
   uint amount;
 }
-struct TaskNft {
+struct Nft {
   uint changeId;
   uint assetId;
 }
-struct TaskNftsLut {
+struct NftsLut {
   // changeId => assetId => nftId
   mapping(uint => mapping(uint => uint)) lut;
 }
@@ -109,16 +116,31 @@ enum Approval {
   APPROVED,
   REJECTED
 }
+struct Exits {
+  uint atIndex;
+  EnumerableMap.UintToUintMap balances; // assetId => amount
+  bool inProgress;
+}
+struct AssetFilter {
+  uint createdAt;
+  mapping(uint => bool) allow;
+  mapping(uint => bool) deny;
+  bool isOnly; // if true, allow is exclusive
+  uint[] inherits;
+}
 struct State {
   Counters.Counter changeCounter;
   mapping(uint => Change) changes;
   mapping(uint => address) qaMap; // headerId => qa
   Counters.Counter nftCounter;
-  mapping(uint => TaskNft) taskNfts;
-  TaskNftsLut taskNftsLut;
+  mapping(uint => Nft) nfts;
+  NftsLut nftsLut;
   Counters.Counter assetCounter;
   mapping(uint => Asset) assets; // saves storage space
   AssetsLut assetsLut; // tokenAddress => tokenId => assetId
-  mapping(address => EnumerableMap.UintToUintMap) exits;
+  mapping(address => Exits) exits;
+  mapping(address => EnumerableSet.UintSet) claimables;
   mapping(address => mapping(address => Approval)) approvals;
+  Counters.Counter filterCounter;
+  mapping(uint => AssetFilter) filters;
 }

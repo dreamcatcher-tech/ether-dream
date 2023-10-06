@@ -3,4 +3,5 @@ describe('funding', () => {
   it('funding using locked funds on the same packet undoes the lock')
   it('funders can use multiple tokens including ETH')
   it('funders can use multiple tokens from the same contract')
+  it('cannot fund a packet that is pending')
 })
