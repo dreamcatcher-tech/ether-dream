@@ -26,7 +26,7 @@ library LibraryChange {
     require(packet.createdAt != 0, 'Packet does not exist');
     require(packet.changeType == ChangeType.PACKET);
 
-    return packet.contentShares.claimables.length() != 0;
+    return packet.contentShares.solvers.length() != 0;
   }
 
   function slurpShares(
@@ -34,7 +34,7 @@ library LibraryChange {
     mapping(uint => Change) storage changes
   ) public {
     ContentShares storage contentShares = packet.contentShares;
-    assert(contentShares.claimables.length() == 0);
+    assert(contentShares.solvers.length() == 0);
     assert(contentShares.traders.length() == 0);
 
     uint solutionCount = 0;
@@ -48,15 +48,15 @@ library LibraryChange {
         continue;
       }
 
-      uint claimablesCount = solution.contentShares.claimables.length();
+      uint claimablesCount = solution.contentShares.solvers.length();
       assert(claimablesCount > 0);
       for (uint j = 0; j < claimablesCount; j++) {
-        (address solver, uint amount) = solution.contentShares.claimables.at(j);
+        (address solver, uint amount) = solution.contentShares.solvers.at(j);
         uint share = 0;
-        if (contentShares.claimables.contains(solver)) {
-          share = contentShares.claimables.get(solver);
+        if (contentShares.solvers.contains(solver)) {
+          share = contentShares.solvers.get(solver);
         }
-        contentShares.claimables.set(solver, share + amount);
+        contentShares.solvers.set(solver, share + amount);
       }
       solutionCount++;
     }
@@ -72,9 +72,9 @@ library LibraryChange {
     uint toDeleteIndex = 0;
     uint sum = 0;
 
-    uint packetHoldersCount = contentShares.claimables.length();
+    uint packetHoldersCount = contentShares.solvers.length();
     for (uint i = 0; i < packetHoldersCount; i++) {
-      (address solver, uint amount) = contentShares.claimables.at(i);
+      (address solver, uint amount) = contentShares.solvers.at(i);
       if (amount > bigdogBalance) {
         bigdogBalance = amount;
         bigdog = solver;
@@ -86,7 +86,7 @@ library LibraryChange {
       if (normalized == 0) {
         toDelete[toDeleteIndex++] = solver;
       } else {
-        contentShares.claimables.set(solver, normalized);
+        contentShares.solvers.set(solver, normalized);
         sum += normalized;
       }
     }
@@ -96,13 +96,13 @@ library LibraryChange {
     }
     // TODO if all balances are zero, take all the bigdogs and split it all
     uint remainder = SHARES_TOTAL - sum;
-    bigdogBalance = contentShares.claimables.get(bigdog);
-    contentShares.claimables.set(bigdog, bigdogBalance + remainder);
+    bigdogBalance = contentShares.solvers.get(bigdog);
+    contentShares.solvers.set(bigdog, bigdogBalance + remainder);
 
     for (uint i = 0; i < toDelete.length; i++) {
       address solver = toDelete[i];
       assert(bigdog != solver);
-      contentShares.claimables.remove(solver);
+      contentShares.solvers.remove(solver);
     }
     contentShares.bigdog = bigdog;
   }

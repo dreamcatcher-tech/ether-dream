@@ -234,12 +234,12 @@ library LibraryState {
     require(claimed == false, 'Already claimed');
     Exits storage exits = state.exits[msg.sender];
     require(c.isPacketSolved());
-    require(c.contentShares.claimables.contains(msg.sender), 'Not a holder');
+    require(c.contentShares.solvers.contains(msg.sender), 'Not a holder');
     require(c.funds.length() > 0, 'No funds to claim');
     AssetFilter storage filter = state.filters[filterId];
     assert(filter.isValid());
 
-    uint shares = c.contentShares.claimables.get(msg.sender);
+    uint shares = c.contentShares.solvers.get(msg.sender);
     assert(shares > 0);
 
     uint length = c.funds.length();
@@ -254,8 +254,8 @@ library LibraryState {
       // TODO remove bigdog by requiring shares to be ordered
       if (c.contentShares.bigdog == msg.sender) {
         uint others = 0;
-        for (uint j = 0; j < c.contentShares.claimables.length(); j++) {
-          (address holder, uint share) = c.contentShares.claimables.at(j);
+        for (uint j = 0; j < c.contentShares.solvers.length(); j++) {
+          (address holder, uint share) = c.contentShares.solvers.at(j);
           if (holder == msg.sender) {
             continue;
           }

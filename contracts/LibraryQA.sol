@@ -52,7 +52,7 @@ library LibraryQA {
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
     require(shares.length > 0, 'Must provide shares');
-    assert(c.contentShares.claimables.length() == 0);
+    assert(c.contentShares.solvers.length() == 0);
     assert(c.contentShares.traders.length() == 0);
 
     bool isDispute = c.changeType == ChangeType.DISPUTE;
@@ -66,11 +66,11 @@ library LibraryQA {
       // TODO why isDispute allows QA to be a holder ?
       require(isDispute || share.holder != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
-      require(!c.contentShares.claimables.contains(share.holder), 'Duplicate');
+      require(!c.contentShares.solvers.contains(share.holder), 'Duplicate');
 
       // TODO call onERC1155Received
 
-      c.contentShares.claimables.set(share.holder, share.amount);
+      c.contentShares.solvers.set(share.holder, share.amount);
       total += share.amount;
       if (share.amount > bigdogAmount) {
         bigdogAmount = share.amount;
@@ -92,7 +92,7 @@ library LibraryQA {
   ) public returns (uint) {
     Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
-    require(c.contentShares.claimables.length() != 0, 'Not solved');
+    require(c.contentShares.solvers.length() != 0, 'Not solved');
 
     return disputeStart(state, id, reason);
   }
@@ -193,7 +193,7 @@ library LibraryQA {
     if (change.rejectionReason != 0) {
       delete change.rejectionReason;
       delete change.disputeWindowEnd;
-    } else if (dispute.contentShares.claimables.length() != 0) {
+    } else if (dispute.contentShares.solvers.length() != 0) {
       deallocateShares(change);
       copyShares(dispute.contentShares, change.contentShares);
       delete dispute.contentShares;
@@ -219,23 +219,23 @@ library LibraryQA {
     ContentShares storage to
   ) internal {
     assert(to.traders.length() == 0);
-    assert(to.claimables.length() == 0);
+    assert(to.solvers.length() == 0);
     assert(from.traders.length() == 0);
-    assert(from.claimables.length() > 0);
-    uint count = from.claimables.length();
+    assert(from.solvers.length() > 0);
+    uint count = from.solvers.length();
     for (uint i = 0; i < count; i++) {
-      (address holder, uint balance) = from.claimables.at(i);
-      to.claimables.set(holder, balance);
+      (address holder, uint balance) = from.solvers.at(i);
+      to.solvers.set(holder, balance);
     }
   }
 
   function deallocateShares(Change storage change) internal {
     ContentShares storage contentShares = change.contentShares;
     assert(change.contentShares.traders.length() == 0);
-    uint count = contentShares.claimables.length();
+    uint count = contentShares.solvers.length();
     for (uint i = count; i > 0; i--) {
-      (address holder, ) = contentShares.claimables.at(i - 1);
-      contentShares.claimables.remove(holder);
+      (address holder, ) = contentShares.solvers.at(i - 1);
+      contentShares.solvers.remove(holder);
     }
   }
 

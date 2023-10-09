@@ -187,8 +187,8 @@ contract DreamEther is IDreamcatcher {
       if (change.contentShares.traders.contains(holder)) {
         // TODO handle id being part of an open share dispute
         return change.contentShares.traders.get(holder);
-      } else if (change.contentShares.claimables.contains(holder)) {
-        return change.contentShares.claimables.get(holder);
+      } else if (change.contentShares.solvers.contains(holder)) {
+        return change.contentShares.solvers.get(holder);
       }
       return 0;
     } else if (nft.assetId == QA_MEDALLION_ASSET_ID) {
@@ -276,7 +276,7 @@ contract DreamEther is IDreamcatcher {
     if (nft.assetId == CONTENT_ASSET_ID) {
       require(change.changeType != ChangeType.SOLUTION, 'No Solution shares');
       uint fromRemaining = fromBalance - amount;
-      bool isSolver = change.contentShares.claimables.contains(from);
+      bool isSolver = change.contentShares.solvers.contains(from);
       if (fromRemaining == 0 && !isSolver) {
         change.contentShares.traders.remove(from);
       } else {
@@ -390,7 +390,7 @@ contract DreamEther is IDreamcatcher {
         return true;
       }
     } else {
-      if (change.contentShares.claimables.contains(holder)) {
+      if (change.contentShares.solvers.contains(holder)) {
         return true;
       }
     }
