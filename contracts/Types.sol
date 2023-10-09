@@ -76,7 +76,7 @@ struct FundingShares {
 struct ContentShares {
   // TODO make claimables be ordered, and remove bigdog field
   EnumerableMap.AddressToUintMap claimables; // solver => amount
-  EnumerableMap.AddressToUintMap holders; // all who have traded shares
+  EnumerableMap.AddressToUintMap traders; // all who have traded shares
   BitMaps.BitMap claimed; // tracks which claimables have been claimed
   address bigdog; // the solver with the most shares
   // TODO test trading all before withdrawing holding correct balances

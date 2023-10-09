@@ -337,7 +337,7 @@ library LibraryState {
     Change storage packet = state.changes[packetId];
     assert(packet.createdAt != 0);
     assert(packet.changeType == ChangeType.PACKET);
-    assert(packet.contentShares.holders.length() == 0);
+    assert(packet.contentShares.traders.length() == 0);
     assert(!packet.isEnacted);
 
     IQA qa = IQA(LibraryQA.getQa(state, packetId));

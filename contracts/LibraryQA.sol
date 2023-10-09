@@ -53,7 +53,7 @@ library LibraryQA {
   function allocateShares(Change storage c, Share[] calldata shares) internal {
     require(shares.length > 0, 'Must provide shares');
     assert(c.contentShares.claimables.length() == 0);
-    assert(c.contentShares.holders.length() == 0);
+    assert(c.contentShares.traders.length() == 0);
 
     bool isDispute = c.changeType == ChangeType.DISPUTE;
     uint total = 0;
@@ -218,9 +218,9 @@ library LibraryQA {
     ContentShares storage from,
     ContentShares storage to
   ) internal {
-    assert(to.holders.length() == 0);
+    assert(to.traders.length() == 0);
     assert(to.claimables.length() == 0);
-    assert(from.holders.length() == 0);
+    assert(from.traders.length() == 0);
     assert(from.claimables.length() > 0);
     uint count = from.claimables.length();
     for (uint i = 0; i < count; i++) {
@@ -231,7 +231,7 @@ library LibraryQA {
 
   function deallocateShares(Change storage change) internal {
     ContentShares storage contentShares = change.contentShares;
-    assert(change.contentShares.holders.length() == 0);
+    assert(change.contentShares.traders.length() == 0);
     uint count = contentShares.claimables.length();
     for (uint i = count; i > 0; i--) {
       (address holder, ) = contentShares.claimables.at(i - 1);

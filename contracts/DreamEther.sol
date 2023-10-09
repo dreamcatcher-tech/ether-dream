@@ -184,9 +184,9 @@ contract DreamEther is IDreamcatcher {
     require(nft.changeId != 0, 'NFT does not exist');
     Change storage change = state.changes[nft.changeId];
     if (nft.assetId == CONTENT_ASSET_ID) {
-      if (change.contentShares.holders.contains(holder)) {
+      if (change.contentShares.traders.contains(holder)) {
         // TODO handle id being part of an open share dispute
-        return change.contentShares.holders.get(holder);
+        return change.contentShares.traders.get(holder);
       } else if (change.contentShares.claimables.contains(holder)) {
         return change.contentShares.claimables.get(holder);
       }
@@ -278,15 +278,15 @@ contract DreamEther is IDreamcatcher {
       uint fromRemaining = fromBalance - amount;
       bool isSolver = change.contentShares.claimables.contains(from);
       if (fromRemaining == 0 && !isSolver) {
-        change.contentShares.holders.remove(from);
+        change.contentShares.traders.remove(from);
       } else {
-        change.contentShares.holders.set(from, fromRemaining);
+        change.contentShares.traders.set(from, fromRemaining);
       }
       uint toBalance = 0;
-      if (change.contentShares.holders.contains(to)) {
-        toBalance = change.contentShares.holders.get(to);
+      if (change.contentShares.traders.contains(to)) {
+        toBalance = change.contentShares.traders.get(to);
       }
-      change.contentShares.holders.set(to, toBalance + amount);
+      change.contentShares.traders.set(to, toBalance + amount);
     } else if (nft.assetId == QA_MEDALLION_ASSET_ID) {
       require(amount == 1, 'QA Medallion amount must be 1');
       assert(change.changeType == ChangeType.PACKET);
@@ -385,8 +385,8 @@ contract DreamEther is IDreamcatcher {
     Change storage change = state.changes[changeId];
     require(change.createdAt != 0, 'Change does not exist');
 
-    if (change.contentShares.holders.contains(holder)) {
-      if (change.contentShares.holders.get(holder) != 0) {
+    if (change.contentShares.traders.contains(holder)) {
+      if (change.contentShares.traders.get(holder) != 0) {
         return true;
       }
     } else {

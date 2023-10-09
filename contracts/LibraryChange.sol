@@ -35,7 +35,7 @@ library LibraryChange {
   ) public {
     ContentShares storage contentShares = packet.contentShares;
     assert(contentShares.claimables.length() == 0);
-    assert(contentShares.holders.length() == 0);
+    assert(contentShares.traders.length() == 0);
 
     uint solutionCount = 0;
     for (uint i = 0; i < packet.downlinks.length; i++) {
