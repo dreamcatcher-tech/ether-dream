@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { initializeSut } from './sut.js'
+import { initializeSut, DISPUTE_WINDOW_SECS } from './sut.js'
 import {
   and,
   isCount,
@@ -21,7 +21,9 @@ const debug = Debug('test')
 
 describe('uri', () => {
   it('returns edit urls')
-  test('all packet types', {
+  test.only('all packet types', {
+    first: true,
+    dbg: true,
     toState: and(
       isCount(1, { type: 'HEADER', fundedEth: true, disputed: false }),
       isCount(1, { type: 'PACKET', fundedEth: true, enacted: true }),
@@ -101,9 +103,10 @@ describe('uri', () => {
       globalThis.Buffer.from(header.substring(2), 'hex')
     )
     debug('header', header)
+    const firstNftId = 1
     await expect(dreamEther.proposePacket(header, qa.target))
       .to.emit(dreamEther, 'ProposedPacket')
-      .withArgs(1)
+      .withArgs(firstNftId, DISPUTE_WINDOW_SECS)
     const uri = await dreamEther.uri(1)
     debug('uri', uri)
     expect(uri.startsWith('ipfs://')).to.be.true

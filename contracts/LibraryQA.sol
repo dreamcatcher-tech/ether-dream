@@ -26,7 +26,7 @@ library LibraryQA {
   ) external {
     require(isQa(state, id), 'Must be the change QA');
     Change storage change = state.changes[id];
-    qaStart(change);
+    qaStart(change, state);
     allocateShares(change, shares);
     emit QAResolved(id);
   }
@@ -35,22 +35,25 @@ library LibraryQA {
     require(isQa(state, id), 'Must be the change QA');
     require(LibraryUtils.isIpfs(reason), 'Invalid rejection hash');
     Change storage change = state.changes[id];
-    qaStart(change);
+    qaStart(change, state);
     change.rejectionReason = reason;
     emit QARejected(id);
   }
 
-  function qaStart(Change storage change) internal {
-    require(change.disputeWindowEnd == 0, 'Dispute window set');
+  function qaStart(Change storage change, State storage state) internal {
+    require(change.disputeWindowEnd == 0, 'Dispute window active');
     require(change.changeType != ChangeType.PACKET, 'Cannot QA packets');
     require(change.changeType != ChangeType.DISPUTE, 'Cannot QA disputes');
-    assert(change.disputeWindowSize != 0);
+
+    uint disputeWindowSize = getDisputeWindowSize(state, change);
+    assert(disputeWindowSize > 0);
     change.disputeWindowEnd = block.timestamp + change.disputeWindowSize;
   }
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
     require(shares.length > 0, 'Must provide shares');
     assert(c.contentShares.claimables.length() == 0);
+    assert(c.contentShares.holders.length() == 0);
 
     bool isDispute = c.changeType == ChangeType.DISPUTE;
     uint total = 0;
@@ -63,11 +66,11 @@ library LibraryQA {
       // TODO why isDispute allows QA to be a holder ?
       require(isDispute || share.holder != msg.sender, 'Owner cannot be QA');
       require(share.amount > 0, 'Amount cannot be 0');
-      require(!c.contentShares.holders.contains(share.holder), 'Owner exists');
+      require(!c.contentShares.claimables.contains(share.holder), 'Duplicate');
 
       // TODO call onERC1155Received
 
-      c.contentShares.holders.set(share.holder, share.amount);
+      c.contentShares.claimables.set(share.holder, share.amount);
       total += share.amount;
       if (share.amount > bigdogAmount) {
         bigdogAmount = share.amount;
@@ -89,7 +92,7 @@ library LibraryQA {
   ) public returns (uint) {
     Change storage c = state.changes[id];
     require(c.rejectionReason == 0, 'Not a resolve');
-    require(c.contentShares.holders.length() != 0, 'Not solved');
+    require(c.contentShares.claimables.length() != 0, 'Not solved');
 
     return disputeStart(state, id, reason);
   }
@@ -190,7 +193,7 @@ library LibraryQA {
     if (change.rejectionReason != 0) {
       delete change.rejectionReason;
       delete change.disputeWindowEnd;
-    } else if (dispute.contentShares.holders.length() != 0) {
+    } else if (dispute.contentShares.claimables.length() != 0) {
       deallocateShares(change);
       copyShares(dispute.contentShares, change.contentShares);
       delete dispute.contentShares;
@@ -216,19 +219,23 @@ library LibraryQA {
     ContentShares storage to
   ) internal {
     assert(to.holders.length() == 0);
-    uint holdersCount = from.holders.length();
-    for (uint i = 0; i < holdersCount; i++) {
-      (address holder, uint balance) = from.holders.at(i);
-      to.holders.set(holder, balance);
+    assert(to.claimables.length() == 0);
+    assert(from.holders.length() == 0);
+    assert(from.claimables.length() > 0);
+    uint count = from.claimables.length();
+    for (uint i = 0; i < count; i++) {
+      (address holder, uint balance) = from.claimables.at(i);
+      to.claimables.set(holder, balance);
     }
   }
 
   function deallocateShares(Change storage change) internal {
     ContentShares storage contentShares = change.contentShares;
-    uint holdersCount = contentShares.holders.length();
-    for (uint i = holdersCount; i > 0; i--) {
-      (address holder, ) = contentShares.holders.at(i - 1);
-      contentShares.holders.remove(holder);
+    assert(change.contentShares.holders.length() == 0);
+    uint count = contentShares.claimables.length();
+    for (uint i = count; i > 0; i--) {
+      (address holder, ) = contentShares.claimables.at(i - 1);
+      contentShares.claimables.remove(holder);
     }
   }
 
@@ -286,6 +293,19 @@ library LibraryQA {
     revert('Invalid change');
   }
 
+  function getDisputeWindowSize(
+    State storage state,
+    Change storage change
+  ) internal view returns (uint) {
+    if (change.changeType == ChangeType.HEADER) {
+      return change.disputeWindowSize;
+    }
+    if (change.changeType == ChangeType.PACKET) {
+      return change.disputeWindowSize;
+    }
+    return getDisputeWindowSize(state, state.changes[change.uplink]);
+  }
+
   function isDisputed(Change storage change) internal view returns (bool) {
     DisputeRound memory last;
     if (change.disputeRounds.length > 0) {
@@ -297,9 +317,12 @@ library LibraryQA {
     return true;
   }
 
-  function onChange(State storage state, uint newId) public view {
+  function onChange(
+    State storage state,
+    uint newId
+  ) public view returns (uint) {
     address qa = getQa(state, newId);
-    IQA(qa).onChange(newId);
+    return IQA(qa).onChange(newId);
   }
 
   function onFund(

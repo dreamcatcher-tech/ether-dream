@@ -23,7 +23,7 @@ library LibraryState {
   event PacketCreated(uint packetId);
   event SolutionAccepted(uint transitionHash);
   event PacketResolved(uint packetId);
-  event ProposedPacket(uint headerId);
+  event ProposedPacket(uint headerId, uint disputeWindowSizeSeconds);
   event FundedTransition(uint transitionHash, address owner);
   event SolutionProposed(uint solutionId);
   event Claimed(uint packetId, address holder);
@@ -48,8 +48,8 @@ library LibraryState {
     // create a new nft so it can be advertised in opensea
     upsertNftId(state, headerId, CONTENT_ASSET_ID);
 
-    LibraryQA.onChange(state, headerId);
-    emit ProposedPacket(headerId);
+    header.disputeWindowSize = LibraryQA.onChange(state, headerId);
+    emit ProposedPacket(headerId, header.disputeWindowSize);
     return headerId;
   }
 
@@ -251,10 +251,11 @@ library LibraryState {
       assert(state.nfts[nftId].changeId == id);
 
       uint withdrawable;
+      // TODO remove bigdog by requiring shares to be ordered
       if (c.contentShares.bigdog == msg.sender) {
         uint others = 0;
-        for (uint j = 0; j < c.contentShares.holders.length(); j++) {
-          (address holder, uint share) = c.contentShares.holders.at(j);
+        for (uint j = 0; j < c.contentShares.claimables.length(); j++) {
+          (address holder, uint share) = c.contentShares.claimables.at(j);
           if (holder == msg.sender) {
             continue;
           }
@@ -280,7 +281,7 @@ library LibraryState {
   function enact(State storage state, uint changeId) public {
     Change storage c = state.changes[changeId];
     require(c.disputeWindowEnd > 0, 'Not passed by QA');
-    require(c.disputeWindowEnd < block.timestamp, 'Dispute window still open');
+    require(c.disputeWindowEnd < block.timestamp, 'Dispute window open');
     require(c.changeType != ChangeType.DISPUTE, 'Cannot enact disputes');
     require(c.changeType != ChangeType.PACKET, 'Cannot enact packets');
     // TODO check no other disputes are open too
@@ -306,7 +307,7 @@ library LibraryState {
       packet.createdAt = block.timestamp;
       packet.uplink = changeId;
       c.uplink = packetId;
-
+      packet.disputeWindowSize = LibraryQA.onChange(state, packetId);
       emit PacketCreated(packetId);
     } else if (c.changeType == ChangeType.SOLUTION) {
       emit SolutionAccepted(changeId);
@@ -337,6 +338,7 @@ library LibraryState {
     assert(packet.createdAt != 0);
     assert(packet.changeType == ChangeType.PACKET);
     assert(packet.contentShares.holders.length() == 0);
+    assert(!packet.isEnacted);
 
     IQA qa = IQA(LibraryQA.getQa(state, packetId));
     for (uint i = 0; i < packet.downlinks.length; i++) {

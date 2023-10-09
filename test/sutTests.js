@@ -60,7 +60,7 @@ export default function createTests(fixture) {
           [repeat, lessThan1000],
           [repeat, 1000 - lessThan1000],
         ])
-      ).to.be.revertedWith('Owner exists')
+      ).to.be.revertedWith('Duplicate')
       await expect(
         qa.passQA(changeId, [[ethers.ZeroAddress, 1000]])
       ).to.be.revertedWith('Owner cannot be 0')
@@ -74,7 +74,7 @@ export default function createTests(fixture) {
     qaResolvePost: async (changeId) => {
       const shares = []
       await expect(qa.passQA(changeId, shares)).to.be.revertedWith(
-        'Dispute window started'
+        'Dispute window active'
       )
       const invalidIds = [0, 100]
       for (const invalidId of invalidIds) {

@@ -20,13 +20,16 @@ const types = {
 }
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const ONE_DAY_SECS = 24 * 60 * 60
 const DEFUND_WINDOW_MS = 14 * ONE_DAY_MS
+export const DISPUTE_WINDOW_SECS = 7 * ONE_DAY_SECS
 const DISPUTE_WINDOW_MS = 7 * ONE_DAY_MS
 chai.use(sinonChai)
+const TOTAL_SHARES = 1000
 const SOLVER1_SHARES = 897
-const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
+const SOLVER2_SHARES = TOTAL_SHARES - SOLVER1_SHARES
 const DISPUTER1_SHARES = 787
-const DISPUTER2_SHARES = 1000 - DISPUTER1_SHARES
+const DISPUTER2_SHARES = TOTAL_SHARES - DISPUTER1_SHARES
 
 const getCursor = (context) => context.selectedChange + 1
 
@@ -54,8 +57,18 @@ async function deploy() {
   })
   const libraryUtils = await LibraryUtils.deploy()
 
+  const LibraryChange = await ethers.getContractFactory('LibraryChange')
+  const libraryChange = await LibraryChange.deploy()
+
+  const LibraryFilter = await ethers.getContractFactory('LibraryFilter')
+  const libraryFilter = await LibraryFilter.deploy()
+
   const LibraryState = await ethers.getContractFactory('LibraryState', {
-    libraries: { LibraryQA: libraryQA.target },
+    libraries: {
+      LibraryQA: libraryQA.target,
+      LibraryChange: libraryChange.target,
+      LibraryFilter: libraryFilter.target,
+    },
   })
   const libraryState = await LibraryState.deploy()
 
@@ -64,6 +77,7 @@ async function deploy() {
       LibraryQA: libraryQA.target,
       LibraryUtils: libraryUtils.target,
       LibraryState: libraryState.target,
+      LibraryFilter: libraryFilter.target,
     },
   })
   const dreamEther = await DreamEther.deploy()
@@ -112,6 +126,7 @@ export const initializeSut = async () => {
     disputer1,
     disputer2,
     noone,
+    openSea,
   } = fixture
 
   // bug in xstate: https://github.com/statelyai/xstate/issues/4310
@@ -162,10 +177,11 @@ export const initializeSut = async () => {
       PROPOSE_PACKET: async ({ state: { context } }) => {
         const cursorId = getCursor(context)
         const header = hash('header' + cursorId)
-        debug('header', cursorId)
+        debug('PROPOSE_PACKET', cursorId)
+
         await expect(dreamEther.proposePacket(header, qa.target))
           .to.emit(dreamEther, 'ProposedPacket')
-          .withArgs(cursorId)
+          .withArgs(cursorId, DISPUTE_WINDOW_SECS)
         expect(await dreamEther.getQA(cursorId)).to.equal(qa.target)
       },
       TICK_TIME: async () => {
@@ -268,6 +284,27 @@ export const initializeSut = async () => {
           .withArgs(operator, from, to, id, amount)
         await tests.nooneHasNoBalance(cursorId)
       },
+      TRADE_ALL_FUNDS: async () => {
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('TRADE_ALL_FUNDS', type, cursorId)
+
+        const result = await dreamEther.fundingNftIdsFor(funder1, cursorId)
+        const nftIds = result.toArray()
+        const addresses = nftIds.map(() => funder1)
+        const balances = await dreamEther.balanceOfBatch(addresses, nftIds)
+        const amounts = balances.toArray()
+        const operator = funder1.address
+        const from = funder1.address
+        const to = trader.address
+        const tx = dreamEther
+          .connect(funder1)
+          .safeBatchTransferFrom(from, to, nftIds, amounts, '0x')
+        await expect(tx)
+          .to.emit(dreamEther, 'TransferBatch')
+          .withArgs(operator, from, to, nftIds, amounts)
+      },
       FUND_ETH: async () => {
         const { context } = lastState
         const cursorId = getCursor(context)
@@ -295,7 +332,7 @@ export const initializeSut = async () => {
         const nftId = await dreamEther.contentNftId(cursorId)
         expect(nftId).to.be.greaterThan(0)
 
-        expect(await dreamEther.totalSupply(nftId)).to.equal(1000)
+        expect(await dreamEther.totalSupply(nftId)).to.equal(TOTAL_SHARES)
 
         const balanceSolver1 = await dreamEther.balanceOf(solver1, nftId)
         debug('balance solver1', nftId, balanceSolver1)
@@ -315,6 +352,56 @@ export const initializeSut = async () => {
           .to.emit(dreamEther, 'TransferSingle')
           .withArgs(operator, from, to, nftId, amount)
       },
+      TRADE_ALL_CONTENT: async () => {
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('TRADE_ALL_CONTENT', type, cursorId)
+        // TODO add balace of checks pre and post trade
+        // a "verifyBalances" call would check integrity of everything
+        // TODO add a function to get everyones balances from the contract
+        // then can compare with afterwards
+
+        const nftId = await dreamEther.contentNftId(cursorId)
+        const balanceSolver1 = await dreamEther.balanceOf(solver1, nftId)
+
+        const from = solver1.address
+        const to = trader.address
+        const amount = balanceSolver1
+        const operator = from
+        const tx = dreamEther
+          .connect(solver1)
+          .safeTransferFrom(from, to, nftId, amount, '0x')
+        await expect(tx)
+          .to.emit(dreamEther, 'TransferSingle')
+          .withArgs(operator, from, to, nftId, amount)
+
+        const postBalanceSolver1 = await dreamEther.balanceOf(solver1, nftId)
+        expect(postBalanceSolver1).to.equal(0)
+      },
+      TRADE_MEDALLION: async () => {
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('TRADE_MEDALLION', type, cursorId)
+
+        const nftId = await dreamEther.qaMedallionNftId(cursorId)
+        const balance = await dreamEther.balanceOf(qa, nftId)
+        expect(balance).to.equal(1)
+
+        const from = qa.target
+        const to = trader.address
+        const amount = balance // TODO check transfer multiples or zero
+        const operator = openSea.address
+        const tx = dreamEther
+          .connect(openSea)
+          .safeTransferFrom(from, to, nftId, amount, '0x')
+        await expect(tx)
+          .to.emit(dreamEther, 'TransferSingle')
+          .withArgs(operator, from, to, nftId, amount)
+        const postBalance = await dreamEther.balanceOf(qa, nftId)
+        expect(postBalance).to.equal(0)
+      },
       DISPUTE_RESOLVE: async () => {
         const { context } = lastState
         const cursorId = getCursor(context)
@@ -322,9 +409,10 @@ export const initializeSut = async () => {
         debug('DISPUTE_RESOLVE', type, cursorId)
         const reason = hash('disputing resolve ' + cursorId)
         const disputeId = context.changes.length + 1
-        await expect(
-          dreamEther.connect(disputer1).disputeResolve(cursorId, reason)
-        )
+        const tx = dreamEther
+          .connect(disputer1)
+          .disputeResolve(cursorId, reason)
+        await expect(tx)
           .to.emit(dreamEther, 'ChangeDisputed')
           .withArgs(cursorId, disputeId)
         // TODO twice with the same content should fail.
@@ -555,7 +643,7 @@ export const initializeSut = async () => {
         const reason = hash('disputing shares ' + cursorId)
         // check the shares are actually different
         const disputeId = context.transitionsCount
-        const shares = [[owner.address, 1000]]
+        const shares = [[owner.address, TOTAL_SHARES]]
         await expect(dreamEther.disputeShares(cursorId, reason, shares))
           .to.emit(dreamEther, 'ChangeDisputed')
           .withArgs(context.cursorId, disputeId)

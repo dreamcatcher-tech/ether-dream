@@ -9,8 +9,7 @@ const DEFUND_WINDOW_TICKS = 2
 export const types = ['HEADER', 'PACKET', 'SOLUTION', 'DISPUTE', 'EDIT']
 export const ACCOUNT_MANAGEMENT_EVENTS = [
   'EXIT',
-  'EXIT_SINGLE',
-  'BURN',
+  'CLAIM',
   'REVOKE_OPERATOR',
   'APPROVE_OPENSEA',
   'APPROVE_OPERATOR',
@@ -677,12 +676,12 @@ export const machine = createMachine(
             },
           },
           exited: {},
+          claimed: {},
           approvalSet: {},
         },
         on: {
           EXIT: { target: '.exited' },
-          EXIT_SINGLE: { target: '.exited' },
-          BURN: { target: '.exited' },
+          CLAIM: { target: '.claimed' },
           REVOKE_OPERATOR: { target: '.approvalSet' },
           APPROVE_OPENSEA: { target: '.approvalSet' },
           APPROVE_OPERATOR: { target: '.approvalSet' },
@@ -1017,17 +1016,17 @@ export const machine = createMachine(
                 },
               },
               qaMedallionTrading: {
-                initial: 'nonExistent',
+                initial: 'impossible',
                 states: {
-                  nonExistent: {
+                  impossible: {
                     description:
                       'If not a packet, there can never be a medallion',
                     always: {
-                      target: 'unenacted',
+                      target: 'pending',
                       guard: 'isPacket',
                     },
                   },
-                  unenacted: {
+                  pending: {
                     always: {
                       target: 'enacted',
                       guard: 'isEnacted',

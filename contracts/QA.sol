@@ -61,7 +61,7 @@ contract QA is IQA {
     if (rejectOnChange) {
       revert('QA: onChange rejected');
     }
-    return 0;
+    return 7 days;
   }
 
   bool rejectOnFund = false;

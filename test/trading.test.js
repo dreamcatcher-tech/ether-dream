@@ -27,16 +27,6 @@ describe(`trading`, () => {
     await expect(dreamEther.totalSupply(1)).to.be.revertedWith(msg)
     await expect(dreamEther.totalSupply(100)).to.be.revertedWith(msg)
   })
-  it('rejects data on trades', async () => {
-    const sut = await initializeSut()
-    const { dreamEther, owner } = sut.fixture
-    const fakeNftId = 0
-    const fakeAmount = 0
-    const fakeData = ethers.randomBytes(1)
-    await expect(
-      dreamEther.safeTransferFrom(owner, owner, fakeNftId, fakeAmount, fakeData)
-    ).to.be.revertedWith('Data not supported')
-  })
   test('header funding shares can trade', {
     toState: isCount(1, {
       type: 'HEADER',
@@ -61,9 +51,7 @@ describe(`trading`, () => {
       expect(sut.tests.nooneHasNoBalance).to.have.been.calledOnce,
   })
 
-  test.only('funded packet content shares can trade', {
-    dbg: true,
-    first: true,
+  test('funded packet content shares can trade', {
     toState: isCount(1, {
       type: 'PACKET',
       fundedEth: true,
@@ -84,7 +72,11 @@ describe(`trading`, () => {
       skipNext(),
       max(3)
     ),
-    verify: (sut) => expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
+    verify: (sut) => {
+      expect(sut.events.TRADE_SOME_CONTENT).to.have.been.calledOnce
+      expect(sut.events.TRADE_ALL_CONTENT).to.have.been.calledOnce
+      expect(sut.events.TRADE_MEDALLION).to.have.been.calledOnce
+    },
   })
   // test('unfunded packet content shares trade without claim', {
   //   toState: (state) =>

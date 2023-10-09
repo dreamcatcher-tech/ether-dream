@@ -8,7 +8,7 @@ library LibraryChange {
   using EnumerableSet for EnumerableSet.AddressSet;
   using EnumerableMap for EnumerableMap.AddressToUintMap;
 
-  function createHeader(Change storage header, bytes32 contents) internal {
+  function createHeader(Change storage header, bytes32 contents) public {
     require(LibraryUtils.isIpfs(contents), 'Invalid contents');
     require(header.createdAt == 0, 'Header already exists');
 
@@ -17,24 +17,24 @@ library LibraryChange {
     header.contents = contents;
   }
 
-  function isOpen(Change storage change) internal view returns (bool) {
+  function isOpen(Change storage change) public view returns (bool) {
     // TODO extend this to handle packets
     return change.createdAt != 0 && change.disputeWindowEnd == 0;
   }
 
-  function isPacketSolved(Change storage packet) internal view returns (bool) {
+  function isPacketSolved(Change storage packet) public view returns (bool) {
     require(packet.createdAt != 0, 'Packet does not exist');
     require(packet.changeType == ChangeType.PACKET);
 
-    return packet.contentShares.holders.length() != 0;
+    return packet.contentShares.claimables.length() != 0;
   }
 
   function slurpShares(
     Change storage packet,
     mapping(uint => Change) storage changes
-  ) internal {
+  ) public {
     ContentShares storage contentShares = packet.contentShares;
-    require(contentShares.claimables.length() == 0);
+    assert(contentShares.claimables.length() == 0);
     assert(contentShares.holders.length() == 0);
 
     uint solutionCount = 0;
@@ -42,7 +42,7 @@ library LibraryChange {
       uint solutionId = packet.downlinks[i];
       Change storage solution = changes[solutionId];
       assert(solution.changeType == ChangeType.SOLUTION);
-
+      assert(solution.createdAt != 0);
       if (solution.rejectionReason != 0 || solution.disputeWindowEnd == 0) {
         // dispute window has passed, else isFeasible() would have failed.
         continue;
@@ -111,7 +111,7 @@ library LibraryChange {
     Change storage packet,
     address qa,
     uint nftId
-  ) internal {
+  ) public {
     require(packet.changeType == ChangeType.PACKET);
     require(qa != address(0));
     require(nftId != 0);

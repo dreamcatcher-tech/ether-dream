@@ -1,0 +1,13 @@
+diff --git a/node_modules/@xstate/test/dist/xstate-test.cjs.js b/node_modules/@xstate/test/dist/xstate-test.cjs.js
+index d4f3b93..22c0178 100644
+--- a/node_modules/@xstate/test/dist/xstate-test.cjs.js
++++ b/node_modules/@xstate/test/dist/xstate-test.cjs.js
+@@ -312,7 +312,7 @@ class TestModel {
+       }
+     } catch (err) {
+       // TODO: make option
+-      err.message += formatPathTestResult(path, testPathResult, this.options);
++      // err.message += formatPathTestResult(path, testPathResult, this.options);
+       throw err;
+     }
+     return testPathResult;

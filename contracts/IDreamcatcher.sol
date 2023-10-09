@@ -76,7 +76,7 @@ interface IDreamcatcher is IERC1155, IERC1155Receiver, IERC1155MetadataURI {
   event PacketCreated(uint packetId);
   event SolutionAccepted(uint transitionHash);
   event PacketResolved(uint packetId);
-  event ProposedPacket(uint headerId);
+  event ProposedPacket(uint headerId, uint disputeWindowSeconds);
   event FundedTransition(uint transitionHash, address owner);
   event SolutionProposed(uint solutionId);
   event Claimed(uint packetId, address holder);

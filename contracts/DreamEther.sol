@@ -179,8 +179,8 @@ contract DreamEther is IDreamcatcher {
     return payments;
   }
 
-  function balanceOf(address holder, uint256 id) public view returns (uint) {
-    Nft memory nft = state.nfts[id];
+  function balanceOf(address holder, uint256 nftId) public view returns (uint) {
+    Nft memory nft = state.nfts[nftId];
     require(nft.changeId != 0, 'NFT does not exist');
     Change storage change = state.changes[nft.changeId];
     if (nft.assetId == CONTENT_ASSET_ID) {
@@ -191,10 +191,17 @@ contract DreamEther is IDreamcatcher {
         return change.contentShares.claimables.get(holder);
       }
       return 0;
+    } else if (nft.assetId == QA_MEDALLION_ASSET_ID) {
+      QaMedallion memory qaMedallion = change.contentShares.qaMedallion;
+      assert(qaMedallion.nftId == nftId);
+      if (qaMedallion.holder == holder) {
+        return 1;
+      }
+      return 0;
     }
     if (change.fundingShares.holders.contains(holder)) {
-      if (change.fundingShares.balances[holder].contains(id)) {
-        return change.fundingShares.balances[holder].get(id);
+      if (change.fundingShares.balances[holder].contains(nftId)) {
+        return change.fundingShares.balances[holder].get(nftId);
       }
     }
     return 0;
@@ -249,6 +256,17 @@ contract DreamEther is IDreamcatcher {
     bytes calldata
   ) public override {
     require(isApprovedForAll(from, msg.sender), 'Not approved');
+    transferFrom(from, to, nftId, amount);
+    emit TransferSingle(msg.sender, from, to, nftId, amount);
+  }
+
+  function transferFrom(
+    address from,
+    address to,
+    uint256 nftId,
+    uint256 amount
+  ) internal {
+    require(amount > 0, 'Invalid amount');
     uint fromBalance = balanceOf(from, nftId);
     require(fromBalance >= amount, 'Insufficient funds');
 
@@ -269,6 +287,13 @@ contract DreamEther is IDreamcatcher {
         toBalance = change.contentShares.holders.get(to);
       }
       change.contentShares.holders.set(to, toBalance + amount);
+    } else if (nft.assetId == QA_MEDALLION_ASSET_ID) {
+      require(amount == 1, 'QA Medallion amount must be 1');
+      assert(change.changeType == ChangeType.PACKET);
+      QaMedallion memory qaMedallion = change.contentShares.qaMedallion;
+      assert(qaMedallion.nftId == nftId);
+      require(qaMedallion.holder == from, 'Not the QA Medallion holder');
+      change.contentShares.qaMedallion.holder = to;
     } else {
       require(change.fundingShares.holders.contains(from));
       if (!change.isEnacted) {
@@ -296,7 +321,6 @@ contract DreamEther is IDreamcatcher {
       }
       change.fundingShares.balances[to].set(nftId, toBalance + amount);
     }
-    emit TransferSingle(msg.sender, from, to, nftId, amount);
   }
 
   function safeBatchTransferFrom(
@@ -304,11 +328,13 @@ contract DreamEther is IDreamcatcher {
     address to,
     uint[] calldata ids,
     uint[] calldata amounts,
-    bytes calldata data
+    bytes calldata
   ) external {
+    require(isApprovedForAll(from, msg.sender), 'Not approved');
     for (uint i = 0; i < ids.length; i++) {
-      safeTransferFrom(from, to, ids[i], amounts[i], data);
+      transferFrom(from, to, ids[i], amounts[i]);
     }
+    emit TransferBatch(msg.sender, from, to, ids, amounts);
   }
 
   function supportsInterface(bytes4 interfaceId) external view returns (bool) {}
@@ -359,13 +385,21 @@ contract DreamEther is IDreamcatcher {
     Change storage change = state.changes[changeId];
     require(change.createdAt != 0, 'Change does not exist');
 
-    if (change.fundingShares.holders.contains(holder)) {
-      return true;
-    }
     if (change.contentShares.holders.contains(holder)) {
-      return true;
+      if (change.contentShares.holders.get(holder) != 0) {
+        return true;
+      }
+    } else {
+      if (change.contentShares.claimables.contains(holder)) {
+        return true;
+      }
     }
-    return false;
+    if (change.contentShares.qaMedallion.nftId != 0) {
+      if (change.contentShares.qaMedallion.holder == holder) {
+        return true;
+      }
+    }
+    return change.fundingShares.holders.contains(holder);
   }
 
   function fundingNftIdsFor(

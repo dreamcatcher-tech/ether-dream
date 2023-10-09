@@ -5,7 +5,7 @@ import './Types.sol';
 library LibraryFilter {
   using Counters for Counters.Counter;
 
-  function isValid(AssetFilter storage filter) internal view returns (bool) {
+  function isValid(AssetFilter storage filter) public view returns (bool) {
     return filter.createdAt > 0;
   }
 
@@ -15,7 +15,7 @@ library LibraryFilter {
     bool isOnly,
     uint[] calldata inherits,
     State storage state
-  ) internal returns (uint) {
+  ) public returns (uint) {
     state.filterCounter.increment();
     uint filterId = state.filterCounter.current();
     AssetFilter storage filter = state.filters[filterId];
@@ -41,6 +41,7 @@ library LibraryFilter {
       AssetFilter storage inheritedFilter = state.filters[inherits[i]];
       require(isValid(inheritedFilter), 'invalid inherited filter');
     }
+    return filterId;
   }
 
   function checkAssetIds(
@@ -59,7 +60,7 @@ library LibraryFilter {
     AssetFilter storage filter,
     uint assetId,
     State storage state
-  ) internal returns (bool) {
+  ) public returns (bool) {
     if (filter.allow[assetId]) {
       return true;
     }

@@ -18,7 +18,7 @@ interface IQA {
    * The QA can opt to veto the change by reverting this call.
    * Allows the QA to be selective about what they will accept.
    * @param changeId the id of the change
-   * @return the dispute window size used for this change.  Only
+   * @return the dispute window size in seconds used for this change.  Only
    * used for headers and packets
    */
   function onChange(uint changeId) external view returns (uint);

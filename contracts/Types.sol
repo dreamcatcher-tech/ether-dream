@@ -47,7 +47,7 @@ struct Change {
   bytes32 contents; // v1 CID hash component
   bytes32 rejectionReason;
   uint disputeWindowEnd;
-  uint disputeWindowSize;
+  uint disputeWindowSize; // size in seconds, only set for headers and packets
   bytes32 editContents; // if an edit, this is the replacement contents
   bool isEnacted; // TODO change to a timestamp ?
   //
