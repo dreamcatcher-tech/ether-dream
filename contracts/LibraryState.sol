@@ -36,7 +36,7 @@ library LibraryState {
     State storage state,
     bytes32 contents,
     address qa
-  ) public returns (uint) {
+  ) external returns (uint) {
     require(qa.code.length > 0, 'QA must be a contract');
     state.changeCounter.increment();
     uint headerId = state.changeCounter.current();

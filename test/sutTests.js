@@ -6,8 +6,8 @@ import { hash } from './utils.js'
 import { expect } from 'chai'
 import Debug from 'debug'
 const debug = Debug('test:sut')
-const SOLVER1_SHARES = 897
-const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
+// const SOLVER1_SHARES = 897
+// const SOLVER2_SHARES = 1000 - SOLVER1_SHARES
 const DISPUTER1_SHARES = 787
 const DISPUTER2_SHARES = 1000 - DISPUTER1_SHARES
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
@@ -17,10 +17,6 @@ export default function createTests(fixture) {
   const { dreamEther, solver1, qa, owner, disputer1, disputer2, noone } =
     fixture
   return {
-    packetContentUntransferrable: async (context) => {
-      const [tx] = await tradeContent(fixture, context)
-      await expect(tx).to.be.revertedWith('Untransferrable')
-    },
     noFundsToClaim: async (cursorId) => {
       await expect(
         dreamEther.connect(solver1).claim(cursorId)

@@ -21,7 +21,6 @@ const types = {
 const debug = Debug('test:sut')
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const ONE_DAY_SECS = 24 * 60 * 60
-const DEFUND_WINDOW_MS = 14 * ONE_DAY_MS
 export const DISPUTE_WINDOW_SECS = 7 * ONE_DAY_SECS
 const DISPUTE_WINDOW_MS = 7 * ONE_DAY_MS
 chai.use(sinonChai)
@@ -214,6 +213,7 @@ export const initializeSut = async () => {
         debug('enact', type, cursorId)
         const tx = dreamEther.enact(cursorId)
         switch (type) {
+          // TODO split the action based on the type
           case types.HEADER: {
             const packetId = context.changes.length + 1
             await expect(tx)
@@ -433,7 +433,6 @@ export const initializeSut = async () => {
       },
       // WAVE_FRONT
       SUPER_SHARES_UPHELD: async ({ state: { context } }) => {
-        await time.increase(DISPUTE_WINDOW_SECS)
         const { cursorId } = context
         const shares = [
           [disputer1.address, DISPUTER1_SHARES],
@@ -452,7 +451,6 @@ export const initializeSut = async () => {
         const dispute = context.transitions.get(cursorId)
         await tests.superDismissInvalidHash(dispute.uplink)
         await tests.superDismissEarly(dispute.uplink)
-        await time.increase(DISPUTE_WINDOW_SECS)
         const reason = hash('dismissed ' + dispute.uplink)
         await tests.nonQaDismiss(dispute.uplink)
         await expect(qa.disputesDismissed(dispute.uplink, reason))
@@ -487,53 +485,6 @@ export const initializeSut = async () => {
           .to.emit(dreamEther, 'QARejected')
           .withArgs(cursorId)
         await tests.qaRejectPost(cursorId)
-      },
-      ENACT_SOLUTION: async ({ state: { context } }) => {
-        const { cursorId } = context
-        const { type, uplink } = context.transitions.get(cursorId)
-        expect(type).to.equal(types.SOLUTION)
-
-        // TODO confirm error if not enough time has passed
-
-        const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
-        await time.increase(THREE_DAYS_IN_SECONDS)
-        debug('enact', type, cursorId)
-        const tx = dreamEther.enact(cursorId)
-        await expect(tx)
-          .to.emit(dreamEther, 'SolutionAccepted')
-          .withArgs(cursorId)
-        debug('packet resolved', uplink)
-        await expect(tx).to.emit(dreamEther, 'PacketResolved').withArgs(uplink)
-      },
-      ENACT_DOUBLE_SOLUTION: async ({ state: { context } }) => {
-        const { cursorId } = context
-        const { type, uplink } = context.transitions.get(cursorId)
-        expect(type).to.equal(types.SOLUTION)
-
-        const THREE_DAYS_IN_SECONDS = 3 * ONE_DAY_MS
-        await time.increase(THREE_DAYS_IN_SECONDS)
-
-        // add a solution that is feasible but has not entered qa
-
-        // also a solution that has been qa'd but the dispute window is open
-        await expect(
-          dreamEther.proposeSolution(uplink, hash('double solving' + uplink))
-        ).to.emit(dreamEther, 'SolutionProposed')
-
-        debug('enact', type, cursorId)
-        await expect(dreamEther.enact(cursorId))
-          .to.emit(dreamEther, 'SolutionAccepted')
-          .withArgs(cursorId)
-
-        // qa pass, then shapshot restore, then reject, then enact the
-        // competing solution, and observe packet resolved
-
-        // test rejection passing, and then observe the first solution is enacted
-
-        const tx = dreamEther.enact(cursorId)
-
-        debug('packet resolved', uplink)
-        await expect(tx).to.emit(dreamEther, 'PacketResolved').withArgs(uplink)
       },
       QA_CLAIM: async ({ state: { context } }) => {
         const { cursorId } = context
@@ -630,7 +581,6 @@ export const initializeSut = async () => {
       },
       DEFUND_EXIT: async ({ state: { context } }) => {
         await tests.defundEarly(context.cursorId)
-        await time.increase(DEFUND_WINDOW_SECS)
         const { cursorId } = context
         await expect(dreamEther.defund(cursorId))
           .to.emit(dreamEther, 'Defunded')
