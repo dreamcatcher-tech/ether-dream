@@ -61,7 +61,7 @@ globalThis.process.env.MODEL === '1' &&
         isCount(2, { type: 'SOLUTION', qaRejected: true, qaTickStart: 1 })
       ),
       filter: and(
-        skipActors('funder', 'trader', 'editor', 'superQa'),
+        skipActors('funder', 'trader', 'editor', 'superQa', 'openSea'),
         skipAccountMgmt(),
         max(5), // max total changes
         max(1, { type: 'HEADER' }),

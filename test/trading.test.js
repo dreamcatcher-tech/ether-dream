@@ -78,39 +78,7 @@ describe(`trading`, () => {
       expect(sut.events.TRADE_MEDALLION).to.have.been.calledOnce
     },
   })
-  // test('unfunded packet content shares trade without claim', {
-  //   toState: (state) =>
-  //     state.matches('solved') &&
-  //     is({ contentTraded: true, funded: false })(state.context),
-  //   filter: and(
-  //     filters.skipFunding,
-  //     filters.skipMetaTrading,
-  //     filters.skipDefunding,
-  //     filters.skipDisputes
-  //   ),
-  //   verify: (sut) =>
-  //     expect(sut.tests.noFundsToClaim).to.have.been.calledTwice &&
-  //     expect(sut.events.TRADE_CONTENT).to.have.been.calledOnce,
-  // })
-  // test('unclaimed packet content shares cannot trade', {
-  //   toState: (state) =>
-  //     state.matches('tradePacketContent') &&
-  //     is({ isClaimed: false, funded: true, defundExited: false })(
-  //       state.context
-  //     ),
-  //   filter: and(
-  //     filters.skipMetaFunding,
-  //     filters.skipMetaTrading,
-  //     filters.skipFundTrading,
-  //     filters.skipDefunding,
-  //     filters.skipDisputes,
-  //     filters.dai
-  //   ),
-  //   verify: (sut) =>
-  //     expect(sut.tests.packetContentUntransferrable).to.have.been.calledOnce,
-  // })
   it('header QA shares can be traded')
-
   it('content shares can be traded')
   it('funding shares can be traded')
   it('no trading before claimin')

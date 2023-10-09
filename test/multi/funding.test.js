@@ -52,7 +52,7 @@ globalThis.process.env.MODEL === '1' &&
         tradedContentSome: true,
       }),
       filter: and(
-        skipActors('proposer', 'solver', 'editor', 'superQa'),
+        skipActors('proposer', 'solver', 'editor', 'superQa', 'openSea'),
         skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721'),
         skipAccountMgmt(),
         skipDisputes(),

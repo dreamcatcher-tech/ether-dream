@@ -5,10 +5,10 @@ import { expect } from 'chai'
 import {
   and,
   isCount,
-  skipActors,
   skipAccountMgmt,
   skipNavigation,
   max,
+  withActors,
 } from './filters.js'
 import Debug from 'debug'
 const debug = Debug('test')
@@ -34,7 +34,7 @@ globalThis.process.env.MODEL === '1' &&
     test('simple solve packet', {
       toState: isCount(1, { type: 'PACKET', enacted: true }),
       filter: and(
-        skipActors('funder', 'trader', 'editor', 'superQa'),
+        withActors('qa', 'solver', 'disputer', 'service'),
         skipAccountMgmt(),
         max(1, { type: 'HEADER' }),
         max(1, { type: 'SOLUTION' }),

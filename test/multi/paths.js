@@ -63,5 +63,6 @@ export const scripts = {
   uphold: ['BE_SUPER_QA', 'DO_SUPER_QA', 'TICK_TIME', 'DISPUTE_UPHELD'],
   enact: ['BE_DISPUTER', 'DO_DISPUTER', 'TICK_TIME', 'BE_SERVICE', 'ENACT'],
   trade: ['BE_TRADER', 'DO_TRADER', 'TRADE_SOME_FUNDS', 'TRADE_SOME_CONTENT'],
+  openSeaFunds: ['BE_OPENSEA', 'DO_OPENSEA', 'OPENSEA_TRADE_SOME_FUNDS'],
   solve: ['BE_SOLVER', 'PROPOSE_SOLUTION'],
 }

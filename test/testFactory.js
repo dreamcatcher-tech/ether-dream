@@ -110,7 +110,9 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
             } else if (!globalEvents.has(event) && !event.startsWith('DO_')) {
               logger.events[event] = () => {
                 debug.extend('event')('no handler for', event)
-                throw new Error('no handler for ' + event)
+                if (Object.keys(sut).length) {
+                  throw new Error('no handler for ' + event)
+                }
               }
             }
             // TODO log on each state change and each event by wrapping

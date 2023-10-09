@@ -76,7 +76,7 @@ globalThis.process.env.MODEL === '1' &&
         isCount(1, { type: 'SOLUTION', fundedEth: false })
       ),
       filter: and(
-        skipActors('proposer', 'trader', 'editor'),
+        skipActors('proposer', 'trader', 'editor', 'openSea'),
         skipAccountMgmt(),
         max(1, { type: 'HEADER' }),
         max(0, { type: 'HEADER', disputed: true }),

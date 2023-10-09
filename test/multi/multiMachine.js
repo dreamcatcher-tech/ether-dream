@@ -15,6 +15,13 @@ export const ACCOUNT_MANAGEMENT_EVENTS = [
   'APPROVE_OPERATOR',
   'REVOKE_OPENSEA',
 ]
+const isActor =
+  (actor) =>
+  ({ context }) => {
+    const { event } = context.actorSnapshot
+    const bigActor = actor.toUpperCase()
+    return event.endsWith(bigActor)
+  }
 export const getChange = ({ changes, selectedChange }) => {
   if (!Array.isArray(changes) || changes.length === 0) {
     return {}
@@ -349,9 +356,11 @@ const guards = {
   isDefundWaiting: (opts) =>
     guards.isTimeLeft(opts) && !guards.isDefundWindowPassed(opts),
   isContentTraded: is({ tradedContentAll: true }),
-  isSomeContentTradable: is({ tradedContentSome: false }),
+  isSomeContentTraded: is({ tradedContentSome: true }),
   isAllFundsTraded: is({ tradedFundsAll: true }),
-  isSomeFundsTradable: is({ tradedFundsSome: false }),
+  isSomeFundsTraded: is({ tradedFundsSome: true }),
+  isActorTrader: isActor('trader'),
+  isActorOpenSea: isActor('opensea'),
   isFunded: ({ context }) => {
     const change = getChange(context)
     const isNoFunding = isChange(change, {
@@ -587,7 +596,7 @@ export const options = {
 
 export const machine = createMachine(
   {
-    /** @xstate-layout N4IgpgJg5mDOIC5QDswA8AuBiAQgUQH0AVAJQEEARPEgbQAYBdRUABwHtYBLDTt5ZkGkQAWAEwAaEAE9EARgDMADgDsAOjqj5ANjoBWAJxbRo-cMUBfc5NSZchAAokA8vacBlavSZIQ7Ljz4BIQQxSRkEFVF1TWEtQ0V9WQT9S2t0bHwCDxIANQBJAGE8LwE-bl5+H2DQ6URdLXlo+WFZXWbRWVEtYVSQGwzCNycAGRzPRlKOcsCqkQlahC0lpt1RM2FlWWFY3v67AjwKPKInWgmfMoDK0Gr58OU4puF9ZS7FWS1leV30-aO3ewAVSI428rCmVyCczCiBeuieYlksg0nQsVj6v0yAEUyCULhCKlCQnc5KJFMImg15LoWqJNsofrZMgAxQEAOSoZzBvgJMxu0IWyOUiieWzanWpWkZAyygPs1AIOLx4P8hNmxJhCCR70pWiRog0ZjRaVsbLwAA0iMqeaq+YIBeEyfp4QYDQp9Ip6lpjRjbI48DlrZc1fyNQt5HQtKpVs1XvJ9IZlMoeuj+qoAIYAYwwbAATrAsBbjkHedd7Qg1lHEsJIx8k2Z9M1NVtEqpRLo6PGk106HRZAzU+kM9m8wWi0Qsnk2QBxYbFc4q6Zl4KV1TV2ufZMJJuCmmyVTKDsfbT9vvx6XDnP53CAkhsku25eIVfrvWbhs78KtfRRdt0DbCtsvYDiaGCXqOWAkAGTgANKEC41BkCcXKTI+RIvlsG71tuwjNt0USHnQyg-kRyK9qIF5ZleBZkPYjhOGMBAIWyHi4guNpLuhsRrphb7YY2uGCnEjR-roujEUYfZrJRI7XrR9GMQh5DIQ+nHqhhNZ8VuAnNsmjSEfImiehGlYydRkHQXBTHyixeBsdywZ2iu3GvnW2mfnIxEUn+dAJMmNbyCBvpgVRo6qCwuZsH4YC5lg9GuB4BD2GQBRwVa7GOU+CAkW24nCqYWgGPGWiasmaj1MY4nHnQCZmWFABmACuyAQDFWAUE4BCshyoKoWpoY5e2SYJLERWGM2-4is8Hr1EBP5KHV+aqLAbAADYAG5tfF7iDCMwJ5E494ZaWRKDXlI2FY240LB2dAHrdwhKI9ijkikg6YOBS0AI7pu1nVKsdaHqmdw0FWNJULAayh3T+7YqPGfYNBR70hbJsDLY1LAxViv0dbK8okIq9l9ZCwMGrloOjVdENfksFLyJ0eqKF0HxiVKKOfejGC5umrWxXjpCUL1+JAwN5NDflVPFZqdIvKo7zMwzWxKMRuiLejkDcHmcXOAlhCHMWgP9eWIOS5d0sLEYFKtEYKi6CoZivOrqgQJwsAsI1GBtXj-xAiCKEi8bwSmxd4OagmIq9r2+h6NNSJqxzoVLbAMXrZwmZgIWbIpelDknWTd0S6H1OasIHa5VHgXki9awpqBy0YFmADWqhRWAyBYKppOhkoHqqAoHQ6B6rSaDTciKP+8uJEkE8Tx8L0XrAjeZi3bcdzQsh56L5a9yKA8fDV7wxmPITdGuCaGPI8aeu67P10vzet1jyCqE1LWcMgUBYN1FAHEQAASXcQzli6NoaMjYOzGBUHER64cNj3UjNsbYxhlaL2XqvZ+r9mqu0-t-dkv8KBkDyEApyz4GhRiKpAskDxTDyAmtsNsnZoavEZmsBO990FP3blg9+uCf4EHjroEhWVQEUIgRoahMC6GCkwqoQqnw4gegjM0b4HMH4ry4S-N+OCv78JYcI9C5DwHUgkdA2hzZNBqCRJ2d4vlTDtjvsFBuj8148J0aoZqzJsGQE7kbbuID6zRkUURQ82xdCyGbEoO6ihtCJDWMmBoeg0EuMwdoj+UA3GQFUAACzWjo9qeB+FuCIGQEgucSbAOCMoxohV6gKEMjHD4Fjy5fBaPqF4ZhvTJI0a4tJn9MkQByXk9Jvit5B0QNUuRbN6kmERpE+BSR6SaXynEbpGDuF9IydorJrVNkFKKScewBj1QRjEOoWIolfIPCIs2Vo3kj7xESeJdhTj1HrK0dg9JAyXZgD2VQH+xye5l30G2QwSRDA1W0EsZsGx4R6n-MmBMcRZDOjWZotxXztmDN2Z83BRBCgwQIP8-BxA8gAFl5xjP8VUjoIpal02MHqBMgkvwdGiTE55bQjCqI4Sk7hP1RkVNIQgbQaxzlMwlAkb0MsiJRDEA4-8l1+xBTTG89FP1VAACtGrQBGTiAgUEhijEpUKkRHpI7vAaKsVYzDmwJiiIjJEzoGjxBVUONVriNXat1bg-VUEABSeACjlMDtS585r1CWupO2OkNzIbx1UPKux7p7ZETRa42AmNsbplUAAd3TOUPFBLSUUsBSA7cqhtCeg6LGxmJ9577gqkmNoh4R48teZwjNWbcw4zzQWnguCy00seFW1YnoJHehZePak6gPhdCWLEus6bMGZqxj2nN3qoAjLIMMYYRK8gAmBHgNw+63BkoPR4CgQ6JkVv3kPI+o9mzVsrYkYC7xEztmXdw1d2atU6q3bg32R6CByn-ngYYv83D-1Kce69Irb0ARemzF4+g7WHgPIYF4XxnRkh2GoztK7u29s3SMoDIIQP2DAxBuDu9+6GQPsPY+MtGb91miiToRE3q8o0c-HR9hm5gGwHBjs9s6ODx-Mid4pVkwV1eLEF6GwGhot4yM4Teg970biGyqTCw7aycrAph47bVWcJU4OzepqiQiY0+J7TETLZiQQcilF3pViyGU+3dxrt3ae0zvi1KJaTWhsqSIHQVjNMouFEsVDN0fzRiMmJR64laUed4Rk7zHsvaqFzHANam0IDtQPX7QY0HDVqdE3eiTvl7PhEbCKEwXxDw6DWAzLjHbH5mfS27TLYBsu5Y2j4sjhBDUjDGOVmzHwqs6a-LWA8NiIGYTYalrz3XfN9ZWgNgrcHHpKHFUkYwJ5OilXJPp+T5IjPLa+RltbOXNVgGzINorwGA1BvxYdcbYnJt2duZ6fuyI2liDqV8NF7cqI+O23c8VDN5UxOZroUusQ1AbGZswx6NVHEmcftdr2W2-EhYQHueEnpEjxlje+zUtT1C9nqIeRFxEfSY40aD7M6YABGq1esp1zGnDOAB1PMTc2pwYUGfWOSxXj0hesoTUUKRQRktQVakwoQfIComzjny1U7pzAPz3MgvYobypfj8SCY1xGciAmf8U6QgtAwwmK+YlaVGBV2r9nnOtd84F0L0QRvhUi4pGLz4dJ+xS4RzHORHRqRIcCn2F3LO3ea+59r3X+vO7yF91lE3IKXgNAtzHbYpUxWHgjEmGqbQr7GfdZw7mvNMXYNgEQHm7jmpYsFcF4VDW6VsL7L2T09QZZ9-lii-8mgaTkiU-hx+Nf3HaIb03uvLUfGCyoAQHde6f5uBoxGeEsRIzOiUTHEkFZifyzEG07o3RY+T40dPhfEA5+1-6a35fu0KVdXwZvvHwr5d3TaGXuk4kisMsyY8IwoDi4oT0bqH0aqt+T+9ejej+Wy3iuOGeRIV8egiaOgcQBgMSh+A+nQlaYg-4SuNU88aKsBGSmYfAXsyAGACBzeqAquD2KBlm6kLwjQkK4k2+hk-4Mu-YRODMjWNYHwCgUBYEMB8+-SVBtB7cdBkhGSzOOOWAL+q+u6BABQh0IIbIIai4YaIq1IRO9spgmE52SYfBxE8sYkyI0WDMm45B8hqg0hNBchiBqgihS+5AK+Qwb+Gh2heA2hNGNUDqRgSQYg3oyqJ8EYhUGGqwOg2gtYZc9hrhThsh9BXy7hLB7eWUDuhhI0JhAE0u4YA8laNIXwigeoDwMSle0B1eDhP0ZKkA6Yq0q0FQaR-SyAfAeAaAbszhbeuh+OJgBg58KKWw4Rr0hRjoYkagL0+eu+-Yeo1R4htRrh9RjRzRrRDhzUGRfRHEehDM5REesQ2w-YCgCQMsUx8sCQVuOg8xCgSR7iqxEATRLRfAbRChTBShKhFKhCu6B0R0qBJyNYd0mwnYzwIBzosCkMbQIKzM1YNaLQmk9xXyjxzxGxrh2xNGQJB4yIzQHSBgNI0ijozwUQhkKgyYk08iceGAbga0nsFQWAEAfAnOjcWWjOLcihNJq0dJfAcGQ0ja4iUCNCkJ4QLQGga4CJnQOBV8noVJnJ3JL8K0uYQmX+WUrQCg6gY+NU2whEKgpckYDqfkgEmwZ+ixziTOHxcpVwy0eYQmFmWRRIapHBmppgsKVyMuKg+4NYHYFy2oHYppaqHJtJVpa8-GK8gmOxmUDpcO58mgsyDMsaMWIpzQv+CxHScSeospQZFQmioZgutpAJoY+28I9qDSnYnQ0MiZIgIedGB8Jgh+LybJbhFpWZfAOZAmQmPurBhZ0ZJZcZ5ZNUepbQbYWwisXKY+mZXJVpqAmYkUuZ4ZvJKKIotOMCyIZIYk7ptuLMF+R4SYE+3G7JzZk52Z05s57Zncdp-RHei590Qpq5feMuAk2Jim8ZkYyu1+B5VElp2ZmYq0HA6uYAc5ypBZIC15y5xhGg95Cwj0SI-c4RHQAUkYE58pjhv5sA-5gF55wFK4oF4kK5EF65UFNYFIIRRkKIYKSFVpt292OOZKjUq0PAX5fAEZ+coYHQfcYFopa58OUFHQagmwD0gErQDOVej8gZR5rZVFzBtF9FnAjF68F5uxAxOFt5+F3FIpJxT5L08YqwLQaIqYbArU8APg-QXZ5YAAtCfGZWclHDZbZX2HXE4knEZZeaqX3K5O+DhKXIZBXL2FXEaNJInGjOFJFNFLmKZVUsKOfAmIeBLMPoSYgPDD5SObnjEhjkOE5ZkmFfaSct6NGPGe8F5NSEcRNBYWsAmAYNDK6I2M7BtptFlS5WgeTKYOKGXPsZWBTp8D5dDCiLDsjPXBlT9OFRMmfIVKPlETSEyhMaSL9n+GXGSLgWJG1mmBlT+uukNSKmfDnmzMaZNvWvtm2NNPRl0Dhs7NPjFOtfLomhfK8J8J2DVJ2JEi9AdR6DQt6NFcJR9BlZrFeBdXSImv2HCKAoFM8NJoXA9LXGSDoB9ajNRC7Ktl7PVYpd-hGG2BUVsAaLGY9CfDns9S9bhjHN0DVR7mAOtRpFhO5NbrND5Tnr3q0KaV9d0Tjutcaf3DhhPGzJ8DSM2DSL+N6YFMKA9A5ctUFemCwBFGwOtE0W4IJszVsKzWOnoF6KErpPGGuL5RsKAvNA2SJSvOtZ0H3IHhLiHrqVBTvu9QYM9KCYke+ZoqTTSL-gKZIuYgsK8PVt6fWNqQzNrTUXyi-GnGALmhdZsCCgPH2C9OprwZDKRImgdgPCgq7V+h8mlnbU9ZQqYkKfFREK0AgkDdHs8InRiv0p4sgaTfhGuGOqct6J2NCoKCrGuAaHoJwU9GlT7T0qkrikgYvhAKTeUfuLUiAUdeUYoBNMsMKEkMiIkD+DSAXZst8rkqtDoqTTHCCv3a1TWkPRYpsNiURBVYFEkGJDPR3d8jisndlT3K1geN6O+v9jwcPbXY9PLFWhCfZTagXYNWfeWh0JGi2CXnEHbHapPOElSKKojNPTbZ6huv+ukj3Y8NVs8L-S9Wpc+J2PCEoPbM8LHKXmIWae8qoBqjlrVZAL9X2NGPbKMU6ibY6BoHxSik6C2hPGYG-TmpJUzR-TSiQ2JO8LEBQ1NRWGqf3DGgYEiM0P2AXatTjD3WXJWq5jWtDHWtzaYOoEYB6LQgoEaGI0RjmvmoWlABdSiPLJOi2kovzU+s0LOjcVdIIX1e1m3d+po3+j6ro2wxMtoBSGXFjVga+sKdOgHgfCivGFY5dp-IBetWXGKa0ItdBaeCfLECJLdEwtXMzNsEE04w1eqLSBwbE+jWSEoO2KXAcUYOEhoHvfvP6aZp5l8v7YHc4yEIZFGMmrdTbIVJqB6QgsRHWP2GsNDTg+FBU-0tjiTTUy0FvYqtDlArk0gwTjJpKfwY7t6B0Ck3DT5llgQ3lkQ0M2xVDtk71ZM0sH3e2G0BVZFjKTbZ1ksz1n1ndswaEztmJn2B6BoKYHffcDEhXABEgl8B8FSes2kz3IkFGF0HSFfAmPPDE+EhSM6H6Z8PLnhvuec75t3TUzalGJ6JECYMHgOQ5gHr5QaFfBKN7UsaJR8f+etTSHLM1e2GRLNJMy5lFXbAkMYERF0jbYof+aoFU9A0i-UI0LvkhiORsJWcfhSPExPMKEwtoFSWy1zjzjrl7ojZGeqIlsWXNUU3oN0JMyolTlJL5AE0ZkLTrS3BQXbTOmnYKVIjLHSFEMzOUURHoEiF8ASz0xQW4g-ovTU28HdCcZVKrEaDLIVPVszAaA2GXN6UiXAS1K618i3iXe667f3JsN6xCS9APt5fUFKjcTWCoGG53ffm8QMno18NvXqHSDtszAPvAqPrbL5IDsDjbc67Pnm2dYi78zvOEiSUrskDQsygPjJjWB0HlAdkNNm44dQakfIaXURGuGFpoEoEsOJDLC8PVhCf5A2u5nWw4SkbQXm1sR8T80jSIpThCnGLO4VLw17VEGQ3s5GL5GA3C865uy4e4hkXo7lQDaKZJJHeELYWoF04ZAzAzBoI6xIckaO1uw4U2xdeg9GKNHO20MzAoHwYowidWjQpCsOyiesa8eO+6-bI0Ka07d4xWERfLE6C9P9ih+h+mA0U8Zh8gHmx0cgF0T0bIaXQzMYlQmYoR+2GY7nvECzORJR9R6iVh64Tu2Ds2-u2gYreoEmDFV065ifAcyi1LuwamkuuuysVR2sS8XRw4c+zU6SfuCCWYP2Lk+1VCfUJcSoKp3PJ8IJ9p2ie4hBwZ1DTxNSGo+dqYOcTSJWi9H5w3ZGEB5wmJfKXrc0PUxNUHpLpQxMsXpfaiFDfEi8BRdmYqRgGF4o4bcHsKDF-Bg8DJ+6M9JpEF0S5+S2S-CGe2XrZzVPNW2VHoHi3qXqJGg89CTTil62SeWwCE+63dYmgBEinOwVO6Y8IVM8M8OCwdh1y-D+X+W7j1y2yuH2OVErOwb2PA0fjtiCnUmfi0GJIhSy4echSw5ANJQxeV3rRGta0ES9IkmYKXPMb560PqT+FbNN02eJ6TUoPyc0CboAduA97lcaX3rO6SZYJYEAA */
+    /** @xstate-layout N4IgpgJg5mDOIC5QDswA8AuBiAQgUQH0AVAJQEEARPEgbQAYBdRUABwHtYBLDTt5ZkGkQAWAEwAaEAE9EAdgBsARgB0ATlHy6sultEBmLYoC+Ryaky5CAeQAKeAHIBlPGXpMkIdlx58BQhGKSMgiq8rJqGqIArIp0ABx6oqrCcSZm6Nj4BDYktlbOtIwCXty8-B7+gdKI8lFxEXVRwoqqslHtaSDmmYQFAGoAkgDCeG7FHKW+FSIS1QjtUQ1xcap0Snotwp3dlgSOVgAyfdRjHiU+5aCVs8Fx8sIRtXry8nHtbXrbGbt4FANEVkK7lYEwufhmQUQsW0j1EinkcNUUQ2XwsWT+jhsAFUiCcimdQWVwQEblDFLI9I9FHFFHp3i9VKiegQAIqufEg7xE6YkyEIRQpUSPKKyOKiZpRNapUxdb5ZABiWPsVCB4y5UyuELmilECkeela+joMUZMp2WUcWLsJFZ7OBnkJGsEWuCtNkqkedz0cWEelFsiZWHseAAGkRTpzJpdnby5hskspEqFVIoohpEnQtmbvjk8H0Iw71dHrnzyQ9ZBTmmLhFoK60mcoAIYAYwwbAATrAsKH-gXztzNQhxfI1AKtMJZMJGhPSwiR6mM7EknFjdL0pgm62O12hgcyAMALJ9x3FxDD0c1yeT6eyWc+5RPPQT1QrAWiBsttudrAkPNWADS1jWmQAKqgSRbEueKaXhOU5vDO2oUosC7imIdCqKEGgflu35kDYORWMcBC2A4zh2mqUaQcII7QeO17wbeiFvA+yJjr6WgJO+2Ybp+25YHhBFESR5CgceEE8lBY5XnBTSMa6CTzsidDPLU8LKWuso8ThXa-n0AFAaRLhiZREnURedEyQh8l3CxSSJHEsjiuKnzcRgm5frAygsO2bBeGA7ZYARNj5IQNhkEMgHhhyhYmYOKx0Mo0T+t6Bj+nJNRTsowjCMkih5fIBiiFx65ubxnbKAAZgArsgED+VgFBWAQirKni9r9k6-jxYlIoOSlHEVqWSQeqsqUtPEl7yNhHnKLAbAADYAG71UFIV7IcOIDFY9jGWCPLdUlfUJAN6UIG8KjZS+YgptE0Qad07nbsoACOjYNU1bK7QOMYHb1FLHWlpaSoso06HCK4Ock01PbAVUsP5LJvY1exWtQtpfZ1iC-clAMOadY5CqNoh4wkqahND5UYO2jZ1QFyOkJQbUUXtcWrD1OOpXjfKig8qy6tlbR0C0U2uY95W+WAyCOGASNNSRThGdFHWnmdbOHf9nODXMGEJXz6giko1J+hTnmQNwHaBbkwXOAQvy9krJ7EtjR2a-jxrhJdFYbD6GEKCbygQJwsAsFVGD1cjGLYriYGRizP1q39-WA9qwtqHQxNRJoejPO0IslWLnmwP5i2cM2YDdvY4VRe1jv7QnHMnXyvVp9EBUUuo8TFZpbmwBgLYANbKBLyBYBjKveq8yi0i0qjZ3lojKfIpYvioePKaKK7kqa+e9wPQ-wyPNCKDX4mDhP9TTxhc86ovpbxmo7oCpObwL0+Da782g-D5VNWB8gUBYBahQW2RAAASY9IJRFCMoKBfpdR+hTKsJeiFs5ZQ3tRBIiR3Tvz7p-feksf61U4P-QBSpgEUH3BAiSUCRywMchSR+SDSxihGhsKB6F7LZRcjvXBX8D6EL-gAoBBA8rtCoYOaI0C6HwMYWsZeGhEw+gUpKZIYhuHd1mrw-ByABHEKEWQggjlFDiJjJI2hs96EIPGsg4IC8irKASBDBedxMzGhwXvb+1UiH-2UDVeUv9ICjwdqfUxlYYHaDhHlY0E5oh8jhC8GB9wRRImNPEAU7i8GeN-nogRkBlAAAsFqCIangYRjgiBkBINXZm31-DDUpLUEUSR2jqFnnExeWUEQGgcjWDhUQMl8IIV4wRuSIAFKKXooJJ9YqmKvixJpSIoF2TibSQmqY3wJFCFArMPCPH8OGTk4ZeS6oHJIVQMpAIbAmP8AYdOyhMzbK3tCX0y8az3PQgueET5FkDO0bonxRyxknOyWc0pZDrmICfC0RKSIwjinTpKGxZ4NAqGzm0VM51RTqF+Vk7xUBRkBzAKcgBRBhj-gIOcgxpKDyjGCTMm55J6iNLMVOSUpJ+QYRHIbKcrSKwShxfw16UyamYwQHSe8DyJzjTnmKOJbwL6SkFN6JEFZ+miw-oMnRr1lAACsqrQEmWyAgv59hHFpdMuOdTkj1DSRoV4mhomnV1BWZQk52LkiUCuF4AqCHar1QakhRrfwACk8BDGqeBelZ5rX3JpHalxjq4mrBUKmTM2cYKyGMOqrR39Ybw3bIjZQAB3RspQSGkoisQQ85qRUqwzpSZ47oEi+mSEkJ11FwhJDWOnF+tJfQ+p0XmhGjZi2lp4CQiFYqioekbaxCG9q4kIgSm6-QeVSa0gHbNOGw7dX6qgJMsgBwDgUoGJiHEeBHAnscAeU9zgKCTonpSS+s8Ng32EHE1KERniRAREuNVuzMn8KHQWkd-r91nNPVHQgVpQF4AOMAxwoDKkXofV6KeE514InBooOJvpUWFVgT6d0s9N3AcLWByZkdz0EBg3B+9dLLWQruBfDYV9X0L3fXMO6KhXjqArOhJE6iHoaq8pLQRNgB5gGwJOyU1Ip4bB0H6VMvokX8nvtO6k8rbn3QyJoveB9ikyaFix2I69lPPGYehV1N1kRuueNi7N+mxOTKPha2piBZMmcU5mpoFmU56kcqsScOh2h0iE7pkTBmcmB2DqHcuFbyXUprZGxjAQRThGnqyp8Sh3TL3hFlRT3okjxOJr8qLPiYshzDsodscAFrLQgA1SD1HEPIccEZuT09vPmdU9SRyDiEFhBSKsS8ZXnMVaDlVsANW6tLUCVR3ExqL2HGOB1rzZnfO9c5YlbKDrDb-R2RoyL438WVbizNuac3GuTvYjanlzwVj6DqCs+IU8NAvigasOo28jtaPK6dyb53as6rAK2ebzXFshrDaS7aa35OmaU5tlZ0LahaESElGs4WNwiclp+QJN2dQPAeT6BYaZYlzF9JKNQj2wjUhym8X5Z2w7XYY+5+YfpFhvEzcsVopNevkhBu6HOPpqSZ1+bj1sjYABG81ptF3bCXMuAB1Ds-d6qTtWUTpo6gwiZ3uOT4IULaGZxN8aDYYXxfIE-NL2Xs1i6lzACr9sauAqudrcSEUUCH7NAFDETMfI3ic4pBoNNBg4GW+tzLuX9vleq-V6INzorNf3O1xoNoLwxBRD5Go+ozHWjKUO8JrREu+5R7twrh3TuXejz0InlWnuRqTjylOWInHXS0lz5EGIeVkipV+VTGmhzf6wCINTEZNVAXCpS2zuyQo6Twjw4vYcAfRRZRWKERIdQoU6ex1ogfIzhkj7H0P2qgSGZUAIIe49QD2us9FZvj0fWPg6mCwVAPYoYFun42mbOMR+-H4BWH1H0H0ANP0a3P16CsBpWajIVvzr2JDDweG400BpEcnQizzmAUHqCnD9E0DoTWC7iLz3n3xPwgCPxAPxUnwfUkSnjxlYn5jWD0ADzpHuTdAXxrGaR3x7j3wAPxWbD4DDmQAwGAPH1QCtzBxZ3gIkh1wcVfhiF9AFgwPbxfBgR7QwnaGOhSH-woOUH4KEMlmEN4OUBLzP3IAvyvwICGG2lxHsAjVjjZ2ziszqCUGtQwi9XxjsRgQ0CaBcPsgDEczwRIJ8T0MEMMJ0JMPALMMgOgKsNsIcDsJilSwMEyixT9GyjEF9DiFLHiGwJeG-U93uArG0JGRCIMJEJyQiKn3sPvwMA9GcM2HX3cNLFTEWHTnuEDzjQnH8IA0HiCPxVegPEgEbHmnmjKHKJ8U4AAFsvAuAo8qjEiZ9EE1AO5HIvQwg6Qm4VxEk1h4RtB2hlJiickBihiRixijD-t5jlYEC+17k6whtbpXglCPMtjM54ghtsohYUxDifFjiIBhjRi+Bxj8VKiICCAaUKEj0todo79x4nwL4CoUg6h3R4hkgm4ERVC1gkIX0s5vj+jGxBi-jTjASjDKiH04Sp4ET5VkSVg28PNUx3khZRFMxiYEgI9WxHAFpQ4ygsAIA+A5c+5qsiC8ES8OT5ouS+BJ1ogNgYELEZFEE5E4xzpaDkx2NDRCCIti9xCMBRTxTB0OxpMYTiQn5KRjRPMOFVVTpvRYhEw-QFMhY0x5U2TtTOSLhZp9TR5j53ceRjSU8zSLE2hLSXCWJajZ5kgHMejjCtSdTXTh4JNP4pNLja5BxGUQY+MJ5kQxRaRs8ciHF4gm8lBogoEnToyyhtE4y1dpNPTp8k9RRUz4E7gMy4QmC4wZCEF7SCoulahiyXTSzYzJNpME8vTkzazlj6ynhMzmzDdN5OlogpwHV3R1Td894RSey+BlBUBmwfJyyEzJSMVXUt8Kwels4-Q+RxU6j0IaR7hdt1DuyxTXSNytz+yPSpCJE9y2gEhDzJxjzAyP9MJHIco6QUhC8NTlyozVydFmx5oOAbcwBtyDSXzTE3yDz-RfQ0VsyvcJRmh08cDgKlzhSwK7zSzILoKo84LnyhzEK6h9yPyULvzs9UwhRmMxQPgnss0IyVzCK1zgdQdmcDwqp5oeASy+BEyQk6kkKaKjy0KWzag1Al0tAaFM17hbzdSZsQcJC+KBLOAhLD4qzqi61xK-RaKpLDcljMIVI7Us0zQ2A6p4APBugKL-AABaVTTOLKDCdyjyzlH7B6MqWyvSo0lQ2iaSG8bPaIKeNMOCHlNSDdUWXyryHyPydsByyFVfDyhc3XQTWkhAF4BKBinKbKckCkAqf2I5JK6s8eSeeg7QWIP3PAoaVfBi0UWncGb0f2S7ZaMq-ynkDMNQKcfQeQVYY0dYp4s6BJBinXXY+FXC0qbSF6RsZKsVe4WyJ8NMOocUGIScqEIC8KxIOnJQV4bBWK2asjea8qhApa1oRpe01oUIZSO+GkHaqUzfPqxcmamafffyBagwbA9y14t8b0bmAqcK9axZA0RyV6gubRaWU6rqs+IWcyOoX3Q2VQPkZMYG18RAv2I6maM2L8L63ULKLedMLtdQLI7UXQdGzOFtTNCGuKpnT6s67qgwRKfaisSJYbdlPKNodGuEBvZ8NqmPMABaySDNSyU6d4YGtMUm1NNYf2dAbgSABazNB4FoJSTMaiQnfGOcYMheJcF8Vcf2SC0tSYxWxmwcZWqeQTHQXbTWu8ZCJSQ0RFLCbGp6RsFgbyNgRaYY6WDAJWgUS2tWm28UfGZE1Q83ELYmWoPOX7AeBanUKi6JHXdPfXEagUSkTyrZYmbQY2AIzVYWyUBKaRBheU3rDah+VpdOUmn-TdEuMAItL6sIR-DYXpHKbOsm2xLncKoamSPrTdYlfOlIGUuBYu6xWceG58YmDCKcRyLHbgvZIZEFfFPxAJCAYWzQQmNMV4Z4X0JCFZCkB8CcFpTZUIb1XOv5YlUZYWzMlidYZMRBcUZhNMVQ5YJcBEHzWevTQDBevFAlQpeaQRK+gam+2kO+loB+rjd2LKb0MUNPZIPIvuxeglYFPFfG90V1V4NHNAmkEUFZBMKmq6IbWnTdV6YW0UFQNJAXMndQVMRdNWFtOoO4JcbomOr+rVUDPdPRK+hMChtoKh3muVOEKeMcV4H0FTf9FhzVOai7erU22GmMDYJQGBXqDCZxJELMrjGkSkAWFId0PY5hoUyR7VbiiQr6+EFQd4dfVRjapNZ4BxZEFw-a-QKcUjbdEDK+40RMRu5tA0a6J1BBazLQJQMQRxV4Fx-NQtEtMtKAYWleBxMITNVW7XAURdaFN1Ag+4dOWWs+3NVx8jDh-+L6xIB4HA0IPrXvBIFJj0NJucDgrJiM-7OChagWIUZTCsVSHKzm19RKYrbQQ8nLcRgx0TFBs2mMGsWee5SK0nIqNMZha02THmHeheUUMbH+2u+ukZ64aBHIzQCcCckaxERYN+zMDphEBnM+-7AOQHMOJpgUchyZhYaZ5hFQsGF-NFF8ZZ85k7S52LarWrdq2RhY0VKsD0YnVldoR57UD7VQ4WByHLC3T5n++m1SnigFq4nkD4p9b2WoFITQUUF7DLXUKUakFw7ykC-CvHVejZpjGyLvAwLffarKltXIhh5kkUTMRnK51FpMmMH-EcLnT7Ndfh-zXmRhQLGk0lvCweEvGChapoEUXq19AM1+WobI+km6+IQCnKsIJ0mC5QNZzhql+YH-LKRobOxyWoTm2ILRrFcUfPQCiGnHLU3V+XRXR3OPTqwF+vYGBVrmppReVOsx8uwwVpAavKXE4WnKRYIuqxJhLjJEDEzMPW2sLQXEgRcggBw19MSkFYD8sQWnFAvkDBtQZERBeEdQhyVNw-IE3xZAQFNeh6nNtItPNSdurGdoHbHQWITlZyAZsl3oowqtgdler69OD2DnRS1oJ8KcAPIBpBRVAarBFoStoAowj6yluRm5aiEcAgjFvNjYuYFYcINHb6gqBedls+vo3QgQso3g-OxRg6g6nF58Ta-kHQXWF4NMURcadOVN0ooQ6tmqCIteqzB9npO4Z95o7m26ZIQLJdbVi9owv9sIkZIDw1wqFQJBYmMGGkJEZolYUcW67Boqae3969-91dsfLl0SyFDMxKIqyOxTHKXrOEI9lxCsNmxZLgz+-tnQ34-4s4iggeykaN2RVTMQcIAuvKUXW5rGiMy9vjok5AatqYmYzgKPfOlMIeyxUTpueVhTDPLhGsCcVNhTgEpT84k7Ed+kjiTt6eg0J8JuNB14ga+KKT-QEz-Ek4sz6t1DjdyFadCk5VTQakF8N4RzuozQFz5NeeD+kTeTzzwk7zijmmKjqNMVXOTx7QByI0OquYdLe5HZlpUREjs+ji3UuOgwbd1PXXDPA3Gju5HQX2NldAh1zUz8bSt09sX2w12kJoFPHKNPPXTPU8hEB4VjX9VjH5UrgilSvs+M7rvz-kAqTnVYdQ9MOV1Tb0KzNFA0IqWIFYXtyVyM9r8C9c0HR8+buOnWLKREsRwCmhuMHLFuVoTYFeLjx1k7ziiCqC2AGCxpnr1oCT72TfF4F+bMhyXM5YfQCGMt5S104x3i-iwS8Cq7wesUByDFJ7FMU89QB4U55YHDvKbLOH0s3zz1yCKFGU5oNNU0hyHH-LTCIa3qGB-wkwIAA */
     context: {
       time: 0,
       changes: [],
@@ -646,6 +655,12 @@ export const machine = createMachine(
               DO_TRADER: '#stack.trading',
             },
           },
+          openSea: {
+            description: 'Acts as OpenSea, transferring NFTs as operator',
+            on: {
+              DO_OPENSEA: '#stack.trading',
+            },
+          },
           editor: {
             description: 'Proposes an Edit to the current Change',
             on: {
@@ -675,6 +690,7 @@ export const machine = createMachine(
               },
             },
           },
+
           exited: {},
           claimed: {},
           approvalSet: {},
@@ -970,11 +986,33 @@ export const machine = createMachine(
                       TRADE_ALL_FUNDS: {
                         target: 'traded',
                         actions: 'tradeAllFunds',
+                        guard: 'isActorTrader',
                       },
-                      TRADE_SOME_FUNDS: {
-                        actions: 'tradeSomeFunds',
-                        guard: 'isSomeFundsTradable',
+                      OPENSEA_TRADE_ALL_FUNDS: {
+                        target: 'traded',
+                        actions: 'tradeAllFunds',
+                        guard: 'isActorOpenSea',
                       },
+                    },
+                    initial: 'untraded',
+                    states: {
+                      untraded: {
+                        always: {
+                          target: 'someTraded',
+                          guard: 'isSomeFundsTraded',
+                        },
+                        on: {
+                          TRADE_SOME_FUNDS: {
+                            actions: 'tradeSomeFunds',
+                            guard: 'isActorTrader',
+                          },
+                          OPENSEA_TRADE_SOME_FUNDS: {
+                            actions: 'tradeSomeFunds',
+                            guard: 'isActorOpenSea',
+                          },
+                        },
+                      },
+                      someTraded: {},
                     },
                   },
                   traded: {
@@ -1003,11 +1041,33 @@ export const machine = createMachine(
                       TRADE_ALL_CONTENT: {
                         target: 'traded',
                         actions: 'tradeAllContent',
+                        guard: 'isActorTrader',
                       },
-                      TRADE_SOME_CONTENT: {
-                        actions: 'tradeSomeContent',
-                        guard: 'isSomeContentTradable',
+                      OPENSEA_TRADE_ALL_CONTENT: {
+                        target: 'traded',
+                        actions: 'tradeAllContent',
+                        guard: 'isActorOpenSea',
                       },
+                    },
+                    initial: 'untraded',
+                    states: {
+                      untraded: {
+                        always: {
+                          target: 'someTraded',
+                          guard: 'isSomeContentTraded',
+                        },
+                        on: {
+                          TRADE_SOME_CONTENT: {
+                            actions: 'tradeSomeContent',
+                            guard: 'isActorTrader',
+                          },
+                          OPENSEA_TRADE_SOME_CONTENT: {
+                            actions: 'tradeSomeContent',
+                            guard: 'isActorOpenSea',
+                          },
+                        },
+                      },
+                      someTraded: {},
                     },
                   },
                   traded: {
@@ -1038,6 +1098,12 @@ export const machine = createMachine(
                       TRADE_MEDALLION: {
                         target: 'traded',
                         actions: 'tradeMedallion',
+                        guard: 'isActorTrader',
+                      },
+                      OPENSEA_TRADE_MEDALLION: {
+                        target: 'traded',
+                        actions: 'tradeMedallion',
+                        guard: 'isActorOpenSea',
                       },
                     },
                   },
@@ -1117,6 +1183,11 @@ export const machine = createMachine(
     on: {
       BE_TRADER: {
         target: '.actors.trader',
+        guard: 'isChange',
+        actions: 'snapshotActor',
+      },
+      BE_OPENSEA: {
+        target: '.actors.openSea',
         guard: 'isChange',
         actions: 'snapshotActor',
       },

@@ -245,65 +245,37 @@ export const initializeSut = async () => {
           'SolutionProposed'
         )
       },
-      TRADE_SOME_FUNDS: async () => {
+      FUNDER_TRADE_SOME_FUNDS: async () => {
         const { context } = lastState
         const cursorId = getCursor(context)
         const { type } = getChange(context)
-        debug('TRADE_SOME_FUNDS', type, cursorId)
-
-        const allFundingNftIds = await dreamEther.fundingNftIds(cursorId)
-        expect(allFundingNftIds.length).to.be.greaterThan(0)
-
-        // TODO add balance checks pre and post trade
-
-        expect(await dreamEther.isNftHeld(cursorId, funder1.address)).to.be.true
-        const result = await dreamEther.fundingNftIdsFor(funder1, cursorId)
-        const nfts = result.toArray()
-        expect(nfts.length).to.be.greaterThan(0)
-        for (const nft of nfts) {
-          const balance = await dreamEther.balanceOf(funder1.address, nft)
-          debug('balance', nft, balance)
-          expect(balance).to.be.greaterThan(0)
-          expect(await dreamEther.totalSupply(nft)).to.equal(balance)
-        }
-        const addresses = nfts.map(() => funder1)
-        const balances = await dreamEther.balanceOfBatch(addresses, nfts)
-        debug('balances', balances)
-        const operator = funder1.address
-        const from = funder1.address
-        const to = trader.address
-        const id = nfts[0]
-        const amount = 7
-        debug({ operator, from, to, id, amount })
-        await expect(
-          dreamEther
-            .connect(funder1)
-            .safeTransferFrom(from, to, id, amount, '0x')
-        )
-          .to.emit(dreamEther, 'TransferSingle')
-          .withArgs(operator, from, to, id, amount)
-        await tests.nooneHasNoBalance(cursorId)
+        debug('FUNDER_TRADE_SOME_FUNDS', type, cursorId)
+        const isAll = false
+        await tradeFunds(fixture, cursorId, funder1, isAll)
       },
-      TRADE_ALL_FUNDS: async () => {
+      OPENSEA_TRADE_SOME_FUNDS: async () => {
         const { context } = lastState
         const cursorId = getCursor(context)
         const { type } = getChange(context)
-        debug('TRADE_ALL_FUNDS', type, cursorId)
-
-        const result = await dreamEther.fundingNftIdsFor(funder1, cursorId)
-        const nftIds = result.toArray()
-        const addresses = nftIds.map(() => funder1)
-        const balances = await dreamEther.balanceOfBatch(addresses, nftIds)
-        const amounts = balances.toArray()
-        const operator = funder1.address
-        const from = funder1.address
-        const to = trader.address
-        const tx = dreamEther
-          .connect(funder1)
-          .safeBatchTransferFrom(from, to, nftIds, amounts, '0x')
-        await expect(tx)
-          .to.emit(dreamEther, 'TransferBatch')
-          .withArgs(operator, from, to, nftIds, amounts)
+        debug('OPENSEA_TRADE_SOME_FUNDS', type, cursorId)
+        const isAll = false
+        await tradeFunds(fixture, cursorId, openSea, isAll)
+      },
+      FUNDER_TRADE_ALL_FUNDS: async () => {
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('FUNDER_TRADE_ALL_FUNDS', type, cursorId)
+        const isAll = true
+        await tradeFunds(fixture, cursorId, funder1, isAll)
+      },
+      OPENSEA_TRADE_ALL_FUNDS: async () => {
+        const { context } = lastState
+        const cursorId = getCursor(context)
+        const { type } = getChange(context)
+        debug('OPENSEA_TRADE_ALL_FUNDS', type, cursorId)
+        const isAll = true
+        await tradeFunds(fixture, cursorId, openSea, isAll)
       },
       FUND_ETH: async () => {
         const { context } = lastState
@@ -614,4 +586,39 @@ export const initializeSut = async () => {
   sinon.spy(sut.states)
   sinon.spy(sut.events)
   return sut
+}
+
+const tradeFunds = async (fixture, cursorId, operator, isAll) => {
+  const { dreamEther, funder1, trader } = fixture
+  const allFundingNftIds = await dreamEther.fundingNftIds(cursorId)
+  expect(allFundingNftIds.length).to.be.greaterThan(0)
+
+  // TODO add balance checks pre and post trade
+
+  expect(await dreamEther.isNftHeld(cursorId, funder1.address)).to.be.true
+  const result = await dreamEther.fundingNftIdsFor(funder1, cursorId)
+  const nftIds = result.toArray()
+  expect(nftIds.length).to.be.greaterThan(0)
+  const addresses = nftIds.map(() => funder1)
+  const balances = await dreamEther.balanceOfBatch(addresses, nftIds)
+  const amounts = balances.toArray()
+  const from = funder1.address
+  const to = trader.address
+  if (isAll) {
+    const id = nftIds[0]
+    const amount = 7
+    const tx = dreamEther
+      .connect(operator.address)
+      .safeTransferFrom(from, to, id, amount, '0x')
+    await expect(tx)
+      .to.emit(dreamEther, 'TransferSingle')
+      .withArgs(operator, from, to, id, amount)
+  } else {
+    const tx = dreamEther
+      .connect(operator)
+      .safeBatchTransferFrom(from, to, nftIds, amounts, '0x')
+    await expect(tx)
+      .to.emit(dreamEther, 'TransferBatch')
+      .withArgs(operator, from, to, nftIds, amounts)
+  }
 }

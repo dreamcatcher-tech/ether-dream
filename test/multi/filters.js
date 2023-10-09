@@ -13,13 +13,47 @@ export const nand =
   (...functions) =>
   (...args) =>
     functions.some((fn) => !fn(...args))
-
-export const skipActors = (...actors) => {
-  for (const actor of actors) {
-    if (machine.states.actors.states[actor] === undefined) {
-      throw new Error(`Actor ${actor} not found`)
+export const skipEvents = (...events) => {
+  checkEvents(...events)
+  return (state, event) => {
+    return !events.includes(event.type)
+  }
+}
+const checkEvents = (...events) => {
+  for (const event of events) {
+    expect(event).to.be.a('string')
+    if (!machine.events.includes(event)) {
+      throw new Error(`Event ${event} not found`)
     }
   }
+}
+export const withEth = () => skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721')
+export const skipActors = (...actors) => {
+  const events = getActorEvents(...actors)
+  return (state, event) => !events.includes(event.type)
+}
+
+export const withActors = (...actors) => {
+  const events = getActorEvents(...actors)
+  const allActors = getAllActorEvents()
+  return (state, event) => {
+    if (allActors.includes(event.type)) {
+      return events.includes(event.type)
+    }
+    return true
+  }
+}
+const getAllActorEvents = () => {
+  const actors = []
+  for (const [event, value] of Object.entries(machine.config.on)) {
+    if (value.target.startsWith('.actors.')) {
+      actors.push(event)
+    }
+  }
+  return actors
+}
+const getActorEvents = (...actors) => {
+  checkActors(...actors)
   const events = actors.map((actor) => {
     for (const [event, value] of Object.entries(machine.config.on)) {
       if (value.target === '.actors.' + actor) {
@@ -28,22 +62,12 @@ export const skipActors = (...actors) => {
     }
     throw new Error(`Actor ${actor} transition not found`)
   })
-
-  return (state, event) => !events.includes(event.type)
+  return events
 }
-
-export const skipEvents = (...events) => {
-  checkEvents(...events)
-  return (state, event) => {
-    return !events.includes(event.type)
-  }
-}
-
-const checkEvents = (...events) => {
-  for (const event of events) {
-    expect(event).to.be.a('string')
-    if (!machine.events.includes(event)) {
-      throw new Error(`Event ${event} not found`)
+const checkActors = (...actors) => {
+  for (const actor of actors) {
+    if (machine.states.actors.states[actor] === undefined) {
+      throw new Error(`Actor ${actor} not found`)
     }
   }
 }
