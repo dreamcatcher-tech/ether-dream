@@ -186,7 +186,7 @@ export const initializeSut = async () => {
       },
       TICK_TIME: async () => {
         debug('tick time DISPUTE_WINDOW_MS', DISPUTE_WINDOW_MS)
-        await time.increase(DISPUTE_WINDOW_MS)
+        await time.increase(DISPUTE_WINDOW_SECS)
       },
       QA_RESOLVE: async ({ state: { context } }) => {
         const cursorId = getCursor(context)
@@ -433,7 +433,7 @@ export const initializeSut = async () => {
       },
       // WAVE_FRONT
       SUPER_SHARES_UPHELD: async ({ state: { context } }) => {
-        await time.increase(DISPUTE_WINDOW_MS)
+        await time.increase(DISPUTE_WINDOW_SECS)
         const { cursorId } = context
         const shares = [
           [disputer1.address, DISPUTER1_SHARES],
@@ -452,7 +452,7 @@ export const initializeSut = async () => {
         const dispute = context.transitions.get(cursorId)
         await tests.superDismissInvalidHash(dispute.uplink)
         await tests.superDismissEarly(dispute.uplink)
-        await time.increase(DISPUTE_WINDOW_MS)
+        await time.increase(DISPUTE_WINDOW_SECS)
         const reason = hash('dismissed ' + dispute.uplink)
         await tests.nonQaDismiss(dispute.uplink)
         await expect(qa.disputesDismissed(dispute.uplink, reason))
@@ -630,7 +630,7 @@ export const initializeSut = async () => {
       },
       DEFUND_EXIT: async ({ state: { context } }) => {
         await tests.defundEarly(context.cursorId)
-        await time.increase(DEFUND_WINDOW_MS)
+        await time.increase(DEFUND_WINDOW_SECS)
         const { cursorId } = context
         await expect(dreamEther.defund(cursorId))
           .to.emit(dreamEther, 'Defunded')

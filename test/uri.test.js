@@ -21,9 +21,7 @@ const debug = Debug('test')
 
 describe('uri', () => {
   it('returns edit urls')
-  test.only('all packet types', {
-    first: true,
-    dbg: true,
+  test('all packet types', {
     toState: and(
       isCount(1, { type: 'HEADER', fundedEth: true, disputed: false }),
       isCount(1, { type: 'PACKET', fundedEth: true, enacted: true }),

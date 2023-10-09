@@ -47,7 +47,7 @@ library LibraryQA {
 
     uint disputeWindowSize = getDisputeWindowSize(state, change);
     assert(disputeWindowSize > 0);
-    change.disputeWindowEnd = block.timestamp + change.disputeWindowSize;
+    change.disputeWindowEnd = block.timestamp + disputeWindowSize;
   }
 
   function allocateShares(Change storage c, Share[] calldata shares) internal {
