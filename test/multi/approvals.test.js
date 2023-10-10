@@ -7,8 +7,8 @@ import {
   withActors,
   skipAccountMgmt,
   skipDefunding,
-  skipEvents,
   max,
+  withEth,
 } from './filters.js'
 import Debug from 'debug'
 const debug = Debug('test')
@@ -30,7 +30,7 @@ globalThis.process.env.MODEL === '1' &&
         skipAccountMgmt(),
         max(1),
         skipDefunding(),
-        skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721')
+        withEth()
       ),
       sut: {},
     })

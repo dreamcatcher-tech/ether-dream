@@ -24,12 +24,13 @@ globalThis.process.env.MODEL === '1' &&
         proposePacket,
         fundEth,
         resolve,
+        time,
         enact,
         solve,
         disputeResolve,
         uphold,
       } = scripts
-      actor(proposePacket, fundEth, resolve, enact)
+      actor(proposePacket, fundEth, resolve, time, enact)
       expect(actor.state.matches('stack.open')).to.be.true
       expect(is({ type: 'PACKET' })(actor.state)).to.be.true
 
@@ -38,10 +39,10 @@ globalThis.process.env.MODEL === '1' &&
       // TODO expect state to be packet pending
       actor(disputeResolve, fundEth)
       // TODO expect state to be packet pending
-      actor(uphold)
+      actor(time, uphold)
       expect(actor.state.matches('stack.open')).to.be.true
 
-      actor(resolve, enact)
+      actor(resolve, time, enact)
 
       const { state } = actor
       expect(
@@ -76,7 +77,15 @@ globalThis.process.env.MODEL === '1' &&
         isCount(1, { type: 'SOLUTION', fundedEth: false })
       ),
       filter: and(
-        withActors('qa', 'funder', 'solver', 'disputer', 'service', 'superQa'),
+        withActors(
+          'qa',
+          'funder',
+          'solver',
+          'disputer',
+          'time',
+          'service',
+          'superQa'
+        ),
         skipAccountMgmt(),
         max(1, { type: 'HEADER' }),
         max(0, { type: 'HEADER', disputed: true }),

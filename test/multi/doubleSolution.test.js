@@ -17,13 +17,13 @@ globalThis.process.env.MODEL === '1' &&
   describe('double solutions', () => {
     it('handles two resolved solutions', (done) => {
       const actor = startLoggingActor(done, debug)
-      const { proposePacket, resolve, enact, solve } = scripts
-      actor(proposePacket, resolve, enact)
+      const { proposePacket, resolve, time, enact, solve } = scripts
+      actor(proposePacket, resolve, time, enact)
 
       expect(actor.state.matches('stack.open')).to.be.true
       expect(isDirect(actor.context, { type: 'PACKET' })).to.be.true
 
-      actor(solve, resolve, enact)
+      actor(solve, resolve, time, enact)
 
       expect(actor.state.matches('stack.enacted')).to.be.true
       expect(count({ type: 'PACKET', enacted: true })(actor.state)).to.equal(1)
@@ -61,14 +61,13 @@ globalThis.process.env.MODEL === '1' &&
         isCount(2, { type: 'SOLUTION', qaRejected: true, qaTickStart: 1 })
       ),
       filter: and(
-        withActors('qa', 'solver', 'disputer', 'service'),
+        withActors('qa', 'solver', 'time', 'service'),
         skipAccountMgmt(),
         max(5), // max total changes
         max(1, { type: 'HEADER' }),
         max(3, { type: 'SOLUTION' }),
         max(1, { type: 'SOLUTION', qaResolved: true }),
         max(2, { type: 'SOLUTION', qaRejected: true }),
-        max(0, { type: 'DISPUTE' }),
         (state, event) => {
           // vastly reduces the possible paths
           // TODO may change to just skip next

@@ -269,6 +269,16 @@ const guards = {
     }
     return false
   },
+  isDisputeWindowCloseable: (opts) => {
+    try {
+      return !guards.isDisputeWindowPassed(opts)
+    } catch (error) {
+      if (error.message === 'qaTickStart is not an integer') {
+        return false
+      }
+      throw error
+    }
+  },
   isTargetPacketOpen: ({ context }) => {
     const solution = getChange(context)
     check(solution, { type: 'SOLUTION' })
@@ -333,15 +343,13 @@ const guards = {
     return true
   },
 
-  isTimeLeft: ({ context }) => context.time < MAX_TIME_TICKS,
-  isDisputeWindowCloseable: (opts) =>
-    guards.isTimeLeft(opts) && !guards.isDisputeWindowPassed(opts),
   isFundableEth: is({ fundedEth: false }),
   isFundableDai: is({ fundedDai: false }),
   isFundable1155: is({ funded1155: false }),
   isFundable721: is({ funded721: false }),
   isDefunding: is({ defundStarted: true, defundCompleted: false }),
   isDefundable: is({ defundStarted: false }),
+  isTimeRemaining: ({ context }) => context.time < MAX_TIME_TICKS,
   isDefundWindowPassed: ({ context }) => {
     const change = getChange(context)
     const start = change.defundTickStart
@@ -354,7 +362,7 @@ const guards = {
     return false
   },
   isDefundWaiting: (opts) =>
-    guards.isTimeLeft(opts) && !guards.isDefundWindowPassed(opts),
+    guards.isDefunding(opts) && !guards.isDefundWindowPassed(opts),
   isContentTraded: is({ tradedContentAll: true }),
   isSomeContentTraded: is({ tradedContentSome: true }),
   isAllFundsTraded: is({ tradedFundsAll: true }),
@@ -520,7 +528,7 @@ export const options = {
         return next
       },
     }),
-    tickTime: assign({
+    tickDisputeTime: assign({
       time: ({ context }) => context.time + DISPUTE_WINDOW_TICKS,
     }),
     qaReject: set({ qaRejected: true }),
@@ -690,6 +698,21 @@ export const machine = createMachine(
               },
             },
           },
+          time: {
+            on: {
+              TICK_DEFUND_TIME: {
+                guard: 'isDefundWaiting',
+                actions: 'tickDefundTime',
+                description: 'Move time forwards so defunding is possible',
+              },
+              TICK_DISPUTE_TIME: {
+                guard: 'isDisputeWindowCloseable',
+                actions: 'tickDisputeTime',
+                description:
+                  'Move time forwards so dispute resolution is possible',
+              },
+            },
+          },
 
           exited: {},
           claimed: {},
@@ -751,14 +774,6 @@ export const machine = createMachine(
                             target: '#funding.unFunded',
                             guard: 'isDefundWindowPassed',
                             actions: 'defund',
-                          },
-                          TICK_DEFUND_TIME: {
-                            target: 'defunding',
-                            // TODO use isTimeLeft check too
-                            guard: 'isDefundWaiting',
-                            actions: 'tickDefundTime',
-                            description:
-                              'Move time forwards so defunding is possible',
                           },
                         },
                       },
@@ -822,14 +837,6 @@ export const machine = createMachine(
                     always: {
                       target: 'judging',
                       guard: 'isDisputeWindowPassed',
-                    },
-                    on: {
-                      TICK_TIME: {
-                        guard: 'isDisputeWindowCloseable',
-                        actions: 'tickTime',
-                        description:
-                          'Move time forwards so dispute resolution is possible',
-                      },
                     },
                   },
                   judging: {
@@ -899,15 +906,6 @@ export const machine = createMachine(
                         actions: ['disputeRejection', 'selectLast'],
                       },
                     },
-                  },
-                },
-                on: {
-                  TICK_TIME: {
-                    target: '#stack.pending',
-                    guard: 'isDisputeWindowCloseable',
-                    actions: 'tickTime',
-                    description:
-                      'Move time forwards so dispute resolution is possible',
                   },
                 },
               },
@@ -1228,6 +1226,11 @@ export const machine = createMachine(
       BE_SUPER_QA: {
         target: '.actors.superQa',
         guard: 'isChange',
+        actions: 'snapshotActor',
+      },
+      BE_TIME: {
+        target: '.actors.time',
+        guard: 'isTimeRemaining',
         actions: 'snapshotActor',
       },
       NEXT: {

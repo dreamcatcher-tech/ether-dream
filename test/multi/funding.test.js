@@ -10,6 +10,7 @@ import {
   skipAccountMgmt,
   skipFundPackets,
   max,
+  withEth,
 } from './filters.js'
 import { startLoggingActor, scripts } from './paths.js'
 import Debug from 'debug'
@@ -17,11 +18,19 @@ const debug = Debug('test')
 
 globalThis.process.env.MODEL === '1' &&
   describe('funding', () => {
+    const toState = isCount(1, {
+      type: 'HEADER',
+      enacted: true,
+      fundedEth: true,
+      qaResolved: true,
+      tradedFundsSome: true,
+      tradedContentSome: true,
+    })
     it('funds a header', (done) => {
       const actor = startLoggingActor(done, debug)
 
-      const { proposePacket, fundEth, resolve, enact, trade } = scripts
-      actor(proposePacket, fundEth, resolve, enact)
+      const { proposePacket, fundEth, resolve, time, enact, trade } = scripts
+      actor(proposePacket, fundEth, resolve, time, enact)
       expect(
         isCount(1, { type: 'HEADER', enacted: true, fundedEth: true })(
           actor.state
@@ -29,35 +38,21 @@ globalThis.process.env.MODEL === '1' &&
       ).to.be.true
 
       actor('PREV', trade)
-      expect(
-        isCount(1, {
-          type: 'HEADER',
-          enacted: true,
-          fundedEth: true,
-          tradedFundsSome: true,
-          tradedContentSome: true,
-        })(actor.state)
-      ).to.be.true
+      expect(toState(actor.state)).to.be.true
       expect(actor.context.changes.length).to.equal(2)
 
       done()
     })
     test('funds and trades a header', {
-      toState: isCount(1, {
-        type: 'HEADER',
-        enacted: true,
-        fundedEth: true,
-        qaResolved: true,
-        tradedFundsSome: true,
-        tradedContentSome: true,
-      }),
+      toState,
       filter: and(
-        withActors('funder', 'qa', 'disputer', 'service', 'trader'),
-        skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721'),
+        withActors('funder', 'qa', 'time', 'service', 'trader'),
+        withEth(),
         skipAccountMgmt(),
         skipDisputes(),
         skipDefunding(),
         skipFundPackets(),
+        skipEvents('TRADE_ALL_CONTENT', 'TRADE_ALL_FUNDS'),
         max(2)
       ),
       sut: {},
