@@ -5,9 +5,9 @@ import {
   and,
   isCount,
   count,
-  skipActors,
   skipAccountMgmt,
   max,
+  withActors,
 } from './filters.js'
 import { startLoggingActor, scripts } from './paths.js'
 import Debug from 'debug'
@@ -61,7 +61,7 @@ globalThis.process.env.MODEL === '1' &&
         isCount(2, { type: 'SOLUTION', qaRejected: true, qaTickStart: 1 })
       ),
       filter: and(
-        skipActors('funder', 'trader', 'editor', 'superQa', 'openSea'),
+        withActors('qa', 'solver', 'disputer', 'service'),
         skipAccountMgmt(),
         max(5), // max total changes
         max(1, { type: 'HEADER' }),

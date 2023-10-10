@@ -5,13 +5,13 @@ import { expect } from 'chai'
 import {
   and,
   isCount,
-  skipActors,
   skipAccountMgmt,
   skipNavigation,
   skipRejection,
   skipDefunding,
   skipEvents,
   max,
+  withActors,
 } from './filters.js'
 import Debug from 'debug'
 const debug = Debug('test')
@@ -76,7 +76,7 @@ globalThis.process.env.MODEL === '1' &&
         isCount(1, { type: 'SOLUTION', fundedEth: false })
       ),
       filter: and(
-        skipActors('proposer', 'trader', 'editor', 'openSea'),
+        withActors('qa', 'funder', 'solver', 'disputer', 'service', 'superQa'),
         skipAccountMgmt(),
         max(1, { type: 'HEADER' }),
         max(0, { type: 'HEADER', disputed: true }),

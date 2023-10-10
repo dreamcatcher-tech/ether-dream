@@ -3,7 +3,7 @@ import { expect } from 'chai'
 import {
   and,
   isCount,
-  skipActors,
+  withActors,
   skipEvents,
   skipDisputes,
   skipDefunding,
@@ -52,7 +52,7 @@ globalThis.process.env.MODEL === '1' &&
         tradedContentSome: true,
       }),
       filter: and(
-        skipActors('proposer', 'solver', 'editor', 'superQa', 'openSea'),
+        withActors('funder', 'qa', 'disputer', 'service', 'trader'),
         skipEvents('FUND_DAI', 'FUND_1155', 'FUND_721'),
         skipAccountMgmt(),
         skipDisputes(),
