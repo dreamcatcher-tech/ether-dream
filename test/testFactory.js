@@ -99,10 +99,8 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
           if (dry) {
             return
           }
-          if (sut) {
-            expect(sut, 'sut must be an object').to.be.an('object')
-          }
           const system = sut || (await initializeSut())
+          expect(system, 'sut must be an object').to.be.an('object')
           const logger = { ...system, events: {} }
           for (const event of machine.events) {
             if (system.events?.[event]) {
@@ -110,7 +108,7 @@ function _createSuite(name, { toState, filter, verify, ...config }, it) {
             } else if (!globalEvents.has(event) && !event.startsWith('DO_')) {
               logger.events[event] = () => {
                 debug.extend('event')('no handler for', event)
-                if (Object.keys(sut).length) {
+                if (system.events && Object.keys(system.events).length) {
                   throw new Error('no handler for ' + event)
                 }
               }

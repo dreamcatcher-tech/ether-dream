@@ -3,13 +3,14 @@ import { initializeSut, DISPUTE_WINDOW_SECS } from './sut.js'
 import {
   and,
   isCount,
-  skipActors,
+  withEth,
   skipAccountMgmt,
   skipNavigation,
   skipRejection,
   max,
   skipDefunding,
   skipEvents,
+  withActors,
 } from './multi/filters.js'
 import { hash } from './utils.js'
 import { CID } from 'multiformats/cid'
@@ -22,6 +23,7 @@ const debug = Debug('test')
 describe('uri', () => {
   it('returns edit urls')
   test('all packet types', {
+    dbg: true,
     toState: and(
       isCount(1, { type: 'HEADER', fundedEth: true, disputed: false }),
       isCount(1, { type: 'PACKET', fundedEth: true, enacted: true }),
@@ -34,7 +36,15 @@ describe('uri', () => {
       isCount(1, { type: 'SOLUTION', fundedEth: false })
     ),
     filter: and(
-      skipActors('proposer', 'trader', 'editor'),
+      withActors(
+        'qa',
+        'time',
+        'service',
+        'disputer',
+        'solver',
+        'superQa',
+        'funder'
+      ),
       skipAccountMgmt(),
       max(1, { type: 'HEADER' }),
       max(0, { type: 'HEADER', disputed: true }),
@@ -44,10 +54,8 @@ describe('uri', () => {
       skipRejection(),
       skipNavigation(),
       skipDefunding(),
+      withEth(),
       skipEvents(
-        'FUND_DAI',
-        'FUND_1155',
-        'FUND_721',
         'ALL_DISPUTES_DISMISSED',
         'DISPUTE_SHARES',
         'DISPUTE_UPHELD_SHARES'

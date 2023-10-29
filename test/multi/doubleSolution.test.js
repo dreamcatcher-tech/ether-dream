@@ -36,7 +36,6 @@ globalThis.process.env.MODEL === '1' &&
 
       done()
     })
-
     it('can survive multiple dispute rounds')
     it('does not dither between next and prev', (done) => {
       const actor = startLoggingActor(done, debug)
@@ -53,24 +52,30 @@ globalThis.process.env.MODEL === '1' &&
 
       done()
     })
-
-    test('double solution', {
+    test('triple solution', {
       toState: and(
         isCount(1, { type: 'PACKET', enacted: true }),
-        isCount(1, { type: 'SOLUTION', qaResolved: true, qaTickStart: 1 }),
-        isCount(2, { type: 'SOLUTION', qaRejected: true, qaTickStart: 1 })
+        isCount(1, {
+          type: 'SOLUTION',
+          qaResolved: true,
+          qaTickStart: 1,
+        }),
+        isCount(2, {
+          type: 'SOLUTION',
+          qaRejected: true,
+          qaTickStart: 1,
+        })
       ),
       filter: and(
         withActors('qa', 'solver', 'time', 'service'),
         skipAccountMgmt(),
         max(5), // max total changes
-        max(1, { type: 'HEADER' }),
         max(3, { type: 'SOLUTION' }),
         max(1, { type: 'SOLUTION', qaResolved: true }),
         max(2, { type: 'SOLUTION', qaRejected: true }),
+        max(0, { type: 'SOLUTION', qaTickStart: 2 }),
         (state, event) => {
           // vastly reduces the possible paths
-          // TODO may change to just skip next
           if (event.type === 'PREV') {
             const change = getChange(state.context)
             return isChange(change, {

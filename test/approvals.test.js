@@ -16,8 +16,7 @@ describe('approvals', () => {
   it('is its own operate by default')
   it('cannot remove self as an operator')
 
-  test.only('can by default trade on opensea', {
-    dbg: true,
+  test('can by default trade on opensea', {
     toState: isCount(1, { type: 'HEADER', tradedFundsSome: true }),
     filter: and(
       withActors('proposer', 'funder', 'openSea'),

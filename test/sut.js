@@ -183,7 +183,7 @@ export const initializeSut = async () => {
           .withArgs(cursorId, DISPUTE_WINDOW_SECS)
         expect(await dreamEther.getQA(cursorId)).to.equal(qa.target)
       },
-      TICK_TIME: async () => {
+      TICK_DISPUTE_TIME: async () => {
         debug('tick time DISPUTE_WINDOW_MS', DISPUTE_WINDOW_MS)
         await time.increase(DISPUTE_WINDOW_SECS)
       },
